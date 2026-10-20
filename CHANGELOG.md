@@ -1,3 +1,10 @@
+## [1.0.2](https://github.com/mini-app-polis/task-manager-cog/compare/v1.0.1...v1.0.2) (2026-10-20)
+
+
+### Bug Fixes
+
+* respx for HTTP mocking, Board docstrings, README running-locally section ([7c74c02](https://github.com/mini-app-polis/task-manager-cog/commit/7c74c02ae1e229e5378338817242fc394d2719e7))
+
 ## [1.0.1](https://github.com/mini-app-polis/task-manager-cog/compare/v1.0.0...v1.0.1) (2026-10-20)
 
 
