@@ -46,14 +46,40 @@ src/task_manager_cog/
   _deadline.py  stop a run before the function timeout
 ```
 
-## Development
+## Running locally (DOC-013)
 
-Secrets come from Doppler (`doppler.yaml` pins the shared `dev` config);
-`.env.example` lists the names read. Board writes are off outside production.
+**Prerequisites:** Python ≥ 3.11, [uv](https://docs.astral.sh/uv/), and the
+[Doppler CLI](https://docs.doppler.com/docs/install-cli). Secrets come from
+Doppler's shared `dev` config; nothing reads a `.env` file, and local runs
+never use `prd`. `.env.example` lists the names read.
 
+```bash
+git clone git@github.com:mini-app-polis/task-manager-cog.git
+cd task-manager-cog
+doppler setup                              # reads doppler.yaml: mini-app-polis-ecosystem / dev
+uv sync --all-extras
+uv run pre-commit install
+uv run pre-commit run --all-files
 ```
-uv sync
-uv run pytest
+
+**Run one message** through the worker, as the queue would deliver it. Outside
+production board writes are off, so this logs the task it would have created
+and touches nothing:
+
+```bash
+cat > /tmp/task-message.json <<'JSON'
+{"type": "task.create", "version": 1, "payload": {"source": "voicenote", "external_id": "voicenote.local-test", "draft": {"title": "Local test", "labels": ["test"]}}}
+JSON
+doppler run -- uv run python -c 'import sys; from task_manager_cog.worker import process_message; process_message(open(sys.argv[1]).read(), run_id="local")' /tmp/task-message.json
+```
+
+Setting `ASANA_ENABLED=true` in your shell makes that run create the task on
+the real board.
+
+## Running tests
+
+```bash
+uv run pytest                              # with coverage, as CI runs it
 uv run ruff check . && uv run ruff format --check .
 uv run mypy src/
 ```

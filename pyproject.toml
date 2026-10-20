@@ -16,6 +16,7 @@ dev = [
     "pre-commit",
     "pytest",
     "pytest-cov",
+    "respx",
     "ruff",
 ]
 
