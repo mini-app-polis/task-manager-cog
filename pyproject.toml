@@ -1,0 +1,66 @@
+[project]
+name = "task-manager-cog"
+dynamic = ["version"]
+description = "Puts tasks on the board: turns each source's task draft into one task, with the board's template, an id, tags and section. Runs as the task-manager-jobs Lambda worker."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "miniapppolis-common-utils>=6.10.0,<7",
+    "pydantic>=2.0.0,<3.0.0",
+    "sentry-sdk>=2.0.0,<3.0.0",
+]
+
+[dependency-groups]
+dev = [
+    "mypy",
+    "pre-commit",
+    "pytest",
+    "pytest-cov",
+    "ruff",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/task_manager_cog/_version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/task_manager_cog"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "ASYNC"]
+ignore = ["E501", "B008"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["task_manager_cog"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests/unit"]
+addopts = "--cov=task_manager_cog --cov-report=term-missing"
+
+[tool.mypy]
+python_version = "3.11"
+strict = false
+ignore_missing_imports = true
+
+[tool.coverage.report]
+# TEST-019: CI fails below this floor. Raise it as coverage rises; lowering it is a reviewed edit.
+fail_under = 85
+
+[tool.uv]
+# The uv every lock in the fleet is written with. setup-uv reads this in CI,
+# and an older or newer local uv refuses to run instead of rewriting the
+# lock's revision. Upgrading uv is a fleet sweep: bump this everywhere, then
+# re-lock, in commits of their own.
+required-version = "==0.13.0"
