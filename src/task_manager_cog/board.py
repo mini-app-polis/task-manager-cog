@@ -44,6 +44,11 @@ class Board:
 
     @classmethod
     def from_env(cls) -> Board:
+        """The board this process is configured for, read from the environment.
+
+        Raises :class:`BoardNotConfigured` when ``ASANA_INBOX_PROJECT_ID`` is
+        unset; the section is optional.
+        """
         project = (os.environ.get("ASANA_INBOX_PROJECT_ID") or "").strip()
         if not project:
             raise BoardNotConfigured(
@@ -93,4 +98,5 @@ class Board:
         )
 
     def url(self, task_gid: str) -> str:
+        """A link to the task on this board, for the run report."""
         return TASK_URL_TEMPLATE.format(project_gid=self.project_gid, task_gid=task_gid)
