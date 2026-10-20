@@ -218,3 +218,13 @@ def test_handler_returns_everything_when_settings_cannot_load(
     assert result == {
         "batchItemFailures": [{"itemIdentifier": "m-1"}, {"itemIdentifier": "m-2"}]
     }
+
+
+def test_the_package_loads_its_secrets_before_any_module_reads_them() -> None:
+    """Sentry starts at the worker's import, so SSM must already be loaded."""
+    import inspect
+
+    import task_manager_cog
+
+    source = inspect.getsource(task_manager_cog)
+    assert "load_secrets()" in source
