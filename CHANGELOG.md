@@ -1,3 +1,11 @@
+# [1.2.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.1.2...v1.2.0) (2026-10-21)
+
+
+### Features
+
+* **sweep:** check the board hourly against the definition of ready, and move ready tasks to Ready ([66fc9f3](https://github.com/mini-app-polis/task-manager-cog/commit/66fc9f3a2fc17e7e9bdcc6ea5fe670fa33b6c613))
+* **sweep:** check the board hourly against the definition of ready, and move ready tasks to Ready ([772cab3](https://github.com/mini-app-polis/task-manager-cog/commit/772cab38989f4a472c7d20045be91ca60daaf172))
+
 ## [1.1.2](https://github.com/mini-app-polis/task-manager-cog/compare/v1.1.1...v1.1.2) (2026-10-21)
 
 
