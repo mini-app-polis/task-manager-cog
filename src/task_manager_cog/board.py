@@ -16,7 +16,12 @@ from __future__ import annotations
 import os
 
 from mini_app_polis import logger as logger_mod
-from mini_app_polis.asana import AsanaClient, AsanaTaskInput
+from mini_app_polis.asana import (
+    AsanaClient,
+    AsanaSection,
+    AsanaTaskInput,
+    AsanaTaskRecord,
+)
 
 from .compose import ComposedTask
 
@@ -96,6 +101,18 @@ class Board:
                 external_id=external_id,
             )
         )
+
+    def sections(self) -> list[AsanaSection]:
+        """The board's columns, in order."""
+        return self._client.list_sections(self.project_gid)
+
+    def tasks(self) -> list[AsanaTaskRecord]:
+        """Every task on the board, with its body, column and tags."""
+        return self._client.list_project_tasks(self.project_gid)
+
+    def move(self, task_gid: str, section_gid: str) -> None:
+        """Move a task to a column."""
+        self._client.move_task_to_section(task_gid, section_gid)
 
     def url(self, task_gid: str) -> str:
         """A link to the task on this board, for the run report."""

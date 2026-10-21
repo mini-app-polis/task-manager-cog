@@ -1,4 +1,4 @@
-"""The Lambda entrypoint: one queue message in, at most one task out.
+"""The Lambda entrypoint: one queue message in, at most one task out, or a sweep.
 
 task-manager-cog runs on Lambda behind its own FIFO queue,
 ``task-manager-jobs.fifo``, with one message group, so jobs run one at a
@@ -13,6 +13,14 @@ The API is the only producer. A source asks it for a task through
 
 The payload is the request as the API validated it, so it is validated here
 against the same model from the shared contract.
+
+The one other producer is this cog's own schedule, which puts a sweep on the
+same queue every hour (sweep.py):
+
+    {"type": "task.sweep", "version": 1}
+
+On the queue rather than invoking the function directly, so a sweep never
+runs beside a job that is creating a task.
 
 **A duplicate request makes no second task.** The source's ``external_id`` is stored on
 the task, and looked up before anything is composed or minted. A job that
@@ -33,6 +41,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 
 from mini_app_polis import load_secrets, timing
@@ -48,6 +57,7 @@ from .board import Board
 from .compose import compose
 from .ids import next_id, task_name
 from .sources import SOURCES
+from .sweep import run_sweep
 
 log = logger_mod.get_logger()
 
@@ -58,6 +68,7 @@ FLOW_NAME = "create-task"
 #: this consumer refuses rather than misreads.
 MESSAGE_VERSION = 1
 TYPE_CREATE = "task.create"
+TYPE_SWEEP = "task.sweep"
 
 # At import, not per invocation: a Lambda container is reused across
 # invocations, so this runs once per cold start.
@@ -68,8 +79,13 @@ class UnprocessableMessage(RuntimeError):
     """The message cannot be handled by this consumer, ever."""
 
 
-def parse_message(body: str) -> TaskCreateRequest:
-    """The request a message carries. Raises UnprocessableMessage otherwise."""
+@dataclass(frozen=True)
+class SweepJob:
+    """A scheduled sweep of the board. It carries nothing."""
+
+
+def parse_message(body: str) -> TaskCreateRequest | SweepJob:
+    """The job a message carries. Raises UnprocessableMessage otherwise."""
     try:
         message = json.loads(body)
     except ValueError as exc:
@@ -81,6 +97,8 @@ def parse_message(body: str) -> TaskCreateRequest:
             f"message version {message.get('version')!r}, "
             f"this consumer speaks {MESSAGE_VERSION}"
         )
+    if message.get("type") == TYPE_SWEEP:
+        return SweepJob()
     if message.get("type") != TYPE_CREATE:
         raise UnprocessableMessage(f"unknown message type {message.get('type')!r}")
     try:
@@ -141,6 +159,10 @@ def process_message(
 ) -> None:
     """Handle one message. Raises if it must be redelivered."""
     request = parse_message(body)
+    if isinstance(request, SweepJob):
+        log.info("worker: run %s sweep", run_id)
+        run_sweep(run_id=run_id, board_factory=board_factory)
+        return
     log.info(
         "worker: run %s source=%s external_id=%s",
         run_id,
@@ -168,7 +190,8 @@ def _report_unprocessable(exc: BaseException, run_id: str) -> None:
 def _source_label(body: str) -> str:
     """The message's source, for the timing line. Never raises."""
     try:
-        return parse_message(body).source
+        job = parse_message(body)
+        return "sweep" if isinstance(job, SweepJob) else job.source
     except Exception:  # noqa: BLE001 — a label must not fail the run
         return "unreadable"
 
