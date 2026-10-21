@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.0.2...v1.1.0) (2026-10-21)
+
+
+### Features
+
+* sources for detected problems (CI, RUN, CONF, API) ([9c7b38d](https://github.com/mini-app-polis/task-manager-cog/commit/9c7b38d7abb71669014e651d25d8f86947846b8e))
+
 ## [1.0.2](https://github.com/mini-app-polis/task-manager-cog/compare/v1.0.1...v1.0.2) (2026-10-20)
 
 
