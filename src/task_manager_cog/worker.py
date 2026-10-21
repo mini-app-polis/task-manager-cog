@@ -22,6 +22,11 @@ same queue every hour (sweep.py):
 On the queue rather than invoking the function directly, so a sweep never
 runs beside a job that is creating a task.
 
+A groomer's proposal for a task comes back through the API onto the same
+queue, and is applied in line with everything else (groom.py):
+
+    {"type": "task.groom-proposal", "version": 1, "payload": <GroomingProposal>}
+
 **A duplicate request makes no second task.** The source's ``external_id`` is stored on
 the task, and looked up before anything is composed or minted. A job that
 created its task and then failed (a timeout on the response, a lost report)
@@ -46,7 +51,7 @@ from typing import Any
 
 from mini_app_polis import load_secrets, timing
 from mini_app_polis import logger as logger_mod
-from mini_app_polis.api.contract import TaskCreateRequest
+from mini_app_polis.api.contract import GroomingProposal, TaskCreateRequest
 from mini_app_polis.environment import Effect, effect_enabled
 from mini_app_polis.pipeline_status import post_run_finding, run_report
 from mini_app_polis.sentry import init_sentry
@@ -55,6 +60,7 @@ from pydantic import ValidationError
 from ._deadline import deadline
 from .board import Board
 from .compose import compose
+from .groom import apply_proposal
 from .ids import next_id, task_name
 from .sources import SOURCES
 from .sweep import run_sweep
@@ -69,6 +75,7 @@ FLOW_NAME = "create-task"
 MESSAGE_VERSION = 1
 TYPE_CREATE = "task.create"
 TYPE_SWEEP = "task.sweep"
+TYPE_PROPOSAL = "task.groom-proposal"
 
 # At import, not per invocation: a Lambda container is reused across
 # invocations, so this runs once per cold start.
@@ -84,7 +91,7 @@ class SweepJob:
     """A scheduled sweep of the board. It carries nothing."""
 
 
-def parse_message(body: str) -> TaskCreateRequest | SweepJob:
+def parse_message(body: str) -> TaskCreateRequest | SweepJob | GroomingProposal:
     """The job a message carries. Raises UnprocessableMessage otherwise."""
     try:
         message = json.loads(body)
@@ -99,6 +106,13 @@ def parse_message(body: str) -> TaskCreateRequest | SweepJob:
         )
     if message.get("type") == TYPE_SWEEP:
         return SweepJob()
+    if message.get("type") == TYPE_PROPOSAL:
+        try:
+            return GroomingProposal.model_validate(message.get("payload"))
+        except ValidationError as exc:
+            raise UnprocessableMessage(
+                f"payload is not a grooming proposal: {exc}"
+            ) from exc
     if message.get("type") != TYPE_CREATE:
         raise UnprocessableMessage(f"unknown message type {message.get('type')!r}")
     try:
@@ -163,6 +177,10 @@ def process_message(
         log.info("worker: run %s sweep", run_id)
         run_sweep(run_id=run_id, board_factory=board_factory)
         return
+    if isinstance(request, GroomingProposal):
+        log.info("worker: run %s applies grooming of %s", run_id, request.task_gid)
+        apply_proposal(request, run_id=run_id, board_factory=board_factory)
+        return
     log.info(
         "worker: run %s source=%s external_id=%s",
         run_id,
@@ -191,7 +209,11 @@ def _source_label(body: str) -> str:
     """The message's source, for the timing line. Never raises."""
     try:
         job = parse_message(body)
-        return "sweep" if isinstance(job, SweepJob) else job.source
+        if isinstance(job, SweepJob):
+            return "sweep"
+        if isinstance(job, GroomingProposal):
+            return "grooming"
+        return job.source
     except Exception:  # noqa: BLE001 — a label must not fail the run
         return "unreadable"
 

@@ -1,10 +1,17 @@
 from __future__ import annotations
 
+import dataclasses
 import datetime as dt
+import html
 from dataclasses import dataclass, field
 
 import pytest
-from mini_app_polis.api.contract import GroomingRecord, GroomingRecordWrite
+from mini_app_polis.api.contract import (
+    GroomingJobAccepted,
+    GroomingJobRequest,
+    GroomingRecord,
+    GroomingRecordWrite,
+)
 from mini_app_polis.asana import AsanaSection, AsanaTaskRecord
 
 from task_manager_cog import sweep as sweep_mod
@@ -51,9 +58,13 @@ def _task(
 
 @dataclass
 class FakeBoard:
+    """The board in memory: tasks, columns, comments, and what was done."""
+
     records: list[AsanaTaskRecord]
     sections_: list[AsanaSection] = field(default_factory=lambda: list(SECTIONS))
     moves: list[tuple[str, str]] = field(default_factory=list)
+    comments_: dict[str, list[str]] = field(default_factory=dict)
+    untagged: list[tuple[str, str]] = field(default_factory=list)
 
     def sections(self) -> list[AsanaSection]:
         return self.sections_
@@ -61,8 +72,41 @@ class FakeBoard:
     def tasks(self) -> list[AsanaTaskRecord]:
         return self.records
 
+    def names(self) -> list[str]:
+        return [t.name for t in self.records]
+
+    def get(self, gid: str) -> AsanaTaskRecord | None:
+        return next((t for t in self.records if t.gid == gid), None)
+
+    def _replace(self, gid: str, **changes) -> None:
+        self.records = [
+            dataclasses.replace(t, **changes) if t.gid == gid else t
+            for t in self.records
+        ]
+
     def move(self, task_gid: str, section_gid: str) -> None:
         self.moves.append((task_gid, section_gid))
+        name = next(s.name for s in self.sections_ if s.gid == section_gid)
+        self._replace(task_gid, section_gid=section_gid, section_name=name)
+
+    def update(self, task_gid: str, *, name: str, html_notes: str) -> None:
+        text = html_notes.removeprefix("<body>").removesuffix("</body>")
+        self._replace(task_gid, name=name, notes=html.unescape(text))
+
+    def untag(self, task_gid: str, tag_name: str) -> None:
+        self.untagged.append((task_gid, tag_name))
+        task = self.get(task_gid)
+        assert task is not None
+        self._replace(
+            task_gid,
+            tag_names=tuple(t for t in task.tag_names if t.lower() != tag_name),
+        )
+
+    def comment(self, task_gid: str, text: str) -> None:
+        self.comments_.setdefault(task_gid, []).append(text)
+
+    def comments(self, task_gid: str) -> list[str]:
+        return list(self.comments_.get(task_gid, []))
 
     def url(self, gid: str) -> str:
         return f"https://board/{gid}"
@@ -170,6 +214,15 @@ class FakeRecords:
         self.stored[payload.task_gid] = record
         return record
 
+    jobs: list[GroomingJobRequest] = field(default_factory=list)
+    refuse: bool = False
+
+    def request_grooming(self, payload: GroomingJobRequest) -> GroomingJobAccepted:
+        if self.refuse:
+            raise RuntimeError("502 dispatch_failed")
+        self.jobs.append(payload)
+        return GroomingJobAccepted(message_id="m", task_gid=payload.task.task_gid)
+
 
 def test_run_sweep_moves_and_reports_in_production(
     production, monkeypatch: pytest.MonkeyPatch, _no_outbound_reports
@@ -267,9 +320,10 @@ def test_a_question_waits_until_the_task_changes() -> None:
     unchanged = sweep(FakeBoard([task]), repos=REPOS, move=False, records={"12": asked})
     assert unchanged.writes == []
 
-    answered = _task("12", "MINI-2 · Vague idea", notes="look into this: answered")
-    after = sweep(FakeBoard([answered]), repos=REPOS, move=False, records={"12": asked})
-    assert after.writes[0].outcome == "not_ready"
+    # Still waiting after an edit: questions are out until a grooming answers.
+    edited = _task("12", "MINI-2 · Vague idea", notes="look into this: edited")
+    after = sweep(FakeBoard([edited]), repos=REPOS, move=False, records={"12": asked})
+    assert after.writes[0].outcome == "questions"
 
 
 def test_run_sweep_does_nothing_outside_production(
@@ -304,3 +358,87 @@ def test_main_prints_every_verdict(
     assert "- Blocked by MINI-7, which is not done" in out
     assert "1 of 4 tasks ready" in out
     assert board.moves == []
+
+
+# ── sending for grooming ──────────────────────────────────────────────────
+
+
+def _sweep_sending(
+    store: FakeRecords, board: FakeBoard, monkeypatch: pytest.MonkeyPatch, limit: str
+) -> None:
+    monkeypatch.setenv("GROOM_DISPATCH", "true")
+    monkeypatch.setenv("GROOM_DISPATCH_LIMIT", limit)
+    run_sweep(
+        run_id="r",
+        board_factory=lambda: board,
+        repos_loader=lambda: REPOS,
+        records_factory=lambda: store,
+    )
+
+
+def test_sending_is_off_unless_set(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert sweep_mod.dispatch_limit() == 0
+    monkeypatch.setenv("GROOM_DISPATCH", "true")
+    assert sweep_mod.dispatch_limit() == 5
+    monkeypatch.setenv("GROOM_DISPATCH_LIMIT", "2")
+    assert sweep_mod.dispatch_limit() == 2
+
+
+def test_tasks_not_ready_are_sent_once_up_to_the_limit(
+    production, monkeypatch: pytest.MonkeyPatch, _no_outbound_reports
+) -> None:
+    store = FakeRecords()
+    board = FakeBoard(list(BOARD_TASKS))
+    _sweep_sending(store, board, monkeypatch, "1")
+    assert [j.task.name for j in store.jobs] == ["MINI-2 · Vague idea"]
+    job = store.jobs[0]
+    assert job.task.problems
+    assert "MINI-2 · Vague idea" not in job.board
+    assert "MINI-1 · Ready idea" in job.board
+    assert store.stored["2"].groomed_fingerprint == fingerprint(BOARD_TASKS[1])
+
+    # The next sweep sends the next one, and never the first again.
+    _sweep_sending(store, board, monkeypatch, "1")
+    assert [j.task.name for j in store.jobs] == [
+        "MINI-2 · Vague idea",
+        "MINI-6 · Waits on MINI-7",
+    ]
+    _sweep_sending(store, board, monkeypatch, "5")
+    _sweep_sending(store, board, monkeypatch, "5")
+    assert len(store.jobs) == 3
+
+
+def test_a_refused_job_is_sent_again_next_sweep(
+    production, monkeypatch: pytest.MonkeyPatch, _no_outbound_reports
+) -> None:
+    store = FakeRecords(refuse=True)
+    board = FakeBoard([BOARD_TASKS[1]])
+    _sweep_sending(store, board, monkeypatch, "5")
+    assert store.stored["2"].groomed_fingerprint is None
+    store.refuse = False
+    _sweep_sending(store, board, monkeypatch, "5")
+    assert len(store.jobs) == 1
+
+
+def test_an_answer_sends_a_task_with_questions_again(
+    production, monkeypatch: pytest.MonkeyPatch, _no_outbound_reports
+) -> None:
+    task = BOARD_TASKS[1]
+    store = FakeRecords()
+    store.stored["2"] = GroomingRecord(
+        task_gid="2",
+        task_id="MINI-2",
+        fingerprint=fingerprint(task),
+        groomed_fingerprint=fingerprint(task),
+        outcome="questions",
+        updated_at=dt.datetime.now(dt.UTC),
+    )
+    board = FakeBoard([task], comments_={"2": ["Grooming questions:\n1. Why?"]})
+    _sweep_sending(store, board, monkeypatch, "5")
+    assert store.jobs == []
+
+    board.comment("2", "Because the API needs it.")
+    _sweep_sending(store, board, monkeypatch, "5")
+    (job,) = store.jobs
+    assert job.task.comments == ["Because the API needs it."]
+    assert job.task.fingerprint == fingerprint(task, ["Because the API needs it."])

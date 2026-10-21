@@ -96,6 +96,11 @@ def parse(notes: str) -> ParsedTask:
     return ParsedTask(fields=fields, body=body)
 
 
+def looks_like_label(line: str) -> bool:
+    """Whether a line reads as ``<Label>: …``, a template label or not."""
+    return bool(_ANY_LABEL.match(line.strip()))
+
+
 def task_id_of(name: str) -> str | None:
     """The id a task's name starts with, or None for a task with none."""
     head, sep, _ = name.partition(SEPARATOR)

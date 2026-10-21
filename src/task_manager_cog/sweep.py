@@ -12,6 +12,13 @@ Each swept task's verdict is kept as its grooming record in the API
 sweep whether a task was edited since it was judged, and whether a task this
 cog moved to Ready was sent back.
 
+A task that is not ready, and whose content differs from what was last sent
+for grooming, is sent to task-groomer-cog through the API: at most
+``GROOM_DISPATCH_LIMIT`` a sweep, in board order, and only when
+``GROOM_DISPATCH`` is on. The groomer's proposal comes back on this cog's
+queue and is applied by groom.py. A job the API refuses is not marked as
+sent, so the next sweep sends it again.
+
 Moving is a setting, ``GROOM_AUTO_READY``, off unless set, so the sweep can
 run and say what it would move before it moves anything. The columns are
 named, not configured by gid, so they read the same in Doppler as on the
@@ -20,6 +27,9 @@ board:
   GROOM_SECTIONS    the columns swept (default: Ideas, Refining, Blocked)
   READY_SECTION     the column a ready task moves to (default: Ready)
   GROOM_AUTO_READY  true to move ready tasks; anything else only reports
+  GROOM_DISPATCH    true to send tasks for grooming, which is paid; off
+                    unless set
+  GROOM_DISPATCH_LIMIT  tasks sent a sweep (default: 5)
 
 The board's template task says so in its name ("do not work") and is never
 swept.
@@ -40,14 +50,20 @@ from typing import Protocol
 
 from mini_app_polis import logger as logger_mod
 from mini_app_polis.api import KaianoApiClient
-from mini_app_polis.api.contract import GroomingRecord, GroomingRecordWrite
+from mini_app_polis.api.contract import (
+    GroomingJobAccepted,
+    GroomingJobRequest,
+    GroomingRecord,
+    GroomingRecordWrite,
+    GroomingTask,
+)
 from mini_app_polis.asana import AsanaSection, AsanaTaskRecord
 from mini_app_polis.environment import Effect, effect_enabled
 from mini_app_polis.pipeline_status import run_report
 
 from .board import Board
 from .lint import lint, task_id_of
-from .records import changed, next_record
+from .records import answers, changed, fingerprint, needs_grooming, next_record
 from .registry import load_repos
 
 log = logger_mod.get_logger()
@@ -60,6 +76,7 @@ MACHINE_NAME = "task-manager-cog"
 
 DEFAULT_GROOM_SECTIONS: tuple[str, ...] = ("Ideas", "Refining", "Blocked")
 DEFAULT_READY_SECTION = "Ready"
+DEFAULT_DISPATCH_LIMIT = 5
 
 #: In the template task's name. A task saying this is never swept.
 DO_NOT_WORK = "do not work"
@@ -76,6 +93,8 @@ class Records(Protocol):
 
     def record_grooming(self, payload: GroomingRecordWrite) -> GroomingRecord: ...
 
+    def request_grooming(self, payload: GroomingJobRequest) -> GroomingJobAccepted: ...
+
 
 @dataclass(frozen=True)
 class Verdict:
@@ -85,6 +104,8 @@ class Verdict:
     problems: tuple[str, ...]
     #: New, or edited since its record was written.
     changed: bool = True
+    #: The owner's answers to the task's grooming questions, if it has any.
+    replies: tuple[str, ...] = ()
 
     @property
     def ready(self) -> bool:
@@ -99,6 +120,11 @@ class SweepResult:
     returned: list[AsanaTaskRecord] = field(default_factory=list)
     #: The records this sweep changed, to be written.
     writes: list[GroomingRecordWrite] = field(default_factory=list)
+    #: Tasks sent for grooming.
+    sent: list[AsanaTaskRecord] = field(default_factory=list)
+    #: Tasks that needed grooming and were not sent: over the limit, off,
+    #: or refused.
+    waiting: int = 0
 
     @property
     def ready(self) -> list[Verdict]:
@@ -119,14 +145,24 @@ def auto_ready() -> bool:
     return (os.environ.get("GROOM_AUTO_READY") or "").strip().lower() == "true"
 
 
+def dispatch_limit() -> int:
+    """How many tasks a sweep may send for grooming; 0 when sending is off."""
+    if (os.environ.get("GROOM_DISPATCH") or "").strip().lower() != "true":
+        return 0
+    raw = (os.environ.get("GROOM_DISPATCH_LIMIT") or "").strip()
+    return max(0, int(raw)) if raw else DEFAULT_DISPATCH_LIMIT
+
+
 def assess(
     tasks: list[AsanaTaskRecord],
     *,
     swept: Collection[str],
     repos: Collection[str],
     records: Mapping[str, GroomingRecord] | None = None,
+    replies: Mapping[str, tuple[str, ...]] | None = None,
 ) -> list[Verdict]:
     """A verdict for every open task in a swept column, in board order."""
+    replies = replies or {}
     swept_lower = {name.lower() for name in swept}
     completed_by_id = {
         task_id: task.completed
@@ -150,7 +186,8 @@ def assess(
             Verdict(
                 task=task,
                 problems=tuple(problems),
-                changed=changed(task, records or {}),
+                changed=changed(task, records or {}, replies.get(task.gid, ())),
+                replies=replies.get(task.gid, ()),
             )
         )
     return verdicts
@@ -161,8 +198,27 @@ def _section_named(sections: list[AsanaSection], name: str) -> AsanaSection:
         if section.name.lower() == name.lower():
             return section
     raise SweepMisconfigured(
-        f"the board has no {name!r} column (READY_SECTION); "
+        f"the board has no {name!r} column (see its *_SECTION setting); "
         f"it has {', '.join(s.name for s in sections)}"
+    )
+
+
+def grooming_job(verdict: Verdict, board_names: list[str]) -> GroomingJobRequest:
+    """What the groomer is sent for one task."""
+    task = verdict.task
+    return GroomingJobRequest(
+        task=GroomingTask(
+            task_gid=task.gid,
+            task_id=task_id_of(task.name),
+            name=task.name,
+            notes=task.notes,
+            tags=list(task.tag_names),
+            section=task.section_name,
+            fingerprint=fingerprint(task, verdict.replies),
+            problems=list(verdict.problems),
+            comments=list(verdict.replies),
+        ),
+        board=[name for name in board_names if name != task.name][:500],
     )
 
 
@@ -172,21 +228,37 @@ def sweep(
     repos: Collection[str],
     move: bool,
     records: Mapping[str, GroomingRecord] | None = None,
+    send: Callable[[GroomingJobRequest], bool] | None = None,
+    limit: int = 0,
 ) -> SweepResult:
     """Check the board, and move what is ready when ``move`` is set.
 
     ``records`` are the tasks' grooming records by task gid. The records
     this sweep changes are returned in ``writes``, not written: writing is
-    the caller's.
+    the caller's. ``send`` sends one task for grooming and says whether it
+    landed; at most ``limit`` are sent.
     """
     records = records or {}
     sections = board.sections()
     ready = _section_named(sections, ready_section())
+    tasks = board.tasks()
+    open_gids = {t.gid for t in tasks if not t.completed}
+    # Only a task with questions out has answers to read: one request each.
+    replies = {
+        gid: tuple(answers(board.comments(gid)))
+        for gid, record in records.items()
+        if record.outcome == "questions" and gid in open_gids
+    }
     result = SweepResult(
         verdicts=assess(
-            board.tasks(), swept=groom_sections(), repos=repos, records=records
+            tasks,
+            swept=groom_sections(),
+            repos=repos,
+            records=records,
+            replies=replies,
         )
     )
+    open_names = [t.name for t in tasks if not t.completed]
     for verdict in result.verdicts:
         task = verdict.task
         previous = records.get(task.gid)
@@ -205,7 +277,24 @@ def sweep(
         else:
             log.info("sweep: %s is ready (GROOM_AUTO_READY is off)", task.name)
 
-        record = next_record(task, verdict.problems, previous, moved_at=moved_at)
+        sent = False
+        if not verdict.ready and needs_grooming(task, previous, verdict.replies):
+            if send is not None and len(result.sent) < limit:
+                sent = send(grooming_job(verdict, open_names))
+            if sent:
+                result.sent.append(task)
+                log.info("sweep: %s sent for grooming", task.name)
+            else:
+                result.waiting += 1
+
+        record = next_record(
+            task,
+            verdict.problems,
+            previous,
+            moved_at=moved_at,
+            replies=verdict.replies,
+            sent=sent,
+        )
         if record is not None:
             result.writes.append(record)
     return result
@@ -233,7 +322,24 @@ def run_sweep(
         board = (board_factory or Board.from_env)()
         store = records_factory()
         records = {r.task_gid: r for r in store.list_groomings()}
-        result = sweep(board, repos=repos_loader(), move=auto_ready(), records=records)
+
+        def send(job: GroomingJobRequest) -> bool:
+            try:
+                store.request_grooming(job)
+            except Exception as exc:  # noqa: BLE001 — sent again next sweep
+                log.warning("sweep: %s not sent: %s", job.task.name, exc)
+                report.issue("grooming not sent", job.task.task_id or job.task.task_gid)
+                return False
+            return True
+
+        result = sweep(
+            board,
+            repos=repos_loader(),
+            move=auto_ready(),
+            records=records,
+            send=send,
+            limit=dispatch_limit(),
+        )
         for record in result.writes:
             store.record_grooming(record)
 
@@ -241,6 +347,11 @@ def run_sweep(
         report.count("not_ready", len(result.verdicts) - len(result.ready))
         report.count("changed", sum(v.changed for v in result.verdicts))
         report.count("records_written", len(result.writes))
+        report.count("waiting_for_grooming", result.waiting)
+        for task in result.sent:
+            report.updated(
+                "task sent for grooming", task.name, link=board.url(task.gid)
+            )
         if not auto_ready():
             report.count("ready_not_moved", len(result.ready))
         for task in result.moved:

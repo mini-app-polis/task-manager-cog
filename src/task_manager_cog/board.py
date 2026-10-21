@@ -114,6 +114,26 @@ class Board:
         """Move a task to a column."""
         self._client.move_task_to_section(task_gid, section_gid)
 
+    def get(self, task_gid: str) -> AsanaTaskRecord | None:
+        """One task, or None when it has been deleted."""
+        return self._client.get_task(task_gid, self.project_gid)
+
+    def update(self, task_gid: str, *, name: str, html_notes: str) -> None:
+        """Rewrite a task's name and body."""
+        self._client.update_task(task_gid, name=name, html_notes=html_notes)
+
+    def untag(self, task_gid: str, tag_name: str) -> None:
+        """Take a tag off a task."""
+        self._client.remove_tag(task_gid, tag_name)
+
+    def comment(self, task_gid: str, text: str) -> None:
+        """Post a comment on a task."""
+        self._client.add_comment(task_gid, text)
+
+    def comments(self, task_gid: str) -> list[str]:
+        """Every comment on a task, oldest first."""
+        return self._client.list_comments(task_gid)
+
     def url(self, task_gid: str) -> str:
         """A link to the task on this board, for the run report."""
         return TASK_URL_TEMPLATE.format(project_gid=self.project_gid, task_gid=task_gid)

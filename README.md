@@ -29,8 +29,16 @@ schedule (hourly) ──task.sweep──► task-manager-jobs.fifo ──► tas
                                                   Ideas, Refining and Blocked
                                                3. move each ready task to Ready
                                                   (GROOM_AUTO_READY)
-                                               4. write the grooming records
+                                               4. send tasks that are not ready
+                                                  and have changed to
+                                                  task-groomer-cog (GROOM_DISPATCH)
+                                               5. write the grooming records
                                                   that changed (the API)
+
+task-groomer-cog ──proposal──► API ──task.groom-proposal──► task-manager-jobs.fifo
+                                               apply it (groom.py): name, template,
+                                               body; then Ready, Blocked with the
+                                               questions as a comment, or Refining
 ```
 
 ## The definition of ready
@@ -61,6 +69,34 @@ sweep can tell an edited task from one still waiting. A task this cog moved
 to Ready that a person moves back is counted on its record, and named in
 the run report: that count is how to tell whether ready meant ready.
 
+## Grooming
+
+A task that is not ready is sent to task-groomer-cog when its content
+differs from what was last sent for grooming (the record's
+`groomed_fingerprint`): at most `GROOM_DISPATCH_LIMIT` a sweep (default 5),
+and only when `GROOM_DISPATCH=true`, because each one is a paid run. A job
+the API refuses is sent again next sweep.
+
+The groomer's proposal is applied here (`groom.py`), and only to the content
+it was made for:
+
+- The name becomes `<id> · <title>`. A task without an id takes the next
+  `MINI-` id.
+- The template block is filled from the proposal, keeping the task's own
+  value for any part the proposal left out, and its PR line. The
+  proposal's body follows, then the task's original text under
+  `Before grooming:`, added the first time only.
+- The `review` tag comes off.
+- With questions, they are posted as one comment starting
+  `Grooming questions:` and the task moves to Blocked. **Answer in a
+  comment:** the answers become part of the task's content, so the next
+  sweep sends it to be groomed again, answers included.
+- Without, it moves to Ready if it now passes and `GROOM_AUTO_READY` is on,
+  and to Refining otherwise.
+
+A groomed task is not sent again until someone changes it, so a task
+waiting on you costs nothing.
+
 ## Sources
 
 | Source         | Id                  | Minted here |
@@ -85,6 +121,7 @@ src/task_manager_cog/
   lint.py       the definition of ready
   registry.py   the fleet's repositories, from ecosystem.yaml
   records.py    grooming records: fingerprints, verdicts, sent back from Ready
+  groom.py      applying a groomer's proposal to the board
   _deadline.py  stop a run before the function timeout
 ```
 
