@@ -29,6 +29,8 @@ schedule (hourly) ──task.sweep──► task-manager-jobs.fifo ──► tas
                                                   Ideas, Refining and Blocked
                                                3. move each ready task to Ready
                                                   (GROOM_AUTO_READY)
+                                               4. write the grooming records
+                                                  that changed (the API)
 ```
 
 ## The definition of ready
@@ -51,6 +53,13 @@ linter (`lint.py`) checks what can be checked without a model:
 
 The sweep never touches a task whose name says "do not work" (the board's
 template).
+
+Each swept task's verdict is kept as a grooming record in
+api-kaianolevine-com (`/v1/tasks/groomings`), written only when it changed.
+A record's fingerprint covers the task's name, body and tags, so a later
+sweep can tell an edited task from one still waiting. A task this cog moved
+to Ready that a person moves back is counted on its record, and named in
+the run report: that count is how to tell whether ready meant ready.
 
 ## Sources
 
@@ -75,6 +84,7 @@ src/task_manager_cog/
   sweep.py      the hourly sweep: lint the board, move what is ready
   lint.py       the definition of ready
   registry.py   the fleet's repositories, from ecosystem.yaml
+  records.py    grooming records: fingerprints, verdicts, sent back from Ready
   _deadline.py  stop a run before the function timeout
 ```
 

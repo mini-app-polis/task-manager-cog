@@ -7,6 +7,11 @@ the linter (lint.py), and moves each task that passes to the ready column.
 Nothing here calls a model: a task that is already ready costs nothing to
 find, and a task that is not is only logged.
 
+Each swept task's verdict is kept as its grooming record in the API
+(records.py), written only when it changed. The record is what tells a later
+sweep whether a task was edited since it was judged, and whether a task this
+cog moved to Ready was sent back.
+
 Moving is a setting, ``GROOM_AUTO_READY``, off unless set, so the sweep can
 run and say what it would move before it moves anything. The columns are
 named, not configured by gid, so they read the same in Doppler as on the
@@ -26,24 +31,32 @@ Run it locally, read-only, to see every task's verdict:
 
 from __future__ import annotations
 
+import datetime as dt
 import os
 import sys
-from collections.abc import Callable, Collection
+from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass, field
+from typing import Protocol
 
 from mini_app_polis import logger as logger_mod
+from mini_app_polis.api import KaianoApiClient
+from mini_app_polis.api.contract import GroomingRecord, GroomingRecordWrite
 from mini_app_polis.asana import AsanaSection, AsanaTaskRecord
 from mini_app_polis.environment import Effect, effect_enabled
 from mini_app_polis.pipeline_status import run_report
 
 from .board import Board
 from .lint import lint, task_id_of
+from .records import changed, next_record
 from .registry import load_repos
 
 log = logger_mod.get_logger()
 
 REPO = "task-manager-cog"
 FLOW_NAME = "groom-sweep"
+
+#: This cog's name to the API, which picks its key.
+MACHINE_NAME = "task-manager-cog"
 
 DEFAULT_GROOM_SECTIONS: tuple[str, ...] = ("Ideas", "Refining", "Blocked")
 DEFAULT_READY_SECTION = "Ready"
@@ -56,12 +69,22 @@ class SweepMisconfigured(RuntimeError):
     """The board has no column by the configured ready name."""
 
 
+class Records(Protocol):
+    """Where grooming records are kept: the API, or a fake in a test."""
+
+    def list_groomings(self) -> list[GroomingRecord]: ...
+
+    def record_grooming(self, payload: GroomingRecordWrite) -> GroomingRecord: ...
+
+
 @dataclass(frozen=True)
 class Verdict:
     """One task, and every rule it fails. No problems means ready."""
 
     task: AsanaTaskRecord
     problems: tuple[str, ...]
+    #: New, or edited since its record was written.
+    changed: bool = True
 
     @property
     def ready(self) -> bool:
@@ -72,6 +95,10 @@ class Verdict:
 class SweepResult:
     verdicts: list[Verdict] = field(default_factory=list)
     moved: list[AsanaTaskRecord] = field(default_factory=list)
+    #: Tasks this cog moved to Ready that a person moved back.
+    returned: list[AsanaTaskRecord] = field(default_factory=list)
+    #: The records this sweep changed, to be written.
+    writes: list[GroomingRecordWrite] = field(default_factory=list)
 
     @property
     def ready(self) -> list[Verdict]:
@@ -97,6 +124,7 @@ def assess(
     *,
     swept: Collection[str],
     repos: Collection[str],
+    records: Mapping[str, GroomingRecord] | None = None,
 ) -> list[Verdict]:
     """A verdict for every open task in a swept column, in board order."""
     swept_lower = {name.lower() for name in swept}
@@ -118,7 +146,13 @@ def assess(
             repos=repos,
             completed_by_id=completed_by_id,
         )
-        verdicts.append(Verdict(task=task, problems=tuple(problems)))
+        verdicts.append(
+            Verdict(
+                task=task,
+                problems=tuple(problems),
+                changed=changed(task, records or {}),
+            )
+        )
     return verdicts
 
 
@@ -132,28 +166,53 @@ def _section_named(sections: list[AsanaSection], name: str) -> AsanaSection:
     )
 
 
-def sweep(board: Board, *, repos: Collection[str], move: bool) -> SweepResult:
-    """Check the board, and move what is ready when ``move`` is set."""
+def sweep(
+    board: Board,
+    *,
+    repos: Collection[str],
+    move: bool,
+    records: Mapping[str, GroomingRecord] | None = None,
+) -> SweepResult:
+    """Check the board, and move what is ready when ``move`` is set.
+
+    ``records`` are the tasks' grooming records by task gid. The records
+    this sweep changes are returned in ``writes``, not written: writing is
+    the caller's.
+    """
+    records = records or {}
     sections = board.sections()
     ready = _section_named(sections, ready_section())
     result = SweepResult(
-        verdicts=assess(board.tasks(), swept=groom_sections(), repos=repos)
+        verdicts=assess(
+            board.tasks(), swept=groom_sections(), repos=repos, records=records
+        )
     )
     for verdict in result.verdicts:
+        task = verdict.task
+        previous = records.get(task.gid)
+        if previous is not None and previous.moved_to_ready_at is not None:
+            result.returned.append(task)
+            log.info("sweep: %s was sent back from Ready", task.name)
+
+        moved_at: dt.datetime | None = None
         if not verdict.ready:
-            log.info(
-                "sweep: %s not ready: %s",
-                verdict.task.name,
-                "; ".join(verdict.problems),
-            )
-            continue
-        if move:
-            board.move(verdict.task.gid, ready.gid)
-            result.moved.append(verdict.task)
-            log.info("sweep: %s moved to %s", verdict.task.name, ready.name)
+            log.info("sweep: %s not ready: %s", task.name, "; ".join(verdict.problems))
+        elif move:
+            board.move(task.gid, ready.gid)
+            moved_at = dt.datetime.now(dt.UTC)
+            result.moved.append(task)
+            log.info("sweep: %s moved to %s", task.name, ready.name)
         else:
-            log.info("sweep: %s is ready (GROOM_AUTO_READY is off)", verdict.task.name)
+            log.info("sweep: %s is ready (GROOM_AUTO_READY is off)", task.name)
+
+        record = next_record(task, verdict.problems, previous, moved_at=moved_at)
+        if record is not None:
+            result.writes.append(record)
     return result
+
+
+def _api() -> Records:
+    return KaianoApiClient.from_env(MACHINE_NAME)
 
 
 def run_sweep(
@@ -161,6 +220,7 @@ def run_sweep(
     run_id: str,
     board_factory: Callable[[], Board] | None = None,
     repos_loader: Callable[[], Collection[str]] = load_repos,
+    records_factory: Callable[[], Records] = _api,
 ) -> None:
     """One scheduled sweep, with its run report. Raises to be redelivered."""
     with run_report(FLOW_NAME, repo=REPO, run_id=run_id) as report:
@@ -171,14 +231,24 @@ def run_sweep(
             return
 
         board = (board_factory or Board.from_env)()
-        result = sweep(board, repos=repos_loader(), move=auto_ready())
+        store = records_factory()
+        records = {r.task_gid: r for r in store.list_groomings()}
+        result = sweep(board, repos=repos_loader(), move=auto_ready(), records=records)
+        for record in result.writes:
+            store.record_grooming(record)
 
         report.count("tasks_checked", len(result.verdicts))
         report.count("not_ready", len(result.verdicts) - len(result.ready))
+        report.count("changed", sum(v.changed for v in result.verdicts))
+        report.count("records_written", len(result.writes))
         if not auto_ready():
             report.count("ready_not_moved", len(result.ready))
         for task in result.moved:
             report.updated("task moved to Ready", task.name, link=board.url(task.gid))
+        for task in result.returned:
+            report.updated(
+                "task sent back from Ready", task.name, link=board.url(task.gid)
+            )
 
 
 def main(argv: list[str] | None = None) -> int:
