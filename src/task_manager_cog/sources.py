@@ -33,4 +33,10 @@ class Source:
 SOURCES: dict[str, Source] = {
     "voicenote": Source("voicenote", prefix="VN"),
     "github-issue": Source("github-issue", prefix=None),
+    # Problems the fleet detected and escalated: a signal that did not heal
+    # on its own (see the API's signal engine).
+    "ci": Source("ci", prefix="CI"),
+    "cog-run": Source("cog-run", prefix="RUN"),
+    "conformance": Source("conformance", prefix="CONF"),
+    "api-fault": Source("api-fault", prefix="API"),
 }

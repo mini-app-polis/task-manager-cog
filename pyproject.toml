@@ -5,7 +5,7 @@ description = "Puts tasks on the board: turns each source's task draft into one 
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "miniapppolis-common-utils>=6.10.0,<7",
+    "miniapppolis-common-utils>=6.11.0,<7",
     "pydantic>=2.0.0,<3.0.0",
     "sentry-sdk>=2.0.0,<3.0.0",
 ]
