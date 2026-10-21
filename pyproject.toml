@@ -1,12 +1,14 @@
 [project]
 name = "task-manager-cog"
 dynamic = ["version"]
-description = "Puts tasks on the board: turns each source's task draft into one task, with the board's template, an id, tags and section. Runs as the task-manager-jobs Lambda worker."
+description = "Puts tasks on the board and keeps them groomed: turns each source's task draft into one task, with the board's template, an id, tags and section, and moves tasks that meet the definition of ready to Ready. Runs as the task-manager-jobs Lambda worker."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "miniapppolis-common-utils>=6.11.0,<7",
+    "httpx>=0.27,<1.0",
+    "miniapppolis-common-utils>=6.12.0,<7",
     "pydantic>=2.0.0,<3.0.0",
+    "pyyaml>=6.0,<7.0",
     "sentry-sdk>=2.0.0,<3.0.0",
 ]
 

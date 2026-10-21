@@ -85,6 +85,23 @@ def test_a_valid_message_parses_to_the_contract_model() -> None:
     assert request.draft.title == "Call the venue"
 
 
+def test_a_sweep_message_is_a_sweep() -> None:
+    body = json.dumps({"type": "task.sweep", "version": 1})
+    assert worker.parse_message(body) == worker.SweepJob()
+    assert worker._source_label(body) == "sweep"
+
+
+def test_a_sweep_message_runs_the_sweep(monkeypatch: pytest.MonkeyPatch) -> None:
+    runs: list[str] = []
+    monkeypatch.setattr(
+        worker, "run_sweep", lambda *, run_id, board_factory: runs.append(run_id)
+    )
+    worker.process_message(
+        json.dumps({"type": "task.sweep", "version": 1}), run_id="m-9"
+    )
+    assert runs == ["m-9"]
+
+
 # --- creating ----------------------------------------------------------------
 
 
