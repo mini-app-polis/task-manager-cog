@@ -1,3 +1,10 @@
+## [1.5.3](https://github.com/mini-app-polis/task-manager-cog/compare/v1.5.2...v1.5.3) (2026-10-22)
+
+
+### Bug Fixes
+
+* **sweep:** keep a task with unanswered grooming questions out of Ready ([e7a3695](https://github.com/mini-app-polis/task-manager-cog/commit/e7a36956ba57d0df836e17e976d3c781c236bc2d))
+
 ## [1.5.2](https://github.com/mini-app-polis/task-manager-cog/compare/v1.5.1...v1.5.2) (2026-10-22)
 
 
