@@ -59,6 +59,27 @@ def test_a_line_without_a_label_continues_the_field_above() -> None:
     assert parsed.body == "body"
 
 
+def test_a_label_the_template_lacks_is_body_and_the_fields_around_it_still_read() -> (
+    None
+):
+    parsed = parse(
+        "Done when: the drill exits 0\nWhere: db-ops\nWhy: never run by cron\n"
+        "Constraints: none on the 2nd\nBlocked by: time.\nFrom: MINI-64"
+    )
+    assert parsed.fields == {
+        "Done when": "the drill exits 0",
+        "Where": "db-ops",
+        "Constraints": "none on the 2nd",
+        "Blocked by": "time.",
+    }
+    assert parsed.body == "Why: never run by cron\nFrom: MINI-64"
+
+
+def test_a_continuation_line_is_not_mistaken_for_a_label() -> None:
+    parsed = parse("Done when:\nthe report says: done\nWhere: infra\n\nbody")
+    assert parsed.fields["Done when"] == "the report says: done"
+
+
 def test_text_before_any_label_is_all_body() -> None:
     parsed = parse("Just an idea\nDone when: x")
     assert parsed.fields == {}
@@ -117,7 +138,7 @@ def test_where_must_name_registered_repositories() -> None:
 
 def test_where_reads_the_head_of_each_item() -> None:
     assert where_repos(
-        "api-kaianolevine-com (a, b, c), task-manager-cog/src/x.py, infra: modules"
+        "api-kaianolevine-com (a, b, c), task-manager-cog/src/x.py; infra: modules"
     ) == ["api-kaianolevine-com", "task-manager-cog", "infra"]
 
 

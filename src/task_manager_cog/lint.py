@@ -9,7 +9,11 @@ not.
 
 A task is read as the board writes it (compose.py): the template block of
 ``<Label>: <value>`` lines, then a blank line, then the body. A line inside
-the block that starts with no label continues the field above it.
+the block that starts with no label continues the field above it. A line
+shaped like a label the template does not have (``Why: …``) is body that
+was written inside the block: it and the lines that continue it are read as
+body, not as part of the field above, and the template fields around it are
+still read.
 
 Every rule that fails is reported, not just the first, so one pass says
 everything a task is missing.
@@ -39,6 +43,9 @@ _TASK_ID = re.compile(r"\b(?:[A-Z][A-Z0-9]*-\d+|[a-z0-9][a-z0-9._-]*#\d+)\b")
 #: A question mark ends a word or the line; one inside a URL's query does not.
 _UNDECIDED = re.compile(r"\bTBD\b|\?(?!\w)", re.IGNORECASE)
 
+#: A line that reads as ``<Word or two>: …``: a label, known or not.
+_ANY_LABEL = re.compile(r"^[A-Z][A-Za-z]*(?: [a-z]+)?:(?:\s|$)")
+
 _LABEL = re.compile(
     r"^(?P<label>"
     + "|".join(re.escape(f) for f in TEMPLATE_FIELDS)
@@ -59,26 +66,39 @@ class ParsedTask:
 def parse(notes: str) -> ParsedTask:
     """Split a task's plain-text body into its template fields and the rest."""
     fields: dict[str, str] = {}
+    stray: list[str] = []
     lines = notes.replace("\r\n", "\n").split("\n")
     current: str | None = None
+    in_stray = False
     end = len(lines)
     for position, line in enumerate(lines):
-        if not line.strip():
+        text = line.strip()
+        if not text:
             if fields:
                 # The blank line after the block: the body starts here.
                 end = position
                 break
             continue
-        match = _LABEL.match(line.strip())
+        match = _LABEL.match(text)
         if match:
-            current = match["label"]
+            current, in_stray = match["label"], False
             fields[current] = match["value"].strip()
-        elif current is not None:
-            fields[current] = f"{fields[current]}\n{line.strip()}".strip()
-        else:
+        elif current is None and not in_stray:
             # Text before any label: there is no block, and this is body.
             return ParsedTask(fields={}, body=notes.strip())
-    return ParsedTask(fields=fields, body="\n".join(lines[end:]).strip())
+        elif in_stray or _ANY_LABEL.match(text):
+            # A label the template does not have, and what continues it.
+            in_stray = True
+            stray.append(text)
+        elif current is not None:
+            fields[current] = f"{fields[current]}\n{text}".strip()
+    body = "\n".join([*stray, "\n".join(lines[end:]).strip()]).strip()
+    return ParsedTask(fields=fields, body=body)
+
+
+def looks_like_label(line: str) -> bool:
+    """Whether a line reads as ``<Label>: …``, a template label or not."""
+    return bool(_ANY_LABEL.match(line.strip()))
 
 
 def task_id_of(name: str) -> str | None:
@@ -90,9 +110,10 @@ def task_id_of(name: str) -> str | None:
 def where_repos(where: str) -> list[str]:
     """The repositories ``Where`` names: the head of each top-level item.
 
-    Items are separated by commas outside parentheses, and may say more after
-    the name: ``api-kaianolevine-com (the notify route), infra``. A path
-    after the name is allowed: ``task-manager-cog/src/worker.py``.
+    Items are separated by commas or semicolons outside parentheses, and
+    may say more after the name: ``api-kaianolevine-com (the notify route),
+    infra``. A path after the name is allowed:
+    ``task-manager-cog/src/worker.py``.
     """
     items: list[str] = []
     depth = 0
@@ -102,7 +123,7 @@ def where_repos(where: str) -> list[str]:
             depth += 1
         elif char == ")":
             depth = max(0, depth - 1)
-        if char == "," and depth == 0:
+        if char in ",;" and depth == 0:
             items.append(current)
             current = ""
         else:

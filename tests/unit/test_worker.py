@@ -91,6 +91,37 @@ def test_a_sweep_message_is_a_sweep() -> None:
     assert worker._source_label(body) == "sweep"
 
 
+def test_a_proposal_message_is_applied(monkeypatch: pytest.MonkeyPatch) -> None:
+    applied: list[str] = []
+    monkeypatch.setattr(
+        worker,
+        "apply_proposal",
+        lambda proposal, *, run_id, board_factory: applied.append(proposal.task_gid),
+    )
+    body = json.dumps(
+        {
+            "type": "task.groom-proposal",
+            "version": 1,
+            "payload": {
+                "task_gid": "7",
+                "fingerprint": "a" * 64,
+                "title": "Pin runners",
+                "model": "claude-sonnet-5-5",
+                "cost_usd": 0.1,
+            },
+        }
+    )
+    assert worker._source_label(body) == "grooming"
+    worker.process_message(body, run_id="m-3")
+    assert applied == ["7"]
+
+
+def test_a_malformed_proposal_is_refused() -> None:
+    body = json.dumps({"type": "task.groom-proposal", "version": 1, "payload": {}})
+    with pytest.raises(worker.UnprocessableMessage, match="grooming proposal"):
+        worker.parse_message(body)
+
+
 def test_a_sweep_message_runs_the_sweep(monkeypatch: pytest.MonkeyPatch) -> None:
     runs: list[str] = []
     monkeypatch.setattr(
