@@ -348,14 +348,24 @@ def test_run_sweep_does_nothing_outside_production(
     )
 
 
-def test_main_prints_every_verdict(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
+class _Lines:
+    """Stands in for the logger and keeps what was logged."""
+
+    def __init__(self) -> None:
+        self.lines: list[str] = []
+
+    def info(self, message: str, *args: object) -> None:
+        self.lines.append(message % args)
+
+
+def test_main_logs_every_verdict(monkeypatch: pytest.MonkeyPatch) -> None:
     board = FakeBoard(list(BOARD_TASKS))
     monkeypatch.setattr(sweep_mod.Board, "from_env", classmethod(lambda cls: board))
     monkeypatch.setattr(sweep_mod, "load_repos", lambda: REPOS)
+    lines = _Lines()
+    monkeypatch.setattr(sweep_mod, "log", lines)
     assert sweep_mod.main([]) == 0
-    out = capsys.readouterr().out
+    out = "\n".join(lines.lines)
     assert "READY  [Ideas] MINI-1 · Ready idea" in out
     assert "- Blocked by MINI-7, which is not done" in out
     assert "1 of 4 tasks ready" in out

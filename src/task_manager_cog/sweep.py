@@ -96,11 +96,17 @@ class SweepMisconfigured(RuntimeError):
 class Records(Protocol):
     """Where grooming records are kept: the API, or a fake in a test."""
 
-    def list_groomings(self) -> list[GroomingRecord]: ...
+    def list_groomings(self) -> list[GroomingRecord]:
+        """Every task's record."""
+        ...
 
-    def record_grooming(self, payload: GroomingRecordWrite) -> GroomingRecord: ...
+    def record_grooming(self, payload: GroomingRecordWrite) -> GroomingRecord:
+        """Write one task's record."""
+        ...
 
-    def request_grooming(self, payload: GroomingJobRequest) -> GroomingJobAccepted: ...
+    def request_grooming(self, payload: GroomingJobRequest) -> GroomingJobAccepted:
+        """Send one task to be groomed."""
+        ...
 
 
 @dataclass(frozen=True)
@@ -116,11 +122,14 @@ class Verdict:
 
     @property
     def ready(self) -> bool:
+        """Whether the task meets the definition of ready."""
         return not self.problems
 
 
 @dataclass
 class SweepResult:
+    """What one sweep found and did. The records it changed are not yet written."""
+
     verdicts: list[Verdict] = field(default_factory=list)
     moved: list[AsanaTaskRecord] = field(default_factory=list)
     #: Tasks this cog moved to Ready that a person moved back.
@@ -135,20 +144,24 @@ class SweepResult:
 
     @property
     def ready(self) -> list[Verdict]:
+        """The verdicts of the tasks that are ready."""
         return [v for v in self.verdicts if v.ready]
 
 
 def groom_sections() -> tuple[str, ...]:
+    """The columns swept: ``GROOM_SECTIONS``, or Ideas, Refining and Blocked."""
     raw = os.environ.get("GROOM_SECTIONS") or ""
     names = tuple(n.strip() for n in raw.split(",") if n.strip())
     return names or DEFAULT_GROOM_SECTIONS
 
 
 def ready_section() -> str:
+    """The column a ready task moves to: ``READY_SECTION``, or Ready."""
     return (os.environ.get("READY_SECTION") or "").strip() or DEFAULT_READY_SECTION
 
 
 def auto_ready() -> bool:
+    """Whether ready tasks are moved (``GROOM_AUTO_READY``), not only reported."""
     return (os.environ.get("GROOM_AUTO_READY") or "").strip().lower() == "true"
 
 
@@ -378,18 +391,20 @@ def run_sweep(
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Print every swept task's verdict. Reads only; never moves anything."""
+    """Log every swept task's verdict. Reads only; never moves anything."""
     del argv
     board = Board.from_env()
     result = sweep(board, repos=load_repos(), move=False)
     for verdict in result.verdicts:
         mark = "READY" if verdict.ready else "     "
-        print(f"{mark}  [{verdict.task.section_name}] {verdict.task.name}")
+        log.info("%s  [%s] %s", mark, verdict.task.section_name, verdict.task.name)
         for problem in verdict.problems:
-            print(f"         - {problem}")
-    print(
-        f"\n{len(result.ready)} of {len(result.verdicts)} tasks ready "
-        f"in {', '.join(groom_sections())}."
+            log.info("         - %s", problem)
+    log.info(
+        "%d of %d tasks ready in %s.",
+        len(result.ready),
+        len(result.verdicts),
+        ", ".join(groom_sections()),
     )
     return 0
 
