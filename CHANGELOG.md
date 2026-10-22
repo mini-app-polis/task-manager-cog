@@ -1,3 +1,18 @@
+# [1.3.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.2.0...v1.3.0) (2026-10-22)
+
+
+### Bug Fixes
+
+* **deps:** bump miniapppolis-common-utils to 6.14.0 ([ef346ec](https://github.com/mini-app-polis/task-manager-cog/commit/ef346ec084bd4efdcd1a6ad20ee838da9e24f0bd))
+* **deps:** bump miniapppolis-common-utils to 6.15.1 ([67a2bef](https://github.com/mini-app-polis/task-manager-cog/commit/67a2bef7f7a7b0fabbea0652181c0d49905cdbe5))
+* **lint:** read a stray label inside the template as body, and split Where on semicolons ([dbe2e65](https://github.com/mini-app-polis/task-manager-cog/commit/dbe2e652950f803ce070bd7dcbb434d1a26f7a5e))
+
+
+### Features
+
+* **groom:** send tasks that are not ready to the groomer, and apply its proposals ([abdc09f](https://github.com/mini-app-polis/task-manager-cog/commit/abdc09f8061d5ef95acd18b6e5d9cf9f1e064ea4))
+* **sweep:** keep each task's grooming record, and count tasks sent back from Ready ([16d7c31](https://github.com/mini-app-polis/task-manager-cog/commit/16d7c311c0313505a9333500fc376d0adc82e97e))
+
 # [1.2.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.1.2...v1.2.0) (2026-10-21)
 
 
