@@ -1,3 +1,10 @@
+# [1.5.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.4.2...v1.5.0) (2026-10-22)
+
+
+### Features
+
+* **sweep:** send the groomer the finished tasks a task mentions ([834ff12](https://github.com/mini-app-polis/task-manager-cog/commit/834ff12867137528552fc88c2fdd4662069d089a))
+
 ## [1.4.2](https://github.com/mini-app-polis/task-manager-cog/compare/v1.4.1...v1.4.2) (2026-10-22)
 
 
