@@ -315,8 +315,13 @@ def test_a_task_sent_back_from_ready_is_counted_once() -> None:
 def test_a_question_waits_until_the_task_changes() -> None:
     task = _task("12", "MINI-2 · Vague idea", notes="look into this")
     first = sweep(FakeBoard([task]), repos=REPOS, move=False)
+    written = first.writes[0]
     asked = GroomingRecord(
-        **{**first.writes[0].model_dump(), "outcome": "questions"},
+        **{
+            **written.model_dump(),
+            "outcome": "questions",
+            "problems": [*written.problems, sweep_mod.OPEN_QUESTIONS],
+        },
         updated_at=dt.datetime(2026, 10, 21, tzinfo=dt.UTC),
     )
     unchanged = sweep(FakeBoard([task]), repos=REPOS, move=False, records={"12": asked})
@@ -326,6 +331,25 @@ def test_a_question_waits_until_the_task_changes() -> None:
     edited = _task("12", "MINI-2 · Vague idea", notes="look into this: edited")
     after = sweep(FakeBoard([edited]), repos=REPOS, move=False, records={"12": asked})
     assert after.writes[0].outcome == "questions"
+
+
+def test_a_task_with_open_questions_is_not_moved_even_when_it_lints_clean() -> None:
+    task = BOARD_TASKS[0]  # passes the linter
+    asked = GroomingRecord(
+        task_gid=task.gid,
+        task_id="MINI-1",
+        fingerprint=fingerprint(task),
+        groomed_fingerprint=fingerprint(task),
+        outcome="questions",
+        problems=[sweep_mod.OPEN_QUESTIONS],
+        updated_at=dt.datetime(2026, 10, 22, tzinfo=dt.UTC),
+    )
+    board = FakeBoard([task])
+    result = sweep(board, repos=REPOS, move=True, records={task.gid: asked})
+    (verdict,) = result.verdicts
+    assert verdict.problems == (sweep_mod.OPEN_QUESTIONS,)
+    assert board.moves == []
+    assert result.writes == []
 
 
 def test_run_sweep_does_nothing_outside_production(
@@ -453,6 +477,9 @@ def test_an_answer_sends_a_task_with_questions_again(
     _sweep_sending(store, board, monkeypatch, "5")
     (job,) = store.jobs
     assert job.task.comments == ["Because the API needs it."]
+    assert sweep_mod.OPEN_QUESTIONS not in job.task.problems
+    # Still not ready while the grooming with the answers is out.
+    assert store.stored["2"].outcome == "questions"
     assert job.task.fingerprint == fingerprint(task, ["Because the API needs it."])
 
 

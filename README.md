@@ -58,6 +58,7 @@ linter (`lint.py`) checks what can be checked without a model:
 | Blocked by | Blank, `None`, or only tasks that are done. |
 | Tags | No `review` tag. |
 | Body | Says why, and links what is needed. |
+| Grooming questions | None unanswered. A task whose last grooming asked questions waits until a grooming answers them, even if its template is complete. |
 
 The sweep never touches a task whose name says "do not work" (the board's
 template), nor a task from a source `sources.py` marks unswept: the problems

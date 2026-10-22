@@ -85,6 +85,11 @@ DEFAULT_DISPATCH_LIMIT = 5
 #: In the template task's name. A task saying this is never swept.
 DO_NOT_WORK = "do not work"
 
+#: The problem a task has while its grooming questions are unanswered. The
+#: linter only sees the template, and a groomer that asked questions may
+#: still have filled every field; a task waiting on its owner is not ready.
+OPEN_QUESTIONS = "its grooming questions are not answered yet"
+
 #: A minted id, ``<PREFIX>-<n>``.
 _MINTED_ID = re.compile(r"([A-Z][A-Z0-9]*)-\d+")
 
@@ -187,8 +192,13 @@ def assess(
     records: Mapping[str, GroomingRecord] | None = None,
     replies: Mapping[str, tuple[str, ...]] | None = None,
 ) -> list[Verdict]:
-    """A verdict for every open task in a swept column, in board order."""
+    """A verdict for every open task in a swept column, in board order.
+
+    A task whose last grooming asked questions is not ready until a
+    grooming answers them, whatever the linter says.
+    """
     replies = replies or {}
+    records = records or {}
     swept_lower = {name.lower() for name in swept}
     completed_by_id = {
         task_id: task.completed
@@ -210,11 +220,14 @@ def assess(
             repos=repos,
             completed_by_id=completed_by_id,
         )
+        previous = records.get(task.gid)
+        if previous is not None and previous.outcome == "questions":
+            problems.append(OPEN_QUESTIONS)
         verdicts.append(
             Verdict(
                 task=task,
                 problems=tuple(problems),
-                changed=changed(task, records or {}, replies.get(task.gid, ())),
+                changed=changed(task, records, replies.get(task.gid, ())),
                 replies=replies.get(task.gid, ()),
             )
         )
@@ -265,7 +278,9 @@ def grooming_job(
             tags=list(task.tag_names),
             section=task.section_name,
             fingerprint=fingerprint(task, verdict.replies),
-            problems=list(verdict.problems),
+            # The open-questions marker is the sweep's, not the linter's: the
+            # groomer is given the answers instead.
+            problems=[p for p in verdict.problems if p != OPEN_QUESTIONS],
             comments=list(verdict.replies),
         ),
         board=(done + others)[:500],
