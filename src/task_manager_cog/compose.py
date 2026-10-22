@@ -18,10 +18,11 @@ from datetime import date
 from mini_app_polis.api.contract import TaskDraft
 from mini_app_polis.asana import escape_rich_text, link, rich_text_body
 
-#: The board's template, in order. Only ``Where`` is something a source can
-#: know; the rest are grooming decisions and are emitted blank, because a
+#: The board's template, in order. A source fills the fields it knows:
+#: ``Where`` usually, and ``Done when``, ``Constraints`` and ``Effort`` when
+#: it detected the problem itself. The rest are emitted blank, because a
 #: blank line is a prompt to fill it and a missing one is a card that does
-#: not match the board.
+#: not match the board. ``PR`` and ``Blocked by`` are never a source's.
 TEMPLATE_FIELDS: tuple[str, ...] = (
     "Done when",
     "Where",
@@ -50,10 +51,26 @@ class ComposedTask:
     due_on: date | None
 
 
-def _template_block(where: str | None) -> str:
+def _one_line(value: str | None) -> str | None:
+    """A field's value on one line, or None when it says nothing.
+
+    A template field is one line: a second line that reads as a label would
+    be taken for another field, so line breaks become spaces.
+    """
+    text = " ".join((value or "").split())
+    return text or None
+
+
+def _template_block(draft: TaskDraft) -> str:
+    values = {
+        "Done when": _one_line(draft.done_when),
+        "Where": _one_line(draft.where),
+        "Constraints": _one_line(draft.constraints),
+        "Effort": draft.effort,
+    }
     lines = []
     for label in TEMPLATE_FIELDS:
-        value = where if label == "Where" else None
+        value = values.get(label)
         lines.append(f"{label}: {escape_rich_text(value)}" if value else f"{label}:")
     return "\n".join(lines)
 
@@ -68,7 +85,7 @@ def compose(draft: TaskDraft) -> ComposedTask:
     title = draft.title.strip()
     needs_review = draft.needs_review or not title
 
-    parts = [_template_block((draft.where or "").strip() or None)]
+    parts = [_template_block(draft)]
     if draft.body and draft.body.strip():
         parts.append(escape_rich_text(draft.body.strip()))
     for section in draft.sections:

@@ -19,6 +19,27 @@ def test_where_fills_its_line_only() -> None:
     assert "\nWhere: deejaytools\nConstraints:\n" in html
 
 
+def test_a_source_fills_the_template_fields_it_knows() -> None:
+    draft = TaskDraft(
+        title="t",
+        where="infra",
+        done_when="terraform passes on dev again",
+        constraints="Fix the cause; do not skip the check",
+        effort="S",
+    )
+    html = compose(draft).html_notes
+    assert html.startswith(
+        "<body>Done when: terraform passes on dev again\nWhere: infra\n"
+        "Constraints: Fix the cause; do not skip the check\nEffort: S\n"
+        "PR:\nBlocked by:"
+    )
+
+
+def test_a_template_field_stays_on_one_line() -> None:
+    html = compose(TaskDraft(title="t", done_when="passes\nWhy: because")).html_notes
+    assert "Done when: passes Why: because\nWhere:" in html
+
+
 def test_body_sections_and_links_follow_the_template_in_order() -> None:
     draft = TaskDraft(
         title="t",

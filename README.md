@@ -60,7 +60,10 @@ linter (`lint.py`) checks what can be checked without a model:
 | Body | Says why, and links what is needed. |
 
 The sweep never touches a task whose name says "do not work" (the board's
-template).
+template), nor a task from a source `sources.py` marks unswept: the problems
+the fleet detected (`CI-`, `RUN-`, `CONF-`, `API-`). Those wait for a person,
+neither groomed nor moved to Ready, until fixing them automatically is
+decided on.
 
 Each swept task's verdict is kept as a grooming record in
 api-kaianolevine-com (`/v1/tasks/groomings`), written only when it changed.
