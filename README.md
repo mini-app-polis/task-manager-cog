@@ -37,8 +37,8 @@ schedule (hourly) ──task.sweep──► task-manager-jobs.fifo ──► tas
 
 task-groomer-cog ──proposal──► API ──task.groom-proposal──► task-manager-jobs.fifo
                                                apply it (groom.py): name, template,
-                                               body; then Ready, Blocked with the
-                                               questions as a comment, or Refining
+                                               body; then Ready, or Refining with
+                                               any questions as a comment
 ```
 
 ## The definition of ready
@@ -91,7 +91,7 @@ it was made for:
   `Before grooming:`, added the first time only.
 - The `review` tag comes off.
 - With questions, they are posted as one comment starting
-  `Grooming questions:` and the task moves to Blocked. **Answer in a
+  `Grooming questions:` and the task moves to Refining. **Answer in a
   comment:** the answers become part of the task's content, so the next
   sweep sends it to be groomed again, answers included.
 - Without, it moves to Ready if it now passes and `GROOM_AUTO_READY` is on,
