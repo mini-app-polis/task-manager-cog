@@ -1,3 +1,12 @@
+# [1.4.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.3.0...v1.4.0) (2026-10-22)
+
+
+### Features
+
+* **compose:** fill the template fields a draft knows ([f526795](https://github.com/mini-app-polis/task-manager-cog/commit/f526795c927176bfb36f0d239a4cfcfe89184fce))
+* **compose:** fill the template fields a draft knows ([2e38860](https://github.com/mini-app-polis/task-manager-cog/commit/2e38860974d2e764ddc982b5123bb99e3f152851))
+* **sweep:** leave detected problems for a person, neither groomed nor moved to Ready ([7a4fb3f](https://github.com/mini-app-polis/task-manager-cog/commit/7a4fb3ff5ba43ba4583e0dc841a1500245c95624))
+
 # [1.3.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.2.0...v1.3.0) (2026-10-22)
 
 
