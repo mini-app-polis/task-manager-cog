@@ -132,10 +132,12 @@ def groomed_text(task: AsanaTaskRecord, proposal: GroomingProposal) -> tuple[str
 
 
 def groomed_html(block: str, body: str) -> str:
+    """The task's new body: the template block, then the body, escaped."""
     return rich_text_body(escape_rich_text(block), escape_rich_text(body))
 
 
 def questions_comment(questions: list[str]) -> str:
+    """The comment that asks the owner a grooming's questions, numbered."""
     numbered = "\n".join(f"{i}. {q}" for i, q in enumerate(questions, start=1))
     return (
         f"{QUESTIONS_PREFIX}\n{numbered}\n\n"

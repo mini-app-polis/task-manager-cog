@@ -42,4 +42,41 @@ def test_the_url_can_be_overridden(monkeypatch: pytest.MonkeyPatch) -> None:
 )
 def test_an_unreadable_registry_stops_the_sweep(status: int, text: str) -> None:
     with pytest.raises(registry.RegistryUnavailable):
-        registry.load_repos(client=_client(status, text))
+        registry.load_repos(client=_client(status, text), sleep=lambda _: None)
+
+
+def test_a_transient_failure_is_read_again() -> None:
+    answers = iter([httpx.Response(503), httpx.Response(200, text=DOC)])
+    client = httpx.Client(transport=httpx.MockTransport(lambda _: next(answers)))
+    waits: list[float] = []
+    assert registry.load_repos(client=client, sleep=waits.append) == {
+        "watcher-cog",
+        "infra",
+    }
+    assert waits == [2.0]
+
+
+def test_an_unreachable_registry_is_tried_attempts_times() -> None:
+    calls: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        raise httpx.ConnectError("down", request=request)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    with pytest.raises(registry.RegistryUnavailable):
+        registry.load_repos(client=client, sleep=lambda _: None)
+    assert len(calls) == registry.ATTEMPTS
+
+
+def test_a_refusal_is_not_read_again() -> None:
+    calls: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        return httpx.Response(404)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    with pytest.raises(registry.RegistryUnavailable):
+        registry.load_repos(client=client, sleep=lambda _: None)
+    assert len(calls) == 1
