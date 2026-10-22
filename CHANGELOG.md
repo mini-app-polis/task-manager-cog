@@ -1,3 +1,10 @@
+## [1.4.2](https://github.com/mini-app-polis/task-manager-cog/compare/v1.4.1...v1.4.2) (2026-10-22)
+
+
+### Bug Fixes
+
+* **groom:** leave a task with questions in Refining, not Blocked ([b84d0a3](https://github.com/mini-app-polis/task-manager-cog/commit/b84d0a3ebc1a6781317a1f71faebf45fb97723ca))
+
 ## [1.4.1](https://github.com/mini-app-polis/task-manager-cog/compare/v1.4.0...v1.4.1) (2026-10-22)
 
 
