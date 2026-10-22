@@ -1,3 +1,11 @@
+## [1.4.1](https://github.com/mini-app-polis/task-manager-cog/compare/v1.4.0...v1.4.1) (2026-10-22)
+
+
+### Bug Fixes
+
+* **registry:** read the ecosystem registry again on a transient failure ([2a2a199](https://github.com/mini-app-polis/task-manager-cog/commit/2a2a19968fca423d95d70f29430b2df76913a30d))
+* **sweep:** log the read-only report and document the public definitions ([ec764c2](https://github.com/mini-app-polis/task-manager-cog/commit/ec764c233968e873fa1648c681228378c8f64ff2))
+
 # [1.4.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.3.0...v1.4.0) (2026-10-22)
 
 
