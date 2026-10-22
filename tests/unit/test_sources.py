@@ -4,7 +4,7 @@ import typing
 
 from mini_app_polis.api.contract import GIVEN_ID_SOURCES, TaskSource
 
-from task_manager_cog.sources import SOURCES
+from task_manager_cog.sources import SOURCES, UNSWEPT_PREFIXES
 
 
 def test_every_contract_source_has_handling_here() -> None:
@@ -24,3 +24,8 @@ def test_no_two_sources_share_a_prefix() -> None:
 
 def test_keys_match_names() -> None:
     assert all(key == source.name for key, source in SOURCES.items())
+
+
+def test_detected_problems_are_left_for_a_person() -> None:
+    assert {"CI", "RUN", "CONF", "API"} == UNSWEPT_PREFIXES
+    assert SOURCES["voicenote"].swept
