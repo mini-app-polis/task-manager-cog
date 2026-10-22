@@ -24,10 +24,16 @@ class Source:
 
     ``prefix`` is the id prefix this cog mints for the source, or ``None``
     for a source that brings its own id.
+
+    ``swept`` is whether the hourly sweep grooms the source's tasks and
+    moves them to Ready. A detected problem is not: it is for a person to
+    look at until fixing one automatically is decided on, so it is neither
+    sent for paid grooming nor put where an agent would pick it up.
     """
 
     name: str
     prefix: str | None
+    swept: bool = True
 
 
 SOURCES: dict[str, Source] = {
@@ -35,8 +41,13 @@ SOURCES: dict[str, Source] = {
     "github-issue": Source("github-issue", prefix=None),
     # Problems the fleet detected and escalated: a signal that did not heal
     # on its own (see the API's signal engine).
-    "ci": Source("ci", prefix="CI"),
-    "cog-run": Source("cog-run", prefix="RUN"),
-    "conformance": Source("conformance", prefix="CONF"),
-    "api-fault": Source("api-fault", prefix="API"),
+    "ci": Source("ci", prefix="CI", swept=False),
+    "cog-run": Source("cog-run", prefix="RUN", swept=False),
+    "conformance": Source("conformance", prefix="CONF", swept=False),
+    "api-fault": Source("api-fault", prefix="API", swept=False),
 }
+
+#: Id prefixes whose tasks the sweep leaves alone.
+UNSWEPT_PREFIXES: frozenset[str] = frozenset(
+    s.prefix for s in SOURCES.values() if not s.swept and s.prefix
+)

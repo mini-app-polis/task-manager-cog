@@ -125,6 +125,8 @@ BOARD_TASKS = [
         section="Blocked",
     ),
     _task("7", "MINI-7 · Open blocker", section="Refining", notes="later"),
+    _task("8", "CI-8 · infra: CI failing on dev"),
+    _task("9", "API-9 · API: GET /v1/x answering 500", notes="look into this"),
 ]
 
 

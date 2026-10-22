@@ -32,7 +32,9 @@ board:
   GROOM_DISPATCH_LIMIT  tasks sent a sweep (default: 5)
 
 The board's template task says so in its name ("do not work") and is never
-swept.
+swept. Nor are tasks from a source the sources table marks unswept: the
+problems the fleet detected (``CI-``, ``RUN-``, ``CONF-``, ``API-``) wait
+for a person.
 
 Run it locally, read-only, to see every task's verdict:
 
@@ -43,6 +45,7 @@ from __future__ import annotations
 
 import datetime as dt
 import os
+import re
 import sys
 from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass, field
@@ -65,6 +68,7 @@ from .board import Board
 from .lint import lint, task_id_of
 from .records import answers, changed, fingerprint, needs_grooming, next_record
 from .registry import load_repos
+from .sources import UNSWEPT_PREFIXES
 
 log = logger_mod.get_logger()
 
@@ -80,6 +84,9 @@ DEFAULT_DISPATCH_LIMIT = 5
 
 #: In the template task's name. A task saying this is never swept.
 DO_NOT_WORK = "do not work"
+
+#: A minted id, ``<PREFIX>-<n>``.
+_MINTED_ID = re.compile(r"([A-Z][A-Z0-9]*)-\d+")
 
 
 class SweepMisconfigured(RuntimeError):
@@ -153,6 +160,12 @@ def dispatch_limit() -> int:
     return max(0, int(raw)) if raw else DEFAULT_DISPATCH_LIMIT
 
 
+def _prefix_of(task_id: str | None) -> str | None:
+    """``CI`` for ``CI-4``; None for an issue's ``repo#n`` or no id at all."""
+    match = _MINTED_ID.fullmatch(task_id or "")
+    return match[1] if match else None
+
+
 def assess(
     tasks: list[AsanaTaskRecord],
     *,
@@ -172,6 +185,8 @@ def assess(
     verdicts = []
     for task in tasks:
         if task.completed or DO_NOT_WORK in task.name.lower():
+            continue
+        if _prefix_of(task_id_of(task.name)) in UNSWEPT_PREFIXES:
             continue
         if (task.section_name or "").lower() not in swept_lower:
             continue
