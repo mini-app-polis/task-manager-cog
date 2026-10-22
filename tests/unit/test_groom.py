@@ -102,7 +102,7 @@ def test_a_ready_proposal_lands_in_ready_with_an_id(
     assert record.fingerprint == record.groomed_fingerprint == fingerprint(task)
 
 
-def test_questions_go_up_as_a_comment_and_the_task_waits_in_blocked(
+def test_questions_go_up_as_a_comment_and_the_task_waits_in_refining(
     production, _no_outbound_reports
 ) -> None:
     board = FakeBoard([VAGUE])
@@ -110,7 +110,7 @@ def test_questions_go_up_as_a_comment_and_the_task_waits_in_blocked(
     _apply(_proposal(questions=["Now, or only after a failure?"]), board, store)
 
     task = board.get("7")
-    assert task is not None and task.section_name == "Blocked"
+    assert task is not None and task.section_name == "Refining"
     (comment,) = board.comments("7")
     assert comment.startswith(QUESTIONS_PREFIX)
     assert "1. Now, or only after a failure?" in comment

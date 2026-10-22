@@ -23,8 +23,9 @@ off: grooming is the review.
 **Where it goes.** The task is linted again as it now reads.
 
 - The proposal has questions: they are posted as one comment starting
-  ``Grooming questions:`` and the task moves to Blocked. Answering in a
-  comment sends it to be groomed again.
+  ``Grooming questions:`` and the task moves to Refining. Answering in a
+  comment sends it to be groomed again. Blocked is for a task waiting on
+  another task or an event, which grooming does not decide.
 - It passes and ``GROOM_AUTO_READY`` is on: it moves to Ready.
 - Otherwise it moves to Refining.
 
@@ -33,7 +34,6 @@ and what was groomed, so a groomed task is not sent again until someone
 changes it.
 
   REFINING_SECTION  default Refining
-  BLOCKED_SECTION   default Blocked
 """
 
 from __future__ import annotations
@@ -72,7 +72,6 @@ MANUAL_PREFIX = "MINI"
 ORIGINAL_MARKER = "Before grooming:"
 
 DEFAULT_REFINING_SECTION = "Refining"
-DEFAULT_BLOCKED_SECTION = "Blocked"
 
 _FIELDS_FROM_PROPOSAL = {
     "Done when": "done_when",
@@ -203,7 +202,7 @@ def apply_proposal(
         if proposal.questions:
             board.comment(task.gid, questions_comment(proposal.questions))
             column = _section_named(
-                sections, _section_setting("BLOCKED_SECTION", DEFAULT_BLOCKED_SECTION)
+                sections, _section_setting("REFINING_SECTION", DEFAULT_REFINING_SECTION)
             )
             outcome = "questions"
         elif not problems and auto_ready():
