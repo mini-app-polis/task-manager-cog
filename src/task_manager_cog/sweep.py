@@ -65,7 +65,7 @@ from mini_app_polis.environment import Effect, effect_enabled
 from mini_app_polis.pipeline_status import run_report
 
 from .board import Board
-from .lint import lint, task_id_of
+from .lint import lint, mentioned_ids, task_id_of
 from .records import answers, changed, fingerprint, needs_grooming, next_record
 from .registry import load_repos
 from .sources import UNSWEPT_PREFIXES
@@ -231,9 +231,31 @@ def _section_named(sections: list[AsanaSection], name: str) -> AsanaSection:
     )
 
 
-def grooming_job(verdict: Verdict, board_names: list[str]) -> GroomingJobRequest:
-    """What the groomer is sent for one task."""
+#: How a done task the groomed task mentions is marked in the board list.
+DONE_MARK = " (done)"
+
+
+def grooming_job(
+    verdict: Verdict,
+    board_names: list[str],
+    done_by_id: Mapping[str, str] | None = None,
+) -> GroomingJobRequest:
+    """What the groomer is sent for one task.
+
+    ``board_names`` are the open tasks. ``done_by_id`` maps each completed
+    task's id to its name; the ones this task mentions are listed too,
+    marked :data:`DONE_MARK`, so a reference to finished work reads as
+    finished rather than missing. Done tasks it does not mention are left
+    out: they are only noise to the groomer.
+    """
     task = verdict.task
+    text = "\n".join([task.name, task.notes, *verdict.replies])
+    done = [
+        f"{done_by_id[task_id]}{DONE_MARK}"
+        for task_id in mentioned_ids(text)
+        if done_by_id and task_id in done_by_id and task_id != task_id_of(task.name)
+    ]
+    others = [name for name in board_names if name != task.name]
     return GroomingJobRequest(
         task=GroomingTask(
             task_gid=task.gid,
@@ -246,7 +268,7 @@ def grooming_job(verdict: Verdict, board_names: list[str]) -> GroomingJobRequest
             problems=list(verdict.problems),
             comments=list(verdict.replies),
         ),
-        board=[name for name in board_names if name != task.name][:500],
+        board=(done + others)[:500],
     )
 
 
@@ -287,6 +309,11 @@ def sweep(
         )
     )
     open_names = [t.name for t in tasks if not t.completed]
+    done_by_id = {
+        task_id: t.name
+        for t in tasks
+        if t.completed and (task_id := task_id_of(t.name)) is not None
+    }
     for verdict in result.verdicts:
         task = verdict.task
         previous = records.get(task.gid)
@@ -308,7 +335,7 @@ def sweep(
         sent = False
         if not verdict.ready and needs_grooming(task, previous, verdict.replies):
             if send is not None and len(result.sent) < limit:
-                sent = send(grooming_job(verdict, open_names))
+                sent = send(grooming_job(verdict, open_names, done_by_id))
             if sent:
                 result.sent.append(task)
                 log.info("sweep: %s sent for grooming", task.name)
