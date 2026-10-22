@@ -101,6 +101,11 @@ def looks_like_label(line: str) -> bool:
     return bool(_ANY_LABEL.match(line.strip()))
 
 
+def mentioned_ids(text: str) -> list[str]:
+    """Every task id the text names (``MINI-12``, ``infra#4``), in order, once."""
+    return list(dict.fromkeys(_TASK_ID.findall(text)))
+
+
 def task_id_of(name: str) -> str | None:
     """The id a task's name starts with, or None for a task with none."""
     head, sep, _ = name.partition(SEPARATOR)

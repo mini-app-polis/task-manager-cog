@@ -454,3 +454,36 @@ def test_an_answer_sends_a_task_with_questions_again(
     (job,) = store.jobs
     assert job.task.comments == ["Because the API needs it."]
     assert job.task.fingerprint == fingerprint(task, ["Because the API needs it."])
+
+
+# ── what the groomer is sent ──────────────────────────────────────────────
+
+
+def test_a_job_lists_the_done_tasks_its_task_mentions() -> None:
+    task = _task(
+        "20",
+        "MINI-20 · Epic",
+        notes="Delivered by MINI-21 and MINI-22. Related: MINI-30.",
+    )
+    verdict = sweep_mod.Verdict(task=task, problems=("Effort is blank",))
+    done = {
+        "MINI-21": "MINI-21 · First part",
+        "MINI-23": "MINI-23 · Unrelated and done",
+    }
+    job = sweep_mod.grooming_job(
+        verdict, ["MINI-20 · Epic", "MINI-22 · Second part", "MINI-30 · Other"], done
+    )
+    assert job.board == [
+        "MINI-21 · First part (done)",
+        "MINI-22 · Second part",
+        "MINI-30 · Other",
+    ]
+
+
+def test_an_answer_that_names_a_done_task_lists_it() -> None:
+    task = _task("20", "MINI-20 · Epic", notes="vague")
+    verdict = sweep_mod.Verdict(
+        task=task, problems=("x",), replies=("MINI-21 is finished.",)
+    )
+    job = sweep_mod.grooming_job(verdict, [], {"MINI-21": "MINI-21 · First part"})
+    assert job.board == ["MINI-21 · First part (done)"]
