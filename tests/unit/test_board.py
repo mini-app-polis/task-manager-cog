@@ -68,3 +68,19 @@ def test_reads_pass_through_and_url_names_the_task() -> None:
     assert board.find("x") is None
     assert board.names() == ["VN-1 · a"]
     assert board.url("gid-9") == "https://app.asana.com/0/proj/gid-9"
+
+
+def test_tag_and_untag_go_through_the_client_by_name() -> None:
+    calls: list[tuple[str, str, str]] = []
+
+    class TagClient:
+        def add_tag(self, task_gid: str, tag_name: str) -> None:
+            calls.append(("add", task_gid, tag_name))
+
+        def remove_tag(self, task_gid: str, tag_name: str) -> None:
+            calls.append(("remove", task_gid, tag_name))
+
+    board = Board(TagClient(), project_gid="p", section_gid=None)  # type: ignore[arg-type]
+    board.tag("t1", "cowork")
+    board.untag("t1", "review")
+    assert calls == [("add", "t1", "cowork"), ("remove", "t1", "review")]

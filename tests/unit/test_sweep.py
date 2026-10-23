@@ -69,6 +69,9 @@ class FakeBoard:
     moves: list[tuple[str, str]] = field(default_factory=list)
     comments_: dict[str, list[str]] = field(default_factory=dict)
     untagged: list[tuple[str, str]] = field(default_factory=list)
+    tagged: list[tuple[str, str]] = field(default_factory=list)
+    created: list[tuple[str, str]] = field(default_factory=list)
+    by_external_id: dict[str, str] = field(default_factory=dict)
 
     def sections(self) -> list[AsanaSection]:
         return self.sections_
@@ -97,6 +100,12 @@ class FakeBoard:
         text = html_notes.removeprefix("<body>").removesuffix("</body>")
         self._replace(task_gid, name=name, notes=html.unescape(text))
 
+    def tag(self, task_gid: str, tag_name: str) -> None:
+        self.tagged.append((task_gid, tag_name))
+        task = self.get(task_gid)
+        assert task is not None
+        self._replace(task_gid, tag_names=(*task.tag_names, tag_name))
+
     def untag(self, task_gid: str, tag_name: str) -> None:
         self.untagged.append((task_gid, tag_name))
         task = self.get(task_gid)
@@ -108,6 +117,27 @@ class FakeBoard:
 
     def comment(self, task_gid: str, text: str) -> None:
         self.comments_.setdefault(task_gid, []).append(text)
+
+    def find(self, external_id: str) -> str | None:
+        return self.by_external_id.get(external_id)
+
+    def create(self, name: str, task, *, external_id: str) -> str:
+        gid = f"9{len(self.created) + 1}"
+        text = task.html_notes.removeprefix("<body>").removesuffix("</body>")
+        self.records.append(
+            AsanaTaskRecord(
+                gid=gid,
+                name=name,
+                notes=html.unescape(text),
+                completed=False,
+                section_gid="s-ideas",
+                section_name="Ideas",
+                tag_names=tuple(task.tag_names),
+            )
+        )
+        self.created.append((name, external_id))
+        self.by_external_id[external_id] = gid
+        return gid
 
     def comments(self, task_gid: str) -> list[str]:
         return list(self.comments_.get(task_gid, []))
@@ -721,3 +751,30 @@ def test_dispatch_without_the_app_is_reported_not_raised(
     _sweep_dispatching(FakeRecords(), board, unconfigured)
     ((_, kwargs),) = _no_outbound_reports
     assert "agent dispatch not configured" in kwargs["text"]
+
+
+@pytest.mark.parametrize("tag", ["cowork", "person"])
+def test_a_tagged_task_is_held_to_ready_like_any_other(tag: str) -> None:
+    ready = dataclasses.replace(_task("1", "MINI-1 · Console work"), tag_names=(tag,))
+    vague = dataclasses.replace(
+        _task("2", "MINI-2 · Vague", notes="look into this"), tag_names=(tag,)
+    )
+    board = FakeBoard([ready, vague])
+    result = sweep(board, repos=REPOS, move=True)
+    assert [t.name for t in result.moved] == ["MINI-1 · Console work"]
+
+
+def test_task_shapes_are_off_unless_set(monkeypatch: pytest.MonkeyPatch) -> None:
+    two = _task(
+        "1",
+        "MINI-1 · Two repos",
+        notes=READY.replace("Where: infra", "Where: infra, other"),
+    )
+    monkeypatch.delenv("GROOM_TASK_SHAPES", raising=False)
+    assert sweep_mod.task_shapes() is False
+    (verdict,) = assess([two], swept=("Ideas",), repos=frozenset({"infra", "other"}))
+    assert verdict.ready
+    monkeypatch.setenv("GROOM_TASK_SHAPES", "true")
+    (verdict,) = assess([two], swept=("Ideas",), repos=frozenset({"infra", "other"}))
+    assert not verdict.ready
+    assert verdict.problems[0].startswith("Where names more than one repository")

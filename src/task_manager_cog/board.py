@@ -122,6 +122,10 @@ class Board:
         """Rewrite a task's name and body."""
         self._client.update_task(task_gid, name=name, html_notes=html_notes)
 
+    def tag(self, task_gid: str, tag_name: str) -> None:
+        """Put a tag on a task."""
+        self._client.add_tag(task_gid, tag_name)
+
     def untag(self, task_gid: str, tag_name: str) -> None:
         """Take a tag off a task."""
         self._client.remove_tag(task_gid, tag_name)

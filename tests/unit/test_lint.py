@@ -5,6 +5,8 @@ import datetime as dt
 import pytest
 
 from task_manager_cog.lint import (
+    children_of,
+    executor_of,
     lint,
     only_blocked,
     parse,
@@ -261,3 +263,113 @@ def test_blocked_by_text_with_no_task_is_not_ready() -> None:
 def test_a_task_needs_a_body() -> None:
     notes = READY_NOTES.split("\n\n")[0]
     assert _lint(notes=notes) == ["no body saying why, with links to what is needed"]
+
+
+def test_the_executor_is_read_from_the_tags_by_the_contracts_names() -> None:
+    assert executor_of([]) is None
+    assert executor_of(["admin", "review"]) is None
+    assert executor_of(["admin", "Cowork"]) == "cowork"
+    assert executor_of(["person"]) == "person"
+
+
+def test_an_executor_tag_never_makes_a_task_less_ready() -> None:
+    assert _lint(tags=("cowork",)) == []
+    assert _lint(tags=("person",)) == []
+
+
+# ── Shapes: a leaf or a compound task ─────────────────────────────────────
+
+
+def _shaped(
+    notes: str = READY_NOTES,
+    tags: tuple[str, ...] = (),
+    completed: dict[str, bool] | None = None,
+) -> list[str]:
+    return lint(
+        name="MINI-171 · Grooming splits tasks",
+        notes=notes,
+        tags=tags,
+        repos=REPOS,
+        completed_by_id=completed or {"MINI-21": True, "MINI-1": True, "MINI-2": True},
+        shapes=True,
+    )
+
+
+def _notes_with(**fields: str) -> str:
+    notes = READY_NOTES
+    for label, value in fields.items():
+        notes = "\n".join(
+            f"{label}: {value}".rstrip() if line.startswith(f"{label}:") else line
+            for line in notes.split("\n")
+        )
+    return notes
+
+
+def test_a_leaf_names_one_repository_and_passes() -> None:
+    assert _shaped(_notes_with(Where="task-manager-cog (src/lint.py)")) == []
+
+
+def test_two_repositories_are_not_a_leaf() -> None:
+    problems = _shaped()  # api-kaianolevine-com and task-manager-cog
+    assert problems == [
+        "Where names more than one repository (api-kaianolevine-com, "
+        "task-manager-cog): a leaf task names one, so this is a compound task "
+        "over one task each"
+    ]
+    # Off, the same task is ready.
+    assert _lint() == []
+
+
+def test_two_executor_tags_are_not_a_leaf() -> None:
+    notes = _notes_with(Where="infra")
+    assert _shaped(notes, tags=("cowork", "Person")) == [
+        "tagged for more than one executor (cowork, person)"
+    ]
+    assert _shaped(notes, tags=("cowork", "admin")) == []
+
+
+@pytest.mark.parametrize("where", ["", "None"])
+def test_only_a_task_for_another_executor_may_name_no_repository(where: str) -> None:
+    notes = _notes_with(Where=where)
+    assert _shaped(notes, tags=("cowork",)) == []
+    assert _shaped(notes) != []
+
+
+def test_a_compound_task_lists_every_child_in_blocked_by() -> None:
+    notes = _notes_with(
+        **{
+            "Done when": "MINI-1, MINI-2 and MINI-21 are done. Between them: x.",
+            "Blocked by": "MINI-1, MINI-2, MINI-21",
+        }
+    )
+    assert _shaped(notes) == []  # spans two repositories: it has no work of its own
+
+
+def test_a_compound_task_missing_a_child_is_not_ready() -> None:
+    notes = _notes_with(
+        **{
+            "Done when": "MINI-1, MINI-2 and MINI-21 are done.",
+            "Blocked by": "MINI-1, MINI-21",
+        }
+    )
+    assert _shaped(notes) == ["compound task's Blocked by does not list MINI-2"]
+
+
+@pytest.mark.parametrize(
+    ("done_when", "children"),
+    [
+        (
+            "MINI-183, MINI-184, MINI-185 and MINI-186 are done. Between them: …",
+            ["MINI-183", "MINI-184", "MINI-185", "MINI-186"],
+        ),
+        ("MINI-173 and MINI-174 are done.", ["MINI-173", "MINI-174"]),
+        ("infra#4 is done", ["infra#4"]),
+        ("The sweep is done when MINI-1 passes.", []),
+        ("A test passes once MINI-1 is done.", []),
+        ("", []),
+    ],
+)
+def test_children_are_read_from_the_opening_of_done_when(
+    done_when: str, children: list[str]
+) -> None:
+    assert children_of(done_when) == children

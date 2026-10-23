@@ -6,11 +6,13 @@ import html
 from dataclasses import dataclass, field
 
 import pytest
-from mini_app_polis.api.contract import AgentRun
+from mini_app_polis.api.contract import AgentRun, GroomingRecord, GroomingRecordWrite
 from mini_app_polis.asana import AsanaSection, AsanaTaskRecord
 
 from task_manager_cog.lint import parse
+from task_manager_cog.records import answers, fingerprint, needs_grooming, next_record
 from task_manager_cog.results import apply_result
+from task_manager_cog.sweep import OPEN_QUESTIONS
 
 RUN_ID = "0b6f7f5e-3c1a-4c8e-9a51-6f0c2f3d4e5a"
 PR = "https://github.com/mini-app-polis/watcher-cog/pull/7"
@@ -183,3 +185,119 @@ def test_nothing_is_written_outside_production(monkeypatch) -> None:
     board = _board()
     _apply(_run(), board)
     assert board.moves == [] and board.comments_ == []
+
+
+# ── A run that needs grooming ─────────────────────────────────────────────
+
+QUESTIONS = ["Which env var replaces FOLDER_ID?", "Should infra change too?"]
+
+
+@dataclass
+class FakeRecords:
+    stored: dict[str, GroomingRecord] = field(default_factory=dict)
+    written: list[GroomingRecordWrite] = field(default_factory=list)
+
+    def list_groomings(self) -> list[GroomingRecord]:
+        return list(self.stored.values())
+
+    def record_grooming(self, payload: GroomingRecordWrite) -> GroomingRecord:
+        self.written.append(payload)
+        record = GroomingRecord(
+            **payload.model_dump(), updated_at=dt.datetime.now(dt.UTC)
+        )
+        self.stored[payload.task_gid] = record
+        return record
+
+
+MOVED_TO_READY = dt.datetime(2026, 10, 23, 1, 0, tzinfo=dt.UTC)
+
+
+def _records(task: AsanaTaskRecord | None) -> FakeRecords:
+    """A record as the sweep left it when it moved the task to Ready."""
+    assert task is not None
+    store = FakeRecords()
+    store.record_grooming(
+        GroomingRecordWrite(
+            task_gid=task.gid,
+            task_id="MINI-1",
+            fingerprint=fingerprint(task),
+            outcome="ready",
+            moved_to_ready_at=MOVED_TO_READY,
+            returned_count=1,
+        )
+    )
+    store.written.clear()
+    return store
+
+
+def _apply_grooming(board: FakeBoard, store: FakeRecords) -> None:
+    run = _run("needs_grooming", reason=None, cost_usd=0.31, questions=QUESTIONS)
+    apply_result(
+        run, run_id="m-1", board_factory=lambda: board, records_factory=lambda: store
+    )
+
+
+def test_a_run_that_needs_grooming_sends_the_task_back_to_refining(
+    production,
+) -> None:
+    board = _board()
+    store = _records(board.task)
+    _apply_grooming(board, store)
+
+    assert board.moves == ["s-refining"]
+    assert board.updates == 0
+    (comment,) = board.comments_
+    assert comment.startswith("Grooming questions:\n1. Which env var")
+    assert "2. Should infra change too?" in comment
+    assert f"Agent run {RUN_ID}" in comment and "$0.31" in comment
+    (record,) = store.written
+    assert record.outcome == "questions"
+    assert record.problems == [OPEN_QUESTIONS]
+    assert board.task is not None
+    assert record.groomed_fingerprint == fingerprint(board.task)
+    # Kept, so the next sweep counts the task as sent back from Ready.
+    assert record.moved_to_ready_at == MOVED_TO_READY
+    assert record.returned_count == 1
+
+
+def test_a_task_sent_back_waits_for_answers_and_counts_as_returned(
+    production,
+) -> None:
+    board = _board()
+    store = _records(board.task)
+    _apply_grooming(board, store)
+    task = board.task
+    assert task is not None
+    stored = store.stored[task.gid]
+
+    # Not sent again for grooming until the owner answers.
+    assert answers(board.comments_) == []
+    assert not needs_grooming(task, stored, answers(board.comments_))
+    replies = answers([*board.comments_, "LIVE_HISTORY_FOLDER_ID; infra too."])
+    assert needs_grooming(task, stored, replies)
+
+    swept = next_record(task, (OPEN_QUESTIONS,), stored, moved_at=None)
+    assert swept is not None
+    assert swept.returned_count == 2
+    assert swept.outcome == "questions"
+
+
+def test_a_redelivered_grooming_result_changes_nothing(production) -> None:
+    board = _board()
+    store = _records(board.task)
+    _apply_grooming(board, store)
+    _apply_grooming(board, store)
+    assert board.moves == ["s-refining"]
+    assert len(board.comments_) == 1
+    assert len(store.written) == 1
+
+
+def test_a_task_moved_away_meanwhile_still_gets_its_questions(production) -> None:
+    board = _board("s-review")
+    store = _records(board.task)
+    _apply_grooming(board, store)
+    assert board.moves == []
+    (comment,) = board.comments_
+    assert comment.startswith("Grooming questions:")
+    assert "left where it is" in comment
+    assert store.written[0].outcome == "questions"
