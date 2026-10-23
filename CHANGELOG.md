@@ -1,3 +1,10 @@
+## [1.6.1](https://github.com/mini-app-polis/task-manager-cog/compare/v1.6.0...v1.6.1) (2026-10-23)
+
+
+### Bug Fixes
+
+* **agent:** validate GitHub answers, retry transient failures, document dispatch ([a2afabc](https://github.com/mini-app-polis/task-manager-cog/commit/a2afabc42e0743016a609e1c4e5cf7935376023d))
+
 # [1.6.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.5.4...v1.6.0) (2026-10-23)
 
 
