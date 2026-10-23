@@ -1,3 +1,10 @@
+# [1.9.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.8.0...v1.9.0) (2026-10-23)
+
+
+### Features
+
+* **groomed:** record tasks groomed by hand in a working session ([dcd1981](https://github.com/mini-app-polis/task-manager-cog/commit/dcd19812a2bb072b5a1ace96e3a48e62fdcca08a))
+
 # [1.8.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.7.0...v1.8.0) (2026-10-23)
 
 
