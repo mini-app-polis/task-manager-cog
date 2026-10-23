@@ -40,6 +40,9 @@ swept. Nor are tasks from a source the sources table marks unswept: the
 problems the fleet detected (``CI-``, ``RUN-``, ``CONF-``, ``API-``) wait
 for a person.
 
+After grooming, the sweep dispatches an agent for each Ready task it can
+take, when ``AGENT_DISPATCH`` or ``AGENT_DRY_RUN`` is on (dispatch.py).
+
 Run it locally, read-only, to see every task's verdict:
 
     doppler run -- uv run python -m task_manager_cog.sweep
@@ -53,11 +56,15 @@ import re
 import sys
 from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Any, Protocol
 
 from mini_app_polis import logger as logger_mod
 from mini_app_polis.api import KaianoApiClient
 from mini_app_polis.api.contract import (
+    AgentRun,
+    AgentRunCreate,
+    AgentRunFailure,
+    AgentSpend,
     GroomingJobAccepted,
     GroomingJobRequest,
     GroomingRecord,
@@ -68,7 +75,9 @@ from mini_app_polis.asana import AsanaSection, AsanaTaskRecord
 from mini_app_polis.environment import Effect, effect_enabled
 from mini_app_polis.pipeline_status import run_report
 
+from . import dispatch as agent
 from .board import Board
+from .github import AgentApp
 from .lint import lint, mentioned_ids, only_blocked, task_id_of
 from .records import answers, changed, fingerprint, needs_grooming, next_record
 from .registry import load_repos
@@ -103,7 +112,7 @@ class SweepMisconfigured(RuntimeError):
 
 
 class Records(Protocol):
-    """Where grooming records are kept: the API, or a fake in a test."""
+    """Where grooming and agent-run records are kept: the API, or a fake."""
 
     def list_groomings(self) -> list[GroomingRecord]:
         """Every task's record."""
@@ -115,6 +124,24 @@ class Records(Protocol):
 
     def request_grooming(self, payload: GroomingJobRequest) -> GroomingJobAccepted:
         """Send one task to be groomed."""
+        ...
+
+    def record_agent_run(self, payload: AgentRunCreate) -> AgentRun:
+        """Record an agent run about to be started."""
+        ...
+
+    def list_agent_runs(
+        self, *, status: str | None = None, repository: str | None = None
+    ) -> list[AgentRun]:
+        """Agent runs, narrowed by status and repository."""
+        ...
+
+    def agent_spend(self) -> AgentSpend:
+        """This month's agent runs."""
+        ...
+
+    def fail_agent_run(self, payload: AgentRunFailure) -> AgentRun:
+        """Mark a dispatched agent run failed."""
         ...
 
 
@@ -388,6 +415,7 @@ def run_sweep(
     board_factory: Callable[[], Board] | None = None,
     repos_loader: Callable[[], Collection[str]] = load_repos,
     records_factory: Callable[[], Records] = _api,
+    starter_factory: Callable[[], agent.Starter] = AgentApp.from_env,
 ) -> None:
     """One scheduled sweep, with its run report. Raises to be redelivered."""
     with run_report(FLOW_NAME, repo=REPO, run_id=run_id) as report:
@@ -439,6 +467,62 @@ def run_sweep(
             report.updated(
                 "task sent back from Ready", task.name, link=board.url(task.gid)
             )
+
+        if agent.enabled() or agent.dry_run():
+            _dispatch_agents(board, store, starter_factory, report)
+
+
+def _dispatch_agents(
+    board: Board,
+    store: Records,
+    starter_factory: Callable[[], agent.Starter],
+    report: Any,
+) -> None:
+    """Dispatch an agent for each Ready task it can take, and report it.
+
+    A dry run, or dispatch switched off, writes nothing.
+    """
+    write = agent.enabled() and not agent.dry_run()
+    try:
+        starter = starter_factory()
+    except Exception as exc:  # noqa: BLE001 — the sweep's own work is done
+        log.warning("sweep: agent dispatch not configured: %s", exc)
+        report.issue("agent dispatch not configured", detail=str(exc))
+        return
+    sections = board.sections()
+    result = agent.dispatch(
+        board.tasks(),
+        sections,
+        ready_gid=_section_named(sections, ready_section()).gid,
+        board=board,
+        store=store,
+        starter=starter,
+        unswept_prefixes=UNSWEPT_PREFIXES,
+        template_marker=DO_NOT_WORK,
+        write=write,
+    )
+    report.count("agent_spend_usd", f"{result.spend_usd:.4f}")
+    report.count("agent_dispatched", len(result.dispatched))
+    for reason, n in sorted(result.skipped.items()):
+        report.count(f"agent_skipped_{reason}", n)
+    for candidate, run in result.dispatched:
+        report.updated(
+            f"agent dispatched to {candidate.repo} as run {run.id}",
+            candidate.task.name,
+            link=board.url(candidate.task.gid),
+        )
+    for candidate in result.would_dispatch:
+        report.note(
+            f"would dispatch, at most ${agent.task_cap():.2f}",
+            f"{candidate.task.name} → {candidate.repo}",
+        )
+    for candidate in result.not_started:
+        report.issue("agent not started", candidate.task.name)
+    for run in result.stale:
+        report.issue(
+            "agent run never reported" if write else "agent run would be failed",
+            run.task_id or run.task_gid,
+        )
 
 
 def main(argv: list[str] | None = None) -> int:

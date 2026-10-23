@@ -276,3 +276,40 @@ def test_the_package_loads_its_secrets_before_any_module_reads_them() -> None:
 
     source = inspect.getsource(task_manager_cog)
     assert "load_secrets()" in source
+
+
+# --- agent results -------------------------------------------------------------
+
+
+def _agent_result(**changes: Any) -> str:
+    payload: dict[str, Any] = {
+        "id": "0b6f7f5e-3c1a-4c8e-9a51-6f0c2f3d4e5a",
+        "task_gid": "1",
+        "task_id": "MINI-1",
+        "repository": "watcher-cog",
+        "model": "claude-sonnet-5-5",
+        "status": "failed",
+        "dispatched_at": "2026-10-23T02:00:00Z",
+    }
+    payload.update(changes)
+    return json.dumps({"type": "task.agent-result", "version": 1, "payload": payload})
+
+
+def test_an_agent_result_is_read_as_an_agent_run() -> None:
+    run = worker.parse_message(_agent_result())
+    assert run.id == "0b6f7f5e-3c1a-4c8e-9a51-6f0c2f3d4e5a"
+    assert worker._source_label(_agent_result()) == "agent-result"
+
+
+def test_an_unreadable_agent_result_is_refused() -> None:
+    with pytest.raises(worker.UnprocessableMessage, match="not an agent run"):
+        worker.parse_message(_agent_result(status="maybe"))
+
+
+def test_an_agent_result_is_applied(monkeypatch: pytest.MonkeyPatch) -> None:
+    applied: list[str] = []
+    monkeypatch.setattr(
+        worker, "apply_result", lambda run, **_: applied.append(run.task_gid)
+    )
+    worker.process_message(_agent_result(), run_id="m-1")
+    assert applied == ["1"]

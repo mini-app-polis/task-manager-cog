@@ -7,6 +7,10 @@ from dataclasses import dataclass, field
 
 import pytest
 from mini_app_polis.api.contract import (
+    AgentRun,
+    AgentRunCreate,
+    AgentRunFailure,
+    AgentSpend,
     GroomingJobAccepted,
     GroomingJobRequest,
     GroomingRecord,
@@ -224,6 +228,26 @@ class FakeRecords:
             raise RuntimeError("502 dispatch_failed")
         self.jobs.append(payload)
         return GroomingJobAccepted(message_id="m", task_gid=payload.task.task_gid)
+
+    agent_runs: list[AgentRunCreate] = field(default_factory=list)
+
+    def record_agent_run(self, payload: AgentRunCreate) -> AgentRun:
+        self.agent_runs.append(payload)
+        return AgentRun(
+            id="00000000-0000-4000-8000-000000000001",
+            status="dispatched",
+            dispatched_at=dt.datetime.now(dt.UTC),
+            **payload.model_dump(),
+        )
+
+    def list_agent_runs(self, *, status=None, repository=None) -> list[AgentRun]:
+        return []
+
+    def agent_spend(self) -> AgentSpend:
+        return AgentSpend(month="2026-10", runs=0, cost_usd=0.0)
+
+    def fail_agent_run(self, payload: AgentRunFailure) -> AgentRun:
+        raise AssertionError("nothing fails here")
 
 
 def test_run_sweep_moves_and_reports_in_production(
@@ -569,3 +593,79 @@ def test_an_answer_that_names_a_done_task_lists_it() -> None:
     )
     job = sweep_mod.grooming_job(verdict, [], {"MINI-21": "MINI-21 · First part"})
     assert job.board == ["MINI-21 · First part (done)"]
+
+
+# ── agent dispatch at the end of the sweep ────────────────────────────────
+
+
+@dataclass
+class FakeStarter:
+    started: list[str] = field(default_factory=list)
+
+    def has_caller(self, repo: str) -> bool:
+        return True
+
+    def dispatch(self, repo: str, *, ref: str, inputs: dict[str, str]) -> None:
+        self.started.append(repo)
+
+
+def _sweep_dispatching(store, board, starter_factory) -> None:
+    run_sweep(
+        run_id="r",
+        board_factory=lambda: board,
+        repos_loader=lambda: REPOS,
+        records_factory=lambda: store,
+        starter_factory=starter_factory,
+    )
+
+
+def test_dispatch_is_off_unless_set(production, _no_outbound_reports) -> None:
+    def never():
+        raise AssertionError("dispatch is off")
+
+    board = FakeBoard([_task("1", "MINI-1 · Ready", section="Ready")])
+    _sweep_dispatching(FakeRecords(), board, never)
+
+
+def test_a_ready_task_is_dispatched_after_grooming(
+    production, monkeypatch: pytest.MonkeyPatch, _no_outbound_reports
+) -> None:
+    monkeypatch.setenv("AGENT_DISPATCH", "true")
+    monkeypatch.setenv("GROOM_AUTO_READY", "true")
+    # In Ideas and ready: the sweep moves it to Ready, then dispatches it.
+    board = FakeBoard([_task("1", "MINI-1 · Ready idea")])
+    board.sections_.append(AsanaSection("s-review", "Review"))
+    store, starter = FakeRecords(), FakeStarter()
+    _sweep_dispatching(store, board, lambda: starter)
+    assert board.moves == [("1", "s-ready"), ("1", "s-progress")]
+    assert starter.started == ["infra"]
+    assert [r.task_id for r in store.agent_runs] == ["MINI-1"]
+    ((_, kwargs),) = _no_outbound_reports
+    assert kwargs["agent_dispatched"] == 1
+
+
+def test_a_dry_run_dispatches_nothing(
+    production, monkeypatch: pytest.MonkeyPatch, _no_outbound_reports
+) -> None:
+    monkeypatch.setenv("AGENT_DISPATCH", "true")
+    monkeypatch.setenv("AGENT_DRY_RUN", "true")
+    board = FakeBoard([_task("1", "MINI-1 · Ready", section="Ready")])
+    store, starter = FakeRecords(), FakeStarter()
+    _sweep_dispatching(store, board, lambda: starter)
+    assert board.moves == [] and starter.started == [] and store.agent_runs == []
+    ((_, kwargs),) = _no_outbound_reports
+    assert "would dispatch" in kwargs["text"]
+
+
+def test_dispatch_without_the_app_is_reported_not_raised(
+    production, monkeypatch: pytest.MonkeyPatch, _no_outbound_reports
+) -> None:
+    monkeypatch.setenv("AGENT_DISPATCH", "true")
+
+    def unconfigured():
+        raise RuntimeError("AGENT_APP_CLIENT_ID not set")
+
+    board = FakeBoard([_task("1", "MINI-1 · Ready", section="Ready")])
+    _sweep_dispatching(FakeRecords(), board, unconfigured)
+    ((_, kwargs),) = _no_outbound_reports
+    assert "agent dispatch not configured" in kwargs["text"]
