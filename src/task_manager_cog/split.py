@@ -26,7 +26,7 @@ The children are recorded as groomed, so the sweep moves the ones that pass
 the definition of ready without sending them to be groomed again.
 
   GROOM_SPLIT_DRY_RUN       "false" to create children; anything else reports
-  GROOM_SPLIT_MAX_CHILDREN  children one split may create (default: 5)
+  GROOM_SPLIT_MAX_CHILDREN  children one split may create (default: 25)
   BLOCKED_SECTION           where a compound task waits (default: Blocked)
 """
 
@@ -56,7 +56,7 @@ from .sweep import Records, _section_named, task_shapes
 
 log = logger_mod.get_logger()
 
-DEFAULT_MAX_CHILDREN = 5
+DEFAULT_MAX_CHILDREN = 25
 DEFAULT_BLOCKED_SECTION = "Blocked"
 
 #: Starts the comment a dry run leaves; with the content it was made for,

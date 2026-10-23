@@ -148,7 +148,7 @@ task, and `split.py` applies it:
   the run report. The task is held until it changes, so once dry run is
   off, edit a task that was reported to have it split for real.
 - **A cap.** A split with more children than `GROOM_SPLIT_MAX_CHILDREN`
-  (default 5) is reported the same way and not applied.
+  (default 25) is reported the same way and not applied.
 - **Once.** Each child's external id is its parent, the content the split
   was made for, and its position, so a redelivered proposal creates no
   second set, even one cut short partway.
