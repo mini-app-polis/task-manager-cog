@@ -20,11 +20,13 @@ import base64
 import json
 import os
 import time
-from typing import Any
+from collections.abc import Callable
+from typing import Any, TypeVar
 
 import httpx
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
+from pydantic import BaseModel, ValidationError
 
 API = "https://api.github.com"
 TIMEOUT_SECONDS = 20.0
@@ -34,6 +36,34 @@ DEFAULT_WORKFLOW = "agent.yml"
 #: The App token's lifetime GitHub allows is ten minutes; this stays under
 #: it, backdated a minute for clock drift.
 _JWT_SECONDS = 540
+
+#: Requests to GitHub before one fails. A blip at GitHub would otherwise
+#: leave a Ready task for the next sweep, an hour later.
+ATTEMPTS = 3
+
+#: Answers worth asking again: rate limits and GitHub's own failures.
+_TRANSIENT = frozenset({429, 500, 502, 503, 504})
+
+
+class Installation(BaseModel):
+    """The agent App's installation on a repository, as far as it is read."""
+
+    id: int
+
+
+class InstallationToken(BaseModel):
+    """A token minted for one installation."""
+
+    token: str
+
+
+class Workflow(BaseModel):
+    """A repository's workflow, as far as it is read."""
+
+    state: str
+
+
+_M = TypeVar("_M", bound=BaseModel)
 
 
 class GitHubNotConfigured(RuntimeError):
@@ -86,9 +116,11 @@ class AgentApp:
         private_key: str,
         http: httpx.Client | None = None,
     ) -> None:
+        # no-retry: builds the client only; every request retries in _request.
         self._client_id = client_id
         self._private_key = private_key
         self._http = http or httpx.Client(timeout=TIMEOUT_SECONDS)
+        self._sleep: Callable[[float], None] = time.sleep
 
     @classmethod
     def from_env(cls) -> AgentApp:
@@ -112,19 +144,37 @@ class AgentApp:
     def _request(
         self, method: str, path: str, *, token: str, body: Any = None
     ) -> httpx.Response:
+        """One request, tried again on a transient failure, up to ATTEMPTS."""
+        for attempt in range(1, ATTEMPTS + 1):
+            try:
+                response = self._http.request(
+                    method,
+                    f"{API}{path}",
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                        "Accept": "application/vnd.github+json",
+                        "X-GitHub-Api-Version": "2022-11-28",
+                    },
+                    json=body,
+                )
+            except httpx.TransportError as exc:
+                if attempt == ATTEMPTS:
+                    raise GitHubError(f"{method} {path}: {exc}") from exc
+                self._sleep(2.0**attempt)
+                continue
+            if response.status_code in _TRANSIENT and attempt < ATTEMPTS:
+                self._sleep(2.0**attempt)
+                continue
+            return response
+        raise GitHubError(f"{method} {path}: no answer")  # pragma: no cover
+
+    @staticmethod
+    def _read(model: type[_M], response: httpx.Response, what: str) -> _M:
+        """The response's body as ``model``. Raises GitHubError."""
         try:
-            return self._http.request(
-                method,
-                f"{API}{path}",
-                headers={
-                    "Authorization": f"Bearer {token}",
-                    "Accept": "application/vnd.github+json",
-                    "X-GitHub-Api-Version": "2022-11-28",
-                },
-                json=body,
-            )
-        except httpx.HTTPError as exc:
-            raise GitHubError(f"{method} {path}: {exc}") from exc
+            return model.model_validate(response.json())
+        except (ValueError, ValidationError) as exc:
+            raise GitHubError(f"{what}: unexpected answer: {exc}") from exc
 
     def _token(self, repo: str) -> str | None:
         """A token for ``repo`` with Actions access only, or None when the
@@ -135,7 +185,7 @@ class AgentApp:
             return None
         if found.status_code != 200:
             raise GitHubError(f"installation for {repo}: {found.status_code}")
-        installation = found.json()["id"]
+        installation = self._read(Installation, found, f"installation for {repo}").id
         minted = self._request(
             "POST",
             f"/app/installations/{installation}/access_tokens",
@@ -144,7 +194,7 @@ class AgentApp:
         )
         if minted.status_code != 201:
             raise GitHubError(f"token for {repo}: {minted.status_code}")
-        return str(minted.json()["token"])
+        return self._read(InstallationToken, minted, f"token for {repo}").token
 
     def has_caller(self, repo: str) -> bool:
         """Whether ``repo`` has the agent caller, and the App is installed there."""
@@ -158,7 +208,7 @@ class AgentApp:
             return False
         if found.status_code != 200:
             raise GitHubError(f"caller in {repo}: {found.status_code}")
-        return found.json().get("state") == "active"
+        return self._read(Workflow, found, f"caller in {repo}").state == "active"
 
     def dispatch(self, repo: str, *, ref: str, inputs: dict[str, str]) -> None:
         """Start the caller in ``repo``. Raises GitHubError."""
