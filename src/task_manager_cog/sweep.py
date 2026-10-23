@@ -19,9 +19,10 @@ for grooming, is sent to task-groomer-cog through the API: at most
 queue and is applied by groom.py. A job the API refuses is not marked as
 sent, so the next sweep sends it again.
 
-A task whose only problems are blockers that are not done is never sent:
-grooming cannot finish another task. It waits, and moves to Ready on the
-first sweep after its blockers are done.
+A task whose only problems are blockers that are not done, or a date in
+Blocked by still ahead, is never sent: grooming cannot finish another task
+or bring a date closer. It waits, and moves to Ready on the first sweep
+after its blockers are done and on or after its date (a UTC day).
 
 Moving is a setting, ``GROOM_AUTO_READY``, off unless set, so the sweep can
 run and say what it would move before it moves anything. The columns are

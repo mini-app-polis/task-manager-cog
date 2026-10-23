@@ -63,7 +63,7 @@ linter (`lint.py`) checks what can be checked without a model:
 | Constraints | Filled in. `None` is an answer; blank is not. |
 | Effort | `S`, `M` or `L`. An `L` task is ready: its implementation creates its subtasks. |
 | PR | Blank. It belongs to whoever works the task. |
-| Blocked by | Blank, `None`, or only tasks that are done. |
+| Blocked by | Blank, `None`, or only tasks that are done and dates (`YYYY-MM-DD`, a UTC day) that have come. A task can wait on a date alone, beside task ids, or both. Before the date it is not ready (`Blocked until <date>`) and is not sent for grooming; it moves to Ready on the first sweep on or after it. A date written any other way is a problem of its own. |
 | Tags | No `review` tag. |
 | Body | Says why, and links what is needed. |
 | Grooming questions | None unanswered. A task whose last grooming asked questions waits until a grooming answers them, even if its template is complete. |

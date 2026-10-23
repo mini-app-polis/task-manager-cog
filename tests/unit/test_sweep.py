@@ -511,6 +511,58 @@ def test_a_blocked_task_with_another_problem_is_still_sent() -> None:
     assert result.blocked == 0
 
 
+def _send_from(
+    tasks: list[AsanaTaskRecord],
+) -> tuple[list[GroomingJobRequest], sweep_mod.SweepResult]:
+    sent: list[GroomingJobRequest] = []
+    result = sweep(
+        FakeBoard(tasks),
+        repos=REPOS,
+        move=True,
+        send=lambda job: sent.append(job) or True,
+        limit=5,
+    )
+    return sent, result
+
+
+def test_a_task_waiting_on_a_date_ahead_is_never_sent() -> None:
+    waiting = _task(
+        "6",
+        "MINI-6 · Waits on a date",
+        notes=READY.replace("Blocked by:", "Blocked by: 2999-01-01"),
+        section="Blocked",
+    )
+    sent, result = _send_from([waiting])
+    assert sent == []
+    assert result.blocked == 1
+    assert result.moved == []
+    assert result.verdicts[0].problems == ("Blocked until 2999-01-01",)
+
+
+def test_a_task_whose_date_has_come_moves_to_ready() -> None:
+    waiting = _task(
+        "6",
+        "MINI-6 · Waited on a date",
+        notes=READY.replace("Blocked by:", "Blocked by: 2000-01-01"),
+        section="Blocked",
+    )
+    sent, result = _send_from([waiting])
+    assert sent == []
+    assert [t.name for t in result.moved] == ["MINI-6 · Waited on a date"]
+
+
+def test_a_task_with_a_malformed_date_is_sent_for_grooming() -> None:
+    task = _task(
+        "6",
+        "MINI-6 · Waits on a bad date",
+        notes=READY.replace("Blocked by:", "Blocked by: 2026-11-2"),
+        section="Blocked",
+    )
+    sent, result = _send_from([task])
+    assert [j.task.name for j in sent] == ["MINI-6 · Waits on a bad date"]
+    assert result.blocked == 0
+
+
 def test_a_blocked_task_moves_to_ready_once_its_blocker_is_done() -> None:
     waiting = _task(
         "6",
