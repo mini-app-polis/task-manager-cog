@@ -1,3 +1,11 @@
+## [1.5.4](https://github.com/mini-app-polis/task-manager-cog/compare/v1.5.3...v1.5.4) (2026-10-23)
+
+
+### Bug Fixes
+
+* **deps:** bump miniapppolis-common-utils to 6.17.0 ([97fe5dc](https://github.com/mini-app-polis/task-manager-cog/commit/97fe5dc5bb4b975b24f42766965ec01cad425f62))
+* **sweep:** don't send a task for grooming when unfinished blockers are its only problem ([055421e](https://github.com/mini-app-polis/task-manager-cog/commit/055421e2fcce625abe9ec48445cebfeb88f78010))
+
 ## [1.5.3](https://github.com/mini-app-polis/task-manager-cog/compare/v1.5.2...v1.5.3) (2026-10-22)
 
 
