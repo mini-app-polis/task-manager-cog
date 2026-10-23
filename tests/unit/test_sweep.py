@@ -739,3 +739,19 @@ def test_a_tagged_task_is_held_to_ready_like_any_other(tag: str) -> None:
     board = FakeBoard([ready, vague])
     result = sweep(board, repos=REPOS, move=True)
     assert [t.name for t in result.moved] == ["MINI-1 · Console work"]
+
+
+def test_task_shapes_are_off_unless_set(monkeypatch: pytest.MonkeyPatch) -> None:
+    two = _task(
+        "1",
+        "MINI-1 · Two repos",
+        notes=READY.replace("Where: infra", "Where: infra, other"),
+    )
+    monkeypatch.delenv("GROOM_TASK_SHAPES", raising=False)
+    assert sweep_mod.task_shapes() is False
+    (verdict,) = assess([two], swept=("Ideas",), repos=frozenset({"infra", "other"}))
+    assert verdict.ready
+    monkeypatch.setenv("GROOM_TASK_SHAPES", "true")
+    (verdict,) = assess([two], swept=("Ideas",), repos=frozenset({"infra", "other"}))
+    assert not verdict.ready
+    assert verdict.problems[0].startswith("Where names more than one repository")

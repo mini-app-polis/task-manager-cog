@@ -17,6 +17,15 @@ still read.
 
 Every rule that fails is reported, not just the first, so one pass says
 everything a task is missing.
+
+**Shapes.** With ``shapes`` on, a task must also be one of two shapes:
+
+- a *leaf*: Where names at most one repository, and the task carries at
+  most one executor tag. Only a task tagged for another executor (board or
+  console work) may name no repository.
+- a *compound* task: its Done when says it is done when its children are
+  (``MINI-1, MINI-2 and MINI-3 are done``), and its Blocked by lists every
+  one of them. It has no work of its own, so it may span repositories.
 """
 
 from __future__ import annotations
@@ -55,6 +64,11 @@ _DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 #: Anything in ``Blocked by`` written as a date, well formed or not
 #: (``2026-11-2``, ``2026-13-01``, ``11/02/2026``).
 _DATE_LIKE = re.compile(r"\b\d{4}-\d{1,2}-\d{1,2}\b|\b\d{1,2}/\d{1,2}/\d{2,4}\b")
+
+#: Text that is only task ids and the words joining them, as a compound
+#: task's Done when lists its children before "are done".
+_ID_LIST = re.compile(r"(?:[A-Z][A-Z0-9]*-\d+|[a-z0-9][a-z0-9._-]*#\d+|,|\band\b|\s)+")
+_DONE_CLAUSE = re.compile(r"\s*(?P<ids>.+?)\s+(?:are|is)\s+done\b", re.DOTALL)
 
 #: A placeholder in ``Done when``: an outcome cannot be still to be decided.
 #: A question mark ends a word or the line; one inside a URL's query does not.
@@ -170,6 +184,44 @@ def executor_of(tags: Collection[str]) -> str | None:
     return next((t.lower() for t in tags if t.lower() in names), None)
 
 
+def children_of(done_when: str) -> list[str]:
+    """The children a compound task's Done when names, or [] for a leaf.
+
+    A compound task's Done when opens with its children's ids and says they
+    are done: ``MINI-183, MINI-184 and MINI-186 are done. Between them: …``.
+    """
+    match = _DONE_CLAUSE.match(done_when)
+    if match is None or not _ID_LIST.fullmatch(match["ids"]):
+        return []
+    return list(dict.fromkeys(_TASK_ID.findall(match["ids"])))
+
+
+def _shape_problems(
+    *, done_when: str, where: str, blocked_ids: Collection[str], tags: Collection[str]
+) -> list[str]:
+    """What keeps a task from being a leaf or a compound task."""
+    problems: list[str] = []
+    names = get_args(GroomingExecutor)
+    executors = sorted({t.lower() for t in tags if t.lower() in names})
+    if len(executors) > 1:
+        problems.append(f"tagged for more than one executor ({', '.join(executors)})")
+
+    children = children_of(done_when)
+    if children:
+        for child in children:
+            if child not in blocked_ids:
+                problems.append(f"compound task's Blocked by does not list {child}")
+        return problems
+
+    repos = list(dict.fromkeys(where_repos(where))) if where else []
+    if len(repos) > 1:
+        problems.append(
+            f"Where names more than one repository ({', '.join(repos)}): a leaf "
+            "task names one, so this is a compound task over one task each"
+        )
+    return problems
+
+
 def only_blocked(problems: Collection[str]) -> bool:
     """Whether every problem is a blocker that is on the board and not done,
     or a date still ahead.
@@ -213,12 +265,14 @@ def lint(
     repos: Collection[str],
     completed_by_id: Mapping[str, bool],
     today: dt.date | None = None,
+    shapes: bool = False,
 ) -> list[str]:
     """Every rule the task fails. Empty means ready.
 
     ``repos`` is the fleet's registry (ecosystem.yaml); ``completed_by_id``
     maps every task id on the board to whether that task is done. ``today``
     is the UTC day a date in ``Blocked by`` is judged against (default: now).
+    ``shapes`` also holds the task to the leaf or compound shape.
     """
     problems: list[str] = []
 
@@ -244,7 +298,11 @@ def lint(
         problems.append("Done when is undecided (TBD or ?)")
 
     where = fields.get("Where", "")
-    if not where:
+    no_repository = not where or where.lower() in NONE_WORDS
+    if shapes and no_repository and executor_of(tags) is not None:
+        # Board or console work: a leaf with no repository.
+        where = ""
+    elif not where:
         problems.append("Where is blank")
     else:
         unknown = [r for r in where_repos(where) if r not in repos]
@@ -278,5 +336,15 @@ def lint(
 
     if not parsed.body:
         problems.append("no body saying why, with links to what is needed")
+
+    if shapes:
+        problems.extend(
+            _shape_problems(
+                done_when=done_when,
+                where=where,
+                blocked_ids=_TASK_ID.findall(blocked_by),
+                tags=tags,
+            )
+        )
 
     return problems

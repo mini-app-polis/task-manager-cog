@@ -35,6 +35,8 @@ board:
   GROOM_DISPATCH    true to send tasks for grooming, which is paid; off
                     unless set
   GROOM_DISPATCH_LIMIT  tasks sent a sweep (default: 5)
+  GROOM_TASK_SHAPES true to hold tasks to the leaf or compound shape
+                    (lint.py); off unless set
 
 The board's template task says so in its name ("do not work") and is never
 swept. Nor are tasks from a source the sources table marks unswept: the
@@ -204,6 +206,11 @@ def auto_ready() -> bool:
     return (os.environ.get("GROOM_AUTO_READY") or "").strip().lower() == "true"
 
 
+def task_shapes() -> bool:
+    """Whether a task must be a leaf or a compound task (``GROOM_TASK_SHAPES``)."""
+    return (os.environ.get("GROOM_TASK_SHAPES") or "").strip().lower() == "true"
+
+
 def dispatch_limit() -> int:
     """How many tasks a sweep may send for grooming; 0 when sending is off."""
     if (os.environ.get("GROOM_DISPATCH") or "").strip().lower() != "true":
@@ -253,6 +260,7 @@ def assess(
             tags=task.tag_names,
             repos=repos,
             completed_by_id=completed_by_id,
+            shapes=task_shapes(),
         )
         previous = records.get(task.gid)
         if previous is not None and previous.outcome == "questions":

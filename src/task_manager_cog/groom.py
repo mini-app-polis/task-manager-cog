@@ -59,7 +59,14 @@ from .ids import next_id, task_name
 from .lint import executor_of, lint, looks_like_label, parse, task_id_of
 from .records import QUESTIONS_PREFIX, answers, fingerprint
 from .registry import load_repos
-from .sweep import Records, _api, _section_named, auto_ready, ready_section
+from .sweep import (
+    Records,
+    _api,
+    _section_named,
+    auto_ready,
+    ready_section,
+    task_shapes,
+)
 
 log = logger_mod.get_logger()
 
@@ -197,6 +204,7 @@ def apply_proposal(
             tags=groomed.tag_names,
             repos=repos_loader(),
             completed_by_id=completed_by_id,
+            shapes=task_shapes(),
         )
 
         sections = board.sections()

@@ -66,6 +66,7 @@ linter (`lint.py`) checks what can be checked without a model:
 | Blocked by | Blank, `None`, or only tasks that are done and dates (`YYYY-MM-DD`, a UTC day) that have come. A task can wait on a date alone, beside task ids, or both. Before the date it is not ready (`Blocked until <date>`) and is not sent for grooming; it moves to Ready on the first sweep on or after it. A date written any other way is a problem of its own. |
 | Tags | No `review` tag. |
 | Body | Says why, and links what is needed. |
+| Shape | With `GROOM_TASK_SHAPES=true`: a **leaf** (Where names at most one repository, and at most one executor tag; only a `cowork` or `person` task may name none) or a **compound** task (Done when opens with its children's ids, "… are done", and Blocked by lists every one of them). Off until splitting is in place, so the existing board is not judged against it first. |
 | Grooming questions | None unanswered. A task whose last grooming asked questions waits until a grooming answers them, even if its template is complete. |
 
 The sweep never touches a task whose name says "do not work" (the board's
