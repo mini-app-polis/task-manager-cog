@@ -1,3 +1,16 @@
+# [1.10.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.9.0...v1.10.0) (2026-10-23)
+
+
+### Bug Fixes
+
+* **deps:** bump miniapppolis-common-utils to 6.20.0 ([d5de831](https://github.com/mini-app-polis/task-manager-cog/commit/d5de83140c57e6bcfd9ce75bf6623c1ce44e59a8))
+* **deps:** require miniapppolis-common-utils 6.21.0 for 25-child splits ([049c45c](https://github.com/mini-app-polis/task-manager-cog/commit/049c45c5aa06a43cf174ba02f812ae2e853888cf))
+
+
+### Features
+
+* **split:** default the split cap to 25 children ([423589e](https://github.com/mini-app-polis/task-manager-cog/commit/423589e780aef052f9c8812de27a084775a8a1a6))
+
 # [1.9.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.8.0...v1.9.0) (2026-10-23)
 
 
