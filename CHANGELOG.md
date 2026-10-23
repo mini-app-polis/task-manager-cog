@@ -1,3 +1,10 @@
+## [1.6.2](https://github.com/mini-app-polis/task-manager-cog/compare/v1.6.1...v1.6.2) (2026-10-23)
+
+
+### Bug Fixes
+
+* **agent:** describe the GitHub response model fields ([ffd56d5](https://github.com/mini-app-polis/task-manager-cog/commit/ffd56d5c0949d7ca1f505d8c453239cc020bb45b))
+
 ## [1.6.1](https://github.com/mini-app-polis/task-manager-cog/compare/v1.6.0...v1.6.1) (2026-10-23)
 
 
