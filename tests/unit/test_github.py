@@ -59,7 +59,9 @@ def test_a_key_with_escaped_newlines_still_reads(
 
 
 def _app() -> github.AgentApp:
-    return github.AgentApp(client_id="Iv1.abc", private_key=PEM, http=httpx.Client())
+    app = github.AgentApp(client_id="Iv1.abc", private_key=PEM, http=httpx.Client())
+    app._sleep = lambda _seconds: None
+    return app
 
 
 def _installed(router: respx.MockRouter) -> respx.Route:
@@ -130,3 +132,36 @@ def test_dispatch_to_a_repository_without_the_app_raises() -> None:
     respx.get(f"{API}/repos/mini-app-polis/infra/installation").respond(404)
     with pytest.raises(github.GitHubError, match="not installed"):
         _app().dispatch("infra", ref="dev", inputs={})
+
+
+@respx.mock
+def test_a_transient_failure_is_tried_again() -> None:
+    respx.get(f"{API}/repos/mini-app-polis/{REPO}/installation").mock(
+        side_effect=[httpx.Response(502), httpx.Response(200, json={"id": 42})]
+    )
+    respx.post(f"{API}/app/installations/42/access_tokens").respond(
+        201, json={"token": "ghs_repo"}
+    )
+    respx.get(f"{API}/repos/mini-app-polis/{REPO}/actions/workflows/agent.yml").respond(
+        200, json={"state": "active"}
+    )
+    assert _app().has_caller(REPO)
+
+
+@respx.mock
+def test_github_unreachable_after_every_attempt_raises() -> None:
+    route = respx.get(f"{API}/repos/mini-app-polis/{REPO}/installation").mock(
+        side_effect=httpx.ConnectError("down")
+    )
+    with pytest.raises(github.GitHubError, match="down"):
+        _app().has_caller(REPO)
+    assert route.call_count == github.ATTEMPTS
+
+
+@respx.mock
+def test_an_unexpected_answer_raises() -> None:
+    respx.get(f"{API}/repos/mini-app-polis/{REPO}/installation").respond(
+        200, json={"no": "id"}
+    )
+    with pytest.raises(github.GitHubError, match="unexpected answer"):
+        _app().has_caller(REPO)

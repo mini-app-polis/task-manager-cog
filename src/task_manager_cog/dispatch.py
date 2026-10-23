@@ -91,31 +91,47 @@ SKIP_TOO_LONG = "task_too_long"
 class AgentRuns(Protocol):
     """Where agent runs are recorded: the API, or a fake in a test."""
 
-    def record_agent_run(self, payload: AgentRunCreate) -> AgentRun: ...
+    def record_agent_run(self, payload: AgentRunCreate) -> AgentRun:
+        """Record a run about to be started; a 409 means the repository is busy."""
+        ...
 
     def list_agent_runs(
         self, *, status: str | None = None, repository: str | None = None
-    ) -> list[AgentRun]: ...
+    ) -> list[AgentRun]:
+        """Runs, narrowed by status and repository."""
+        ...
 
-    def agent_spend(self) -> AgentSpend: ...
+    def agent_spend(self) -> AgentSpend:
+        """This month's runs and their known cost."""
+        ...
 
-    def fail_agent_run(self, payload: AgentRunFailure) -> AgentRun: ...
+    def fail_agent_run(self, payload: AgentRunFailure) -> AgentRun:
+        """Mark a dispatched run failed, its cost unknown."""
+        ...
 
 
 class Starter(Protocol):
     """What starts a run: the agent App, or a fake in a test."""
 
-    def has_caller(self, repo: str) -> bool: ...
+    def has_caller(self, repo: str) -> bool:
+        """Whether ``repo`` has the agent caller and the App installed."""
+        ...
 
-    def dispatch(self, repo: str, *, ref: str, inputs: dict[str, str]) -> None: ...
+    def dispatch(self, repo: str, *, ref: str, inputs: dict[str, str]) -> None:
+        """Start the caller in ``repo`` on ``ref``."""
+        ...
 
 
 class DispatchBoard(Protocol):
     """The board, as far as dispatch writes it."""
 
-    def move(self, task_gid: str, section_gid: str) -> None: ...
+    def move(self, task_gid: str, section_gid: str) -> None:
+        """Move a task to a column."""
+        ...
 
-    def comment(self, task_gid: str, text: str) -> None: ...
+    def comment(self, task_gid: str, text: str) -> None:
+        """Post a comment on a task."""
+        ...
 
 
 def _flag(name: str) -> bool:
@@ -186,6 +202,7 @@ class DispatchResult:
     spend_usd: float = 0.0
 
     def skip(self, reason: str) -> None:
+        """Count one Ready task passed over, by reason."""
         self.skipped[reason] = self.skipped.get(reason, 0) + 1
 
 
