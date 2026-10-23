@@ -142,8 +142,9 @@ and nothing dispatches from In progress.
 
 The run's result comes back through the API, and `results.py` applies it. A
 run that succeeded puts its pull request on the task's PR line and moves
-the task to Review. **Nothing here ever marks a task done:** a person
-merges the draft, confirms the change in dev, and completes the task.
+the task to Review; one that needs grooming goes back to Refining (below).
+**Nothing here ever marks a task done:** a person merges the draft,
+confirms the change in dev, and completes the task.
 
 The trigger is the hourly sweep, not Asana webhooks. Asana delivers webhook
 events at most once and recommends polling as a fallback, and this cog has
@@ -152,6 +153,25 @@ way; an hour's wait does not matter for this work.
 
 `AGENT_DRY_RUN=true` reports what would be dispatched, and the most each
 could cost, without writing anything.
+
+### Back to grooming
+
+Implementation that finds a task unclear or undetermined sends it back to
+grooming rather than guessing, including partway through. It is not a
+retry: the task reaches Ready again only through grooming.
+
+- **An agent run** changes nothing and ends as `needs_grooming` with its
+  questions. `results.py` moves the task from In progress to Refining, posts
+  the questions as one comment starting `Grooming questions:`, and records
+  the task as having questions. It is not dispatched or groomed again until
+  you answer in a comment; the next grooming reads your answers. The task
+  counts once as sent back from Ready.
+- **A cowork session** that finds a task unclear midway does the same by
+  hand: move the task to Refining, post the questions as one comment
+  starting `Grooming questions:` (numbered, one per line), and add a
+  comment saying what is already done and where (repository, branch, files,
+  whether anything is committed). The next sweep reads the task as waiting
+  on your answers.
 
 ## Sources
 
