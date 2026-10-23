@@ -1,3 +1,10 @@
+# [1.6.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.5.4...v1.6.0) (2026-10-23)
+
+
+### Features
+
+* **agent:** dispatch Ready tasks to the agent and apply its results ([fa67ccd](https://github.com/mini-app-polis/task-manager-cog/commit/fa67ccdd1a7fdd066bb27c303346989b3c38680d))
+
 ## [1.5.4](https://github.com/mini-app-polis/task-manager-cog/compare/v1.5.3...v1.5.4) (2026-10-23)
 
 
