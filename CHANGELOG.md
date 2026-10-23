@@ -1,3 +1,10 @@
+# [1.7.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.6.2...v1.7.0) (2026-10-23)
+
+
+### Features
+
+* **lint:** let Blocked by name a date the task waits for ([05cc825](https://github.com/mini-app-polis/task-manager-cog/commit/05cc825a8620a98e7993e5035cb9346af00cb80b))
+
 ## [1.6.2](https://github.com/mini-app-polis/task-manager-cog/compare/v1.6.1...v1.6.2) (2026-10-23)
 
 
