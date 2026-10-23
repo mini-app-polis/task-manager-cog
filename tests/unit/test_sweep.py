@@ -433,15 +433,70 @@ def test_tasks_not_ready_are_sent_once_up_to_the_limit(
     assert "MINI-1 · Ready idea" in job.board
     assert store.stored["2"].groomed_fingerprint == fingerprint(BOARD_TASKS[1])
 
-    # The next sweep sends the next one, and never the first again.
+    # The next sweep sends the next one, and never the first again. MINI-6
+    # only waits on its blocker, so it is never sent.
     _sweep_sending(store, board, monkeypatch, "1")
     assert [j.task.name for j in store.jobs] == [
         "MINI-2 · Vague idea",
-        "MINI-6 · Waits on MINI-7",
+        "MINI-7 · Open blocker",
     ]
     _sweep_sending(store, board, monkeypatch, "5")
     _sweep_sending(store, board, monkeypatch, "5")
-    assert len(store.jobs) == 3
+    assert len(store.jobs) == 2
+
+
+def test_a_task_only_waiting_on_a_blocker_is_never_sent() -> None:
+    waiting = _task(
+        "6",
+        "MINI-6 · Waits on MINI-7",
+        notes=READY.replace("Blocked by:", "Blocked by: MINI-7"),
+    )
+    blocker = _task("7", "MINI-7 · Open blocker", section="In progress")
+    sent: list[GroomingJobRequest] = []
+    result = sweep(
+        FakeBoard([waiting, blocker]),
+        repos=REPOS,
+        move=True,
+        send=lambda job: sent.append(job) or True,
+        limit=5,
+    )
+    assert sent == []
+    assert result.blocked == 1
+    assert result.waiting == 0
+    assert result.moved == []
+
+
+def test_a_blocked_task_with_another_problem_is_still_sent() -> None:
+    task = _task(
+        "6",
+        "MINI-6 · Waits on MINI-7",
+        notes=READY.replace("Blocked by:", "Blocked by: MINI-7").replace(
+            "Effort: S", "Effort:"
+        ),
+    )
+    blocker = _task("7", "MINI-7 · Open blocker", section="In progress")
+    sent: list[GroomingJobRequest] = []
+    result = sweep(
+        FakeBoard([task, blocker]),
+        repos=REPOS,
+        move=True,
+        send=lambda job: sent.append(job) or True,
+        limit=5,
+    )
+    assert [j.task.name for j in sent] == ["MINI-6 · Waits on MINI-7"]
+    assert result.blocked == 0
+
+
+def test_a_blocked_task_moves_to_ready_once_its_blocker_is_done() -> None:
+    waiting = _task(
+        "6",
+        "MINI-6 · Waits on MINI-7",
+        notes=READY.replace("Blocked by:", "Blocked by: MINI-7"),
+    )
+    blocker = _task("7", "MINI-7 · Blocker", section="In progress", completed=True)
+    board = FakeBoard([waiting, blocker])
+    result = sweep(board, repos=REPOS, move=True)
+    assert [t.name for t in result.moved] == ["MINI-6 · Waits on MINI-7"]
 
 
 def test_a_refused_job_is_sent_again_next_sweep(

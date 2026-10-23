@@ -19,6 +19,10 @@ for grooming, is sent to task-groomer-cog through the API: at most
 queue and is applied by groom.py. A job the API refuses is not marked as
 sent, so the next sweep sends it again.
 
+A task whose only problems are blockers that are not done is never sent:
+grooming cannot finish another task. It waits, and moves to Ready on the
+first sweep after its blockers are done.
+
 Moving is a setting, ``GROOM_AUTO_READY``, off unless set, so the sweep can
 run and say what it would move before it moves anything. The columns are
 named, not configured by gid, so they read the same in Doppler as on the
@@ -65,7 +69,7 @@ from mini_app_polis.environment import Effect, effect_enabled
 from mini_app_polis.pipeline_status import run_report
 
 from .board import Board
-from .lint import lint, mentioned_ids, task_id_of
+from .lint import lint, mentioned_ids, only_blocked, task_id_of
 from .records import answers, changed, fingerprint, needs_grooming, next_record
 from .registry import load_repos
 from .sources import UNSWEPT_PREFIXES
@@ -146,6 +150,8 @@ class SweepResult:
     #: Tasks that needed grooming and were not sent: over the limit, off,
     #: or refused.
     waiting: int = 0
+    #: Tasks not ready only because a blocker is not done: never sent.
+    blocked: int = 0
 
     @property
     def ready(self) -> list[Verdict]:
@@ -348,7 +354,9 @@ def sweep(
             log.info("sweep: %s is ready (GROOM_AUTO_READY is off)", task.name)
 
         sent = False
-        if not verdict.ready and needs_grooming(task, previous, verdict.replies):
+        if only_blocked(verdict.problems):
+            result.blocked += 1
+        elif not verdict.ready and needs_grooming(task, previous, verdict.replies):
             if send is not None and len(result.sent) < limit:
                 sent = send(grooming_job(verdict, open_names, done_by_id))
             if sent:
@@ -418,6 +426,7 @@ def run_sweep(
         report.count("changed", sum(v.changed for v in result.verdicts))
         report.count("records_written", len(result.writes))
         report.count("waiting_for_grooming", result.waiting)
+        report.count("waiting_on_blockers", result.blocked)
         for task in result.sent:
             report.updated(
                 "task sent for grooming", task.name, link=board.url(task.gid)

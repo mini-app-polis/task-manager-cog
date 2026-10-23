@@ -32,6 +32,9 @@ from .ids import SEPARATOR
 #: its subtasks.
 EFFORTS: frozenset[str] = frozenset({"S", "M", "L"})
 
+#: Ends the problem for a blocker that is on the board and not done yet.
+NOT_DONE = ", which is not done"
+
 #: What an empty ``Blocked by`` or ``Constraints`` may say instead of nothing.
 NONE_WORDS: frozenset[str] = frozenset({"none", "-", "\u2014", "\u2013", "n/a"})
 
@@ -143,6 +146,16 @@ def where_repos(where: str) -> list[str]:
     return repos
 
 
+def only_blocked(problems: Collection[str]) -> bool:
+    """Whether every problem is a blocker that is on the board and not done.
+
+    Such a task is complete but waiting: grooming cannot finish its blocker.
+    """
+    return bool(problems) and all(
+        p.startswith("Blocked by ") and p.endswith(NOT_DONE) for p in problems
+    )
+
+
 def lint(
     *,
     name: str,
@@ -206,7 +219,7 @@ def lint(
             if task_id not in completed_by_id:
                 problems.append(f"Blocked by {task_id}, which is not on the board")
             elif not completed_by_id[task_id]:
-                problems.append(f"Blocked by {task_id}, which is not done")
+                problems.append(f"Blocked by {task_id}{NOT_DONE}")
 
     if not parsed.body:
         problems.append("no body saying why, with links to what is needed")
