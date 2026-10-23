@@ -21,6 +21,7 @@ everything a task is missing.
 
 from __future__ import annotations
 
+import datetime as dt
 import re
 from collections.abc import Collection, Mapping
 from dataclasses import dataclass
@@ -35,12 +36,22 @@ EFFORTS: frozenset[str] = frozenset({"S", "M", "L"})
 #: Ends the problem for a blocker that is on the board and not done yet.
 NOT_DONE = ", which is not done"
 
+#: Starts the problem for a task that waits on a date still ahead.
+BLOCKED_UNTIL = "Blocked until "
+
 #: What an empty ``Blocked by`` or ``Constraints`` may say instead of nothing.
 NONE_WORDS: frozenset[str] = frozenset({"none", "-", "\u2014", "\u2013", "n/a"})
 
 #: A task id as the board names them: a prefixed number (``MINI-12``) or a
 #: repository issue (``infra#4``).
 _TASK_ID = re.compile(r"\b(?:[A-Z][A-Z0-9]*-\d+|[a-z0-9][a-z0-9._-]*#\d+)\b")
+
+#: A date in ``Blocked by``: the task waits until that UTC day.
+_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
+
+#: Anything in ``Blocked by`` written as a date, well formed or not
+#: (``2026-11-2``, ``2026-13-01``, ``11/02/2026``).
+_DATE_LIKE = re.compile(r"\b\d{4}-\d{1,2}-\d{1,2}\b|\b\d{1,2}/\d{1,2}/\d{2,4}\b")
 
 #: A placeholder in ``Done when``: an outcome cannot be still to be decided.
 #: A question mark ends a word or the line; one inside a URL's query does not.
@@ -147,13 +158,38 @@ def where_repos(where: str) -> list[str]:
 
 
 def only_blocked(problems: Collection[str]) -> bool:
-    """Whether every problem is a blocker that is on the board and not done.
+    """Whether every problem is a blocker that is on the board and not done,
+    or a date still ahead.
 
-    Such a task is complete but waiting: grooming cannot finish its blocker.
+    Such a task is complete but waiting: grooming cannot finish its blocker
+    or bring its date closer.
     """
     return bool(problems) and all(
-        p.startswith("Blocked by ") and p.endswith(NOT_DONE) for p in problems
+        (p.startswith("Blocked by ") and p.endswith(NOT_DONE))
+        or p.startswith(BLOCKED_UNTIL)
+        for p in problems
     )
+
+
+def _blocking_dates(blocked_by: str, today: dt.date) -> tuple[list[str], int]:
+    """The problems the dates in ``Blocked by`` raise, and how many it names.
+
+    A date ahead of ``today`` blocks; one on or before it no longer does. A
+    date that is not ``YYYY-MM-DD``, or is no real day, is a problem of its
+    own.
+    """
+    problems: list[str] = []
+    tokens = _DATE_LIKE.findall(blocked_by)
+    for token in tokens:
+        try:
+            day = dt.date.fromisoformat(token) if _DATE.fullmatch(token) else None
+        except ValueError:
+            day = None
+        if day is None:
+            problems.append(f"Blocked by {token}, which is not a date (YYYY-MM-DD)")
+        elif day > today:
+            problems.append(f"{BLOCKED_UNTIL}{day.isoformat()}")
+    return problems, len(tokens)
 
 
 def lint(
@@ -163,11 +199,13 @@ def lint(
     tags: Collection[str],
     repos: Collection[str],
     completed_by_id: Mapping[str, bool],
+    today: dt.date | None = None,
 ) -> list[str]:
     """Every rule the task fails. Empty means ready.
 
     ``repos`` is the fleet's registry (ecosystem.yaml); ``completed_by_id``
-    maps every task id on the board to whether that task is done.
+    maps every task id on the board to whether that task is done. ``today``
+    is the UTC day a date in ``Blocked by`` is judged against (default: now).
     """
     problems: list[str] = []
 
@@ -213,13 +251,17 @@ def lint(
     blocked_by = fields.get("Blocked by", "")
     if blocked_by and blocked_by.lower() not in NONE_WORDS:
         ids = _TASK_ID.findall(blocked_by)
-        if not ids:
-            problems.append("Blocked by names no task")
+        date_problems, dates = _blocking_dates(
+            blocked_by, today or dt.datetime.now(dt.UTC).date()
+        )
+        if not ids and not dates:
+            problems.append("Blocked by names no task or date")
         for task_id in ids:
             if task_id not in completed_by_id:
                 problems.append(f"Blocked by {task_id}, which is not on the board")
             elif not completed_by_id[task_id]:
                 problems.append(f"Blocked by {task_id}{NOT_DONE}")
+        problems.extend(date_problems)
 
     if not parsed.body:
         problems.append("no body saying why, with links to what is needed")

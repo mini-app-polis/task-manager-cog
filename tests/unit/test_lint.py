@@ -1,8 +1,16 @@
 from __future__ import annotations
 
+import datetime as dt
+
 import pytest
 
-from task_manager_cog.lint import lint, only_blocked, parse, task_id_of, where_repos
+from task_manager_cog.lint import (
+    lint,
+    only_blocked,
+    parse,
+    task_id_of,
+    where_repos,
+)
 
 REPOS = frozenset({"api-kaianolevine-com", "task-manager-cog", "infra"})
 
@@ -168,6 +176,58 @@ def test_blocked_by_an_open_task_is_not_ready() -> None:
     assert problems == ["Blocked by MINI-21, which is not done"]
 
 
+_TODAY = dt.date(2026, 10, 23)
+
+
+def _lint_on(blocked_by: str, completed: dict[str, bool] | None = None) -> list[str]:
+    return lint(
+        name="MINI-77 · Verify the first monthly db-drill run",
+        notes=_with("Blocked by", blocked_by),
+        tags=(),
+        repos=REPOS,
+        completed_by_id={"MINI-21": True} if completed is None else completed,
+        today=_TODAY,
+    )
+
+
+def test_a_date_ahead_blocks_until_it_comes() -> None:
+    assert _lint_on("2026-11-02") == ["Blocked until 2026-11-02"]
+
+
+@pytest.mark.parametrize("day", ["2026-10-23", "2026-10-01"])
+def test_a_date_that_has_come_no_longer_blocks(day: str) -> None:
+    assert _lint_on(day) == []
+
+
+def test_a_date_beside_a_task_id_blocks_with_it() -> None:
+    assert _lint_on("MINI-21, 2026-11-02") == ["Blocked until 2026-11-02"]
+    assert _lint_on("MINI-21, 2026-11-02", completed={"MINI-21": False}) == [
+        "Blocked by MINI-21, which is not done",
+        "Blocked until 2026-11-02",
+    ]
+    assert _lint_on("MINI-21 and 2026-10-01") == []
+
+
+@pytest.mark.parametrize("day", ["2026-11-2", "2026-13-01", "2026-02-30", "11/02/2026"])
+def test_a_malformed_date_is_a_problem_of_its_own(day: str) -> None:
+    assert _lint_on(day) == [f"Blocked by {day}, which is not a date (YYYY-MM-DD)"]
+    assert not only_blocked(_lint_on(day))
+
+
+def test_blocked_by_naming_neither_a_task_nor_a_date_is_not_ready() -> None:
+    assert _lint_on("the next drill") == ["Blocked by names no task or date"]
+
+
+def test_a_date_ahead_counts_as_waiting() -> None:
+    assert only_blocked(["Blocked until 2026-11-02"])
+    assert only_blocked(
+        ["Blocked by MINI-21, which is not done", "Blocked until 2026-11-02"]
+    )
+    assert not only_blocked(
+        ["Blocked until 2026-11-02", "Effort is blank, not S, M or L"]
+    )
+
+
 def test_only_blocked_is_true_only_when_every_problem_is_an_open_blocker() -> None:
     assert only_blocked(["Blocked by MINI-21, which is not done"])
     assert only_blocked(
@@ -193,7 +253,7 @@ def test_blocked_by_nothing_is_ready(value: str) -> None:
 
 
 def test_blocked_by_text_with_no_task_is_not_ready() -> None:
-    assert "Blocked by names no task" in _lint(
+    assert "Blocked by names no task or date" in _lint(
         notes=_with("Blocked by", "the Railway incident")
     )
 
