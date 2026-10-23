@@ -1,3 +1,19 @@
+# [1.8.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.7.0...v1.8.0) (2026-10-23)
+
+
+### Bug Fixes
+
+* **deps:** bump miniapppolis-common-utils to 6.18.0 ([12dc287](https://github.com/mini-app-polis/task-manager-cog/commit/12dc2878cba05d861f56f0823c1cb60a93047557))
+* **deps:** bump miniapppolis-common-utils to 6.19.0 ([c3f939f](https://github.com/mini-app-polis/task-manager-cog/commit/c3f939f0a98ad3d46de12dc6ef5b278c12a27073))
+
+
+### Features
+
+* **dispatch:** leave cowork and person tasks to their executors, and apply a proposed executor as a tag ([828964f](https://github.com/mini-app-polis/task-manager-cog/commit/828964f07b3a0300f96e9173b5e3fefc0eb5c54e))
+* **groom:** create a split's child tasks and rewrite the task as their compound, behind a dry run and a cap ([e974892](https://github.com/mini-app-polis/task-manager-cog/commit/e974892f7597248477e8d12646863a4074f110e3))
+* **lint:** hold tasks to a leaf or compound shape behind GROOM_TASK_SHAPES ([fc65915](https://github.com/mini-app-polis/task-manager-cog/commit/fc65915be899664d80bafd7cd411cc02124a436d))
+* **results:** send a task back to Refining when its agent run needs grooming ([627df01](https://github.com/mini-app-polis/task-manager-cog/commit/627df01b2c749bd9e97369d761cdd1159395d761))
+
 # [1.7.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.6.2...v1.7.0) (2026-10-23)
 
 
