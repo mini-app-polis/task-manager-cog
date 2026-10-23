@@ -26,7 +26,7 @@ from typing import Any, TypeVar
 import httpx
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 API = "https://api.github.com"
 TIMEOUT_SECONDS = 20.0
@@ -48,19 +48,19 @@ _TRANSIENT = frozenset({429, 500, 502, 503, 504})
 class Installation(BaseModel):
     """The agent App's installation on a repository, as far as it is read."""
 
-    id: int
+    id: int = Field(description="The installation's id, to mint its token.")
 
 
 class InstallationToken(BaseModel):
     """A token minted for one installation."""
 
-    token: str
+    token: str = Field(description="The installation token, valid for an hour.")
 
 
 class Workflow(BaseModel):
     """A repository's workflow, as far as it is read."""
 
-    state: str
+    state: str = Field(description="active, or why the workflow is disabled.")
 
 
 _M = TypeVar("_M", bound=BaseModel)
