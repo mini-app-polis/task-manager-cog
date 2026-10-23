@@ -50,6 +50,7 @@ from mini_app_polis.asana import AsanaTaskRecord
 from mini_app_polis.environment import Effect, effect_enabled
 from mini_app_polis.pipeline_status import RunReport, run_report
 
+from ._version import __version__
 from .board import Board
 from .compose import TEMPLATE_FIELDS
 from .dispatch import in_progress_section
@@ -151,7 +152,7 @@ def apply_result(
     records_factory: Callable[[], Records] = _api,
 ) -> None:
     """Apply one run's result to its task, once. Raises to be redelivered."""
-    with run_report(FLOW_NAME, repo=REPO, run_id=run_id) as report:
+    with run_report(FLOW_NAME, repo=REPO, run_id=run_id, version=__version__) as report:
         if run.cost_usd is not None:
             report.count("cost_usd", f"{run.cost_usd:.4f}")
         report.count("outcome", run.status)
