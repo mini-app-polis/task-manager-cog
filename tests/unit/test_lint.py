@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from task_manager_cog.lint import lint, parse, task_id_of, where_repos
+from task_manager_cog.lint import lint, only_blocked, parse, task_id_of, where_repos
 
 REPOS = frozenset({"api-kaianolevine-com", "task-manager-cog", "infra"})
 
@@ -166,6 +166,21 @@ def test_pr_belongs_to_whoever_works_it() -> None:
 def test_blocked_by_an_open_task_is_not_ready() -> None:
     problems = _lint(completed={"MINI-21": False})
     assert problems == ["Blocked by MINI-21, which is not done"]
+
+
+def test_only_blocked_is_true_only_when_every_problem_is_an_open_blocker() -> None:
+    assert only_blocked(["Blocked by MINI-21, which is not done"])
+    assert only_blocked(
+        [
+            "Blocked by MINI-21, which is not done",
+            "Blocked by MINI-22, which is not done",
+        ]
+    )
+    assert not only_blocked([])
+    assert not only_blocked(["Blocked by MINI-21, which is not on the board"])
+    assert not only_blocked(
+        ["Blocked by MINI-21, which is not done", "Effort is blank, not S, M or L"]
+    )
 
 
 def test_blocked_by_an_unknown_task_is_not_ready() -> None:
