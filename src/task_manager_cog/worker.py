@@ -48,20 +48,33 @@ someone can see it, rather than being guessed at or dropped.
 
 from __future__ import annotations
 
-import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
 from mini_app_polis import load_secrets, timing
 from mini_app_polis import logger as logger_mod
-from mini_app_polis.api.contract import AgentRun, GroomingProposal, TaskCreateRequest
+from mini_app_polis.api.contract import (
+    AgentRun,
+    GroomingProposal,
+    TaskAgentResultMessage,
+    TaskCreateMessage,
+    TaskCreateRequest,
+    TaskGroomProposalMessage,
+    TaskSweepMessage,
+)
 from mini_app_polis.environment import Effect, effect_enabled
+from mini_app_polis.lambda_worker import (
+    UnprocessableMessage,
+    all_failed,
+    deadline,
+    process_records,
+)
+from mini_app_polis.lambda_worker import parse_message as parse_queue_message
 from mini_app_polis.pipeline_status import post_run_finding, run_report
 from mini_app_polis.sentry import init_sentry
-from pydantic import ValidationError
 
-from ._deadline import deadline
+from ._version import __version__
 from .board import Board
 from .compose import compose
 from .groom import apply_proposal
@@ -75,21 +88,13 @@ log = logger_mod.get_logger()
 REPO = "task-manager-cog"
 FLOW_NAME = "create-task"
 
-#: Must match api-kaianolevine-com's task dispatch. A mismatch is a message
-#: this consumer refuses rather than misreads.
-MESSAGE_VERSION = 1
-TYPE_CREATE = "task.create"
-TYPE_SWEEP = "task.sweep"
-TYPE_PROPOSAL = "task.groom-proposal"
-TYPE_AGENT_RESULT = "task.agent-result"
+#: How long before the function's timeout a run is stopped, leaving room for
+#: the run report and the handler's return.
+DEADLINE_MARGIN_SECONDS = 20
 
 # At import, not per invocation: a Lambda container is reused across
 # invocations, so this runs once per cold start.
 init_sentry(REPO)
-
-
-class UnprocessableMessage(RuntimeError):
-    """The message cannot be handled by this consumer, ever."""
 
 
 @dataclass(frozen=True)
@@ -101,40 +106,21 @@ def parse_message(
     body: str,
 ) -> TaskCreateRequest | SweepJob | GroomingProposal | AgentRun:
     """The job a message carries. Raises UnprocessableMessage otherwise."""
-    try:
-        message = json.loads(body)
-    except ValueError as exc:
-        raise UnprocessableMessage(f"body is not JSON: {exc}") from exc
-    if not isinstance(message, dict):
-        raise UnprocessableMessage("body is not an object")
-    if message.get("version") != MESSAGE_VERSION:
-        raise UnprocessableMessage(
-            f"message version {message.get('version')!r}, "
-            f"this consumer speaks {MESSAGE_VERSION}"
-        )
-    if message.get("type") == TYPE_SWEEP:
+    message = parse_queue_message(
+        body,
+        TaskCreateMessage,
+        TaskSweepMessage,
+        TaskGroomProposalMessage,
+        TaskAgentResultMessage,
+    )
+    if isinstance(message, TaskSweepMessage):
         return SweepJob()
-    if message.get("type") == TYPE_PROPOSAL:
-        try:
-            return GroomingProposal.model_validate(message.get("payload"))
-        except ValidationError as exc:
+    if isinstance(message, TaskCreateMessage):
+        if message.payload.source not in SOURCES:
             raise UnprocessableMessage(
-                f"payload is not a grooming proposal: {exc}"
-            ) from exc
-    if message.get("type") == TYPE_AGENT_RESULT:
-        try:
-            return AgentRun.model_validate(message.get("payload"))
-        except ValidationError as exc:
-            raise UnprocessableMessage(f"payload is not an agent run: {exc}") from exc
-    if message.get("type") != TYPE_CREATE:
-        raise UnprocessableMessage(f"unknown message type {message.get('type')!r}")
-    try:
-        request = TaskCreateRequest.model_validate(message.get("payload"))
-    except ValidationError as exc:
-        raise UnprocessableMessage(f"payload is not a task request: {exc}") from exc
-    if request.source not in SOURCES:
-        raise UnprocessableMessage(f"no handling for source {request.source!r}")
-    return request
+                f"no handling for source {message.payload.source!r}"
+            )
+    return message.payload
 
 
 def create_task(
@@ -145,7 +131,7 @@ def create_task(
 ) -> None:
     """Put the requested task on the board, once. Raises to be redelivered."""
     source = SOURCES[request.source]
-    with run_report(FLOW_NAME, repo=REPO, run_id=run_id) as report:
+    with run_report(FLOW_NAME, repo=REPO, run_id=run_id, version=__version__) as report:
         task = compose(request.draft)
 
         if not effect_enabled(Effect.ASANA):
@@ -217,6 +203,7 @@ def _report_unprocessable(exc: BaseException, run_id: str) -> None:
             repo=REPO,
             source="queue_consumer",
             run_id=run_id,
+            version=__version__,
         )
     except Exception:  # noqa: BLE001 — the notification is not the job
         log.exception("worker: could not report the unprocessable message")
@@ -243,48 +230,41 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     Never raises: an exception escaping here fails the whole batch, and
     reporting per record is correct at every batch size.
     """
-    records = event.get("Records", []) if isinstance(event, dict) else []
-
     # Settings first, so a credential rotated in Doppler applies now rather
     # than at the next cold start. Without them nothing can run.
     try:
         load_secrets(refresh=True)
     except Exception:  # noqa: BLE001 — nothing can run without its settings
         log.exception("worker: could not refresh settings from SSM")
-        return {
-            "batchItemFailures": [
-                {"itemIdentifier": str(r.get("messageId") or "")} for r in records
-            ]
-        }
+        return all_failed(event)
 
-    failures: list[dict[str, str]] = []
-    for record in records:
+    def handle(record: dict[str, Any]) -> None:
         message_id = str(record.get("messageId") or "")
         body = record.get("body") or ""
-        attempt = (record.get("attributes") or {}).get("ApproximateReceiveCount", "?")
-
         with timing.invocation(
-            cog="task-manager", source=_source_label(body), attempt=attempt
+            cog="task-manager", source=_source_label(body), attempt=_attempt(record)
         ) as timed:
             try:
-                with deadline(context):
+                with deadline(context, margin_seconds=DEADLINE_MARGIN_SECONDS):
                     process_message(body, run_id=message_id)
-            except UnprocessableMessage as exc:
+            except UnprocessableMessage:
                 timed.label(outcome="unprocessable")
-                log.error(
-                    "worker: unprocessable message (attempt %s): %s", attempt, exc
-                )
-                # Once, on the first receive; the dead-letter queue has an
-                # alarm of its own for where it ends up.
-                if attempt in ("1", "?"):
-                    _report_unprocessable(exc, message_id)
-                failures.append({"itemIdentifier": message_id})
-            except Exception:  # noqa: BLE001 — every failure is a retry
-                timed.label(outcome="failed")
+                raise
+            except BaseException:
                 # Already reported by the run report on its way out.
-                log.exception("worker: run failed (attempt %s)", attempt)
-                failures.append({"itemIdentifier": message_id})
-            else:
-                timed.label(outcome="ok")
+                timed.label(outcome="failed")
+                raise
+            timed.label(outcome="ok")
 
-    return {"batchItemFailures": failures}
+    def on_unprocessable(exc: UnprocessableMessage, record: dict[str, Any]) -> None:
+        # Once, on the first receive; the dead-letter queue has an alarm of
+        # its own for where it ends up.
+        if _attempt(record) in ("1", "?"):
+            _report_unprocessable(exc, str(record.get("messageId") or ""))
+
+    return process_records(event, handle, on_unprocessable=on_unprocessable)
+
+
+def _attempt(record: dict[str, Any]) -> str:
+    """Which receive of this message this is, or "?" when unknown."""
+    return str((record.get("attributes") or {}).get("ApproximateReceiveCount", "?"))

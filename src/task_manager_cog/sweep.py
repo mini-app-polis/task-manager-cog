@@ -79,6 +79,7 @@ from mini_app_polis.environment import Effect, effect_enabled
 from mini_app_polis.pipeline_status import run_report
 
 from . import dispatch as agent
+from ._version import __version__
 from .board import Board
 from .github import AgentApp
 from .lint import lint, mentioned_ids, only_blocked, task_id_of
@@ -427,7 +428,7 @@ def run_sweep(
     starter_factory: Callable[[], agent.Starter] = AgentApp.from_env,
 ) -> None:
     """One scheduled sweep, with its run report. Raises to be redelivered."""
-    with run_report(FLOW_NAME, repo=REPO, run_id=run_id) as report:
+    with run_report(FLOW_NAME, repo=REPO, run_id=run_id, version=__version__) as report:
         if not effect_enabled(Effect.ASANA):
             # One board, and no development copy of it.
             log.info("sweep: board writes are off here; nothing swept")

@@ -57,6 +57,7 @@ from mini_app_polis.asana import AsanaTaskRecord, escape_rich_text, rich_text_bo
 from mini_app_polis.environment import Effect, effect_enabled
 from mini_app_polis.pipeline_status import run_report
 
+from ._version import __version__
 from .board import Board
 from .compose import REVIEW_TAG, TEMPLATE_FIELDS
 from .ids import next_id, task_name
@@ -165,7 +166,7 @@ def apply_proposal(
     repos_loader: Callable[[], Collection[str]] = load_repos,
 ) -> None:
     """Apply one proposal to the board, once. Raises to be redelivered."""
-    with run_report(FLOW_NAME, repo=REPO, run_id=run_id) as report:
+    with run_report(FLOW_NAME, repo=REPO, run_id=run_id, version=__version__) as report:
         if not effect_enabled(Effect.ASANA):
             log.info("groom: board writes are off here; not applied")
             report.note("board writes off outside production")

@@ -264,7 +264,6 @@ src/task_manager_cog/
   dispatch.py   dispatching an agent for each Ready task it can take
   github.py     the agent GitHub App: is there a caller, start it
   results.py    applying an agent run's result to the board
-  _deadline.py  stop a run before the function timeout
 ```
 
 ## Running locally (DOC-013)

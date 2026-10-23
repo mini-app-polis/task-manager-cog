@@ -70,7 +70,7 @@ def _run(body: str, board: FakeBoard) -> None:
         (json.dumps({"type": "task.update", "version": 1}), "message type"),
         (
             json.dumps({"type": "task.create", "version": 1, "payload": {}}),
-            "not a task request",
+            "not a valid task.create",
         ),
     ],
 )
@@ -118,7 +118,9 @@ def test_a_proposal_message_is_applied(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_a_malformed_proposal_is_refused() -> None:
     body = json.dumps({"type": "task.groom-proposal", "version": 1, "payload": {}})
-    with pytest.raises(worker.UnprocessableMessage, match="grooming proposal"):
+    with pytest.raises(
+        worker.UnprocessableMessage, match="not a valid task.groom-proposal"
+    ):
         worker.parse_message(body)
 
 
@@ -302,7 +304,9 @@ def test_an_agent_result_is_read_as_an_agent_run() -> None:
 
 
 def test_an_unreadable_agent_result_is_refused() -> None:
-    with pytest.raises(worker.UnprocessableMessage, match="not an agent run"):
+    with pytest.raises(
+        worker.UnprocessableMessage, match="not a valid task.agent-result"
+    ):
         worker.parse_message(_agent_result(status="maybe"))
 
 
