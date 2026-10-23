@@ -221,6 +221,19 @@ retry: the task reaches Ready again only through grooming.
   whether anything is committed). The next sweep reads the task as waiting
   on your answers.
 
+The other way round, a cowork session that grooms a task by hand records
+it, so its open questions are cleared and the sweep does not send it to
+the paid groomer:
+
+```bash
+doppler run --config prd -- uv run python -m task_manager_cog.groomed 1219828105613597
+```
+
+It lints each task as the sweep does and writes its grooming record with
+the task's current content as groomed; it never writes the board.
+`--dry-run` prints what it would record. A gid that is not an open task
+is refused.
+
 ## Sources
 
 | Source         | Id                  | Minted here |
@@ -243,6 +256,7 @@ src/task_manager_cog/
   board.py      the Asana project, and the only Asana calls
   sweep.py      the hourly sweep: lint the board, move what is ready
   split.py      applying a split: the children, then the compound task
+  groomed.py    recording tasks groomed by hand in a working session
   lint.py       the definition of ready
   registry.py   the fleet's repositories, from ecosystem.yaml
   records.py    grooming records: fingerprints, verdicts, sent back from Ready
