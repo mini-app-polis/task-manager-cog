@@ -70,6 +70,8 @@ class FakeBoard:
     comments_: dict[str, list[str]] = field(default_factory=dict)
     untagged: list[tuple[str, str]] = field(default_factory=list)
     tagged: list[tuple[str, str]] = field(default_factory=list)
+    created: list[tuple[str, str]] = field(default_factory=list)
+    by_external_id: dict[str, str] = field(default_factory=dict)
 
     def sections(self) -> list[AsanaSection]:
         return self.sections_
@@ -115,6 +117,27 @@ class FakeBoard:
 
     def comment(self, task_gid: str, text: str) -> None:
         self.comments_.setdefault(task_gid, []).append(text)
+
+    def find(self, external_id: str) -> str | None:
+        return self.by_external_id.get(external_id)
+
+    def create(self, name: str, task, *, external_id: str) -> str:
+        gid = f"9{len(self.created) + 1}"
+        text = task.html_notes.removeprefix("<body>").removesuffix("</body>")
+        self.records.append(
+            AsanaTaskRecord(
+                gid=gid,
+                name=name,
+                notes=html.unescape(text),
+                completed=False,
+                section_gid="s-ideas",
+                section_name="Ideas",
+                tag_names=tuple(task.tag_names),
+            )
+        )
+        self.created.append((name, external_id))
+        self.by_external_id[external_id] = gid
+        return gid
 
     def comments(self, task_gid: str) -> list[str]:
         return list(self.comments_.get(task_gid, []))

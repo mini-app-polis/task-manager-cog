@@ -129,6 +129,33 @@ it was made for:
 A groomed task is not sent again until someone changes it, so a task
 waiting on you costs nothing.
 
+### Splits
+
+A proposal with children (from a groomer with splitting on) divides its
+task, and `split.py` applies it:
+
+- Each child is created as a leaf in the template, with the next `MINI-`
+  id, its executor tag, and Blocked by naming the earlier children it waits
+  on by id, then any task or date the proposal gave it. It is recorded as
+  groomed, so the sweep moves it to Ready if it passes rather than sending
+  it to be groomed again.
+- The task becomes their compound task: Done when "`<children>` are done",
+  Blocked by every child, Where the children's repositories, Constraints
+  "A compound task: no work of its own.", Effort its largest child's. It
+  waits in Blocked (`BLOCKED_SECTION`) until they are done.
+- **Dry run first.** Unless `GROOM_SPLIT_DRY_RUN=false`, nothing is
+  created: the children are posted on the task as one comment and named in
+  the run report. The task is held until it changes, so once dry run is
+  off, edit a task that was reported to have it split for real.
+- **A cap.** A split with more children than `GROOM_SPLIT_MAX_CHILDREN`
+  (default 5) is reported the same way and not applied.
+- **Once.** Each child's external id is its parent, the content the split
+  was made for, and its position, so a redelivered proposal creates no
+  second set, even one cut short partway.
+
+The shape check (`GROOM_TASK_SHAPES`) and the groomer's splitting
+(`GROOMER_SPLIT` in task-groomer-cog) are turned on together with this.
+
 ## Agent dispatch
 
 An untagged task in Ready is meant for an agent: a headless Claude Code run in
@@ -215,6 +242,7 @@ src/task_manager_cog/
   sources.py    which sources mint and with what prefix
   board.py      the Asana project, and the only Asana calls
   sweep.py      the hourly sweep: lint the board, move what is ready
+  split.py      applying a split: the children, then the compound task
   lint.py       the definition of ready
   registry.py   the fleet's repositories, from ecosystem.yaml
   records.py    grooming records: fingerprints, verdicts, sent back from Ready

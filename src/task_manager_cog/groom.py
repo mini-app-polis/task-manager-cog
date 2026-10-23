@@ -21,6 +21,10 @@ groomed twice keeps what its author first wrote. The ``review`` tag comes
 off: grooming is the review. A proposed executor goes on as its tag, unless
 the task already has one: the tag a task carries is never replaced.
 
+**A split.** A proposal with children divides its task: split.py creates
+them and rewrites the task as their compound task, behind a dry run and a
+cap.
+
 **Where it goes.** The task is linted again as it now reads.
 
 - The proposal has questions: they are posted as one comment starting
@@ -181,6 +185,21 @@ def apply_proposal(
             # Changed since it was sent: the next sweep sends it again.
             log.info("groom: %s changed since it was sent; not applied", task.name)
             report.note("task changed since it was sent", task.name)
+            return
+
+        if proposal.children:
+            # Imported here: split.py builds on this module's helpers.
+            from .split import apply_split
+
+            apply_split(
+                proposal,
+                task,
+                board=board,
+                store=store,
+                previous=previous,
+                repos=repos_loader(),
+                report=report,
+            )
             return
 
         names = board.names()
