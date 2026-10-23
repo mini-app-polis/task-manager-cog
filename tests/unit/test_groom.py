@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import datetime as dt
 
 import pytest
@@ -180,3 +181,33 @@ def test_outside_production_nothing_is_applied(monkeypatch: pytest.MonkeyPatch) 
         raise AssertionError("the board must not be read")
 
     apply_proposal(_proposal(), run_id="r", board_factory=no_board)
+
+
+@pytest.mark.parametrize("executor", ["cowork", "person"])
+def test_a_proposed_executor_goes_on_as_a_tag(
+    production, _no_outbound_reports, executor: str
+) -> None:
+    board = FakeBoard([VAGUE])
+    store = FakeRecords()
+    _apply(_proposal(executor=executor), board, store)
+
+    assert board.tagged == [("7", executor)]
+    task = board.get("7")
+    assert task is not None and executor in task.tag_names
+    # The record is of the task as tagged, so the tag is not a later change.
+    assert store.stored["7"].fingerprint == fingerprint(task)
+
+
+def test_a_task_already_tagged_keeps_its_executor(
+    production, _no_outbound_reports
+) -> None:
+    tagged = dataclasses.replace(VAGUE, tag_names=("cowork",))
+    board = FakeBoard([tagged])
+    _apply(_proposal(tagged, executor="person"), board, FakeRecords())
+    assert board.tagged == []
+
+
+def test_no_executor_means_no_tag(production, _no_outbound_reports) -> None:
+    board = FakeBoard([VAGUE])
+    _apply(_proposal(), board, FakeRecords())
+    assert board.tagged == []

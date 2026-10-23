@@ -18,7 +18,8 @@ proposal, keeping the task's own value for any part the proposal left out,
 and its PR line. The proposal's body follows, and then the task's original
 text under :data:`ORIGINAL_MARKER`, added the first time only, so a task
 groomed twice keeps what its author first wrote. The ``review`` tag comes
-off: grooming is the review.
+off: grooming is the review. A proposed executor goes on as its tag, unless
+the task already has one: the tag a task carries is never replaced.
 
 **Where it goes.** The task is linted again as it now reads.
 
@@ -55,7 +56,7 @@ from mini_app_polis.pipeline_status import run_report
 from .board import Board
 from .compose import REVIEW_TAG, TEMPLATE_FIELDS
 from .ids import next_id, task_name
-from .lint import lint, looks_like_label, parse, task_id_of
+from .lint import executor_of, lint, looks_like_label, parse, task_id_of
 from .records import QUESTIONS_PREFIX, answers, fingerprint
 from .registry import load_repos
 from .sweep import Records, _api, _section_named, auto_ready, ready_section
@@ -182,6 +183,8 @@ def apply_proposal(
         board.update(task.gid, name=name, html_notes=groomed_html(block, body))
         if REVIEW_TAG in {t.lower() for t in task.tag_names}:
             board.untag(task.gid, REVIEW_TAG)
+        if proposal.executor and executor_of(task.tag_names) is None:
+            board.tag(task.gid, proposal.executor)
 
         groomed = board.get(task.gid) or task
         tasks = board.tasks()

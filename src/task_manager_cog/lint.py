@@ -25,6 +25,9 @@ import datetime as dt
 import re
 from collections.abc import Collection, Mapping
 from dataclasses import dataclass
+from typing import get_args
+
+from mini_app_polis.api.contract import GroomingExecutor
 
 from .compose import EMPTY_TITLE_FALLBACK, REVIEW_TAG, TEMPLATE_FIELDS
 from .ids import SEPARATOR
@@ -155,6 +158,16 @@ def where_repos(where: str) -> list[str]:
         if head:
             repos.append(head[0].split("/", 1)[0].rstrip(":"))
     return repos
+
+
+def executor_of(tags: Collection[str]) -> str | None:
+    """The executor a task is tagged with, or None: the agent may take it.
+
+    The names are the shared contract's (``GroomingExecutor``). A tag never
+    makes a task less ready; it only says who may work it.
+    """
+    names = get_args(GroomingExecutor)
+    return next((t.lower() for t in tags if t.lower() in names), None)
 
 
 def only_blocked(problems: Collection[str]) -> bool:

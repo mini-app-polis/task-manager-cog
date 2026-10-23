@@ -5,6 +5,7 @@ import datetime as dt
 import pytest
 
 from task_manager_cog.lint import (
+    executor_of,
     lint,
     only_blocked,
     parse,
@@ -261,3 +262,15 @@ def test_blocked_by_text_with_no_task_is_not_ready() -> None:
 def test_a_task_needs_a_body() -> None:
     notes = READY_NOTES.split("\n\n")[0]
     assert _lint(notes=notes) == ["no body saying why, with links to what is needed"]
+
+
+def test_the_executor_is_read_from_the_tags_by_the_contracts_names() -> None:
+    assert executor_of([]) is None
+    assert executor_of(["admin", "review"]) is None
+    assert executor_of(["admin", "Cowork"]) == "cowork"
+    assert executor_of(["person"]) == "person"
+
+
+def test_an_executor_tag_never_makes_a_task_less_ready() -> None:
+    assert _lint(tags=("cowork",)) == []
+    assert _lint(tags=("person",)) == []

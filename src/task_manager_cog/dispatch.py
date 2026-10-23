@@ -11,6 +11,9 @@ queue and is applied by results.py.
 
 - it is not the board's template task, nor a detected problem (the sources
   sources.py marks unswept);
+- it has no executor tag: a task tagged for a working session with the
+  owner, or for the owner alone, is not the agent's, and is counted as
+  skipped under its tag;
 - its Effort is S: larger tasks are left for a person, since they would
   mostly hit the per-task cap;
 - its Where names exactly one repository, and that repository has the
@@ -62,7 +65,7 @@ from mini_app_polis.api.contract import (
 )
 from mini_app_polis.asana import AsanaSection, AsanaTaskRecord
 
-from .lint import parse, task_id_of, where_repos
+from .lint import executor_of, parse, task_id_of, where_repos
 
 log = logger_mod.get_logger()
 
@@ -86,6 +89,8 @@ SKIP_IN_FLIGHT = "repo_busy"
 SKIP_NO_CALLER = "no_agent_caller"
 SKIP_MONTHLY_CAP = "monthly_cap"
 SKIP_TOO_LONG = "task_too_long"
+#: Followed by the tag: ``executor_cowork``, ``executor_person``.
+SKIP_EXECUTOR = "executor_"
 
 
 class AgentRuns(Protocol):
@@ -227,6 +232,10 @@ def candidates(
             continue
         task_id = task_id_of(task.name) or ""
         if task_id.split("-", 1)[0] in unswept_prefixes:
+            continue
+        executor = executor_of(task.tag_names)
+        if executor is not None:
+            result.skip(f"{SKIP_EXECUTOR}{executor}")
             continue
         fields = parse(task.notes).fields
         if fields.get("Effort", "").strip().upper() != "S":

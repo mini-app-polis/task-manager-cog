@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import datetime as dt
 from dataclasses import dataclass, field
 
@@ -304,3 +305,19 @@ def test_a_board_without_the_in_progress_column_stops_dispatch() -> None:
             template_marker="do not work",
             write=True,
         )
+
+
+@pytest.mark.parametrize("tag", ["cowork", "Person"])
+def test_a_task_tagged_for_another_executor_is_never_dispatched(tag: str) -> None:
+    tagged = dataclasses.replace(_task("1", "MINI-1 · Console work"), tag_names=(tag,))
+    other = _task("2", "MINI-2 · Agent work", where="wiki-curator-cog")
+    result, store, starter, board = _dispatch([tagged, other])
+    assert [c.task.name for c, _ in result.dispatched] == ["MINI-2 · Agent work"]
+    assert result.skipped == {f"executor_{tag.lower()}": 1}
+    assert [r.task_gid for r in store.recorded] == ["2"]
+
+
+def test_an_unrelated_tag_does_not_stop_dispatch() -> None:
+    tagged = dataclasses.replace(_task("1", "MINI-1 · Admin"), tag_names=("admin",))
+    result, *_ = _dispatch([tagged])
+    assert len(result.dispatched) == 1

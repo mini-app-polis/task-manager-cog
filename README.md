@@ -81,6 +81,24 @@ sweep can tell an edited task from one still waiting. A task this cog moved
 to Ready that a person moves back is counted on its record, and named in
 the run report: that count is how to tell whether ready meant ready.
 
+## Who does a task
+
+A task's executor is a tag on it, named in the shared contract
+(`mini_app_polis.api.contract.GroomingExecutor`):
+
+| Tag | Executor |
+|---|---|
+| none | the agent: a headless run with only the task and the repositories it names |
+| `cowork` | a working session with Kaiano: his repositories, the board, Railway, his machine, his decisions |
+| `person` | Kaiano alone: consoles behind his login, accounts, physical checks |
+
+A tag never blocks: a tagged task is held to the definition of ready like
+any other and moves to Ready when it passes. Dispatch takes only untagged
+tasks, and counts each tagged task it passes over in the run report
+(`agent_skipped_executor_cowork`, `agent_skipped_executor_person`). The
+groomer proposes an executor for an untagged task the agent cannot do, and
+grooming applies it as a tag; a tag a task already has is never replaced.
+
 ## Grooming
 
 A task that is not ready is sent to task-groomer-cog when its content
@@ -99,6 +117,7 @@ it was made for:
   proposal's body follows, then the task's original text under
   `Before grooming:`, added the first time only.
 - The `review` tag comes off.
+- A proposed executor goes on as a tag, unless the task already has one.
 - With questions, they are posted as one comment starting
   `Grooming questions:` and the task moves to Refining. **Answer in a
   comment:** the answers become part of the task's content, so the next
@@ -111,7 +130,7 @@ waiting on you costs nothing.
 
 ## Agent dispatch
 
-Every task in Ready is meant for an agent: a headless Claude Code run in
+An untagged task in Ready is meant for an agent: a headless Claude Code run in
 GitHub Actions, in the repository the task names, that opens a **draft**
 pull request into `dev`. The fleet's automerge skips drafts, so a person
 always reviews and merges what an agent wrote. `dispatch.py` picks the
@@ -122,6 +141,7 @@ After grooming, the sweep takes Ready tasks in board order that:
 
 - are not the template task nor a detected problem (`CI-`, `RUN-`, `CONF-`,
   `API-`);
+- have no executor tag (`cowork`, `person`);
 - are Effort `S`: larger tasks are left for a person;
 - name exactly one repository in Where, and that repository has the agent
   caller (`AGENT_WORKFLOW`) with the agent GitHub App installed. The
