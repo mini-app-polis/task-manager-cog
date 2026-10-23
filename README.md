@@ -283,11 +283,12 @@ doppler run -- uv run python -c 'import sys; from task_manager_cog.worker import
 Setting `ASANA_ENABLED=true` in your shell makes that run create the task on
 the real board.
 
-**See every task's verdict** without moving anything. This reads the board
-the `dev` config points at, and never writes:
+**See every task's verdict** without moving anything. The board exists
+only in production, so this reads it with the `prd` config, and never
+writes:
 
 ```bash
-doppler run -- uv run python -m task_manager_cog.sweep
+doppler run --config prd -- uv run python -m task_manager_cog.sweep
 ```
 
 ## Running tests

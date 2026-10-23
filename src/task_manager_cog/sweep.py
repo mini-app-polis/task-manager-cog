@@ -48,7 +48,7 @@ take, when ``AGENT_DISPATCH`` or ``AGENT_DRY_RUN`` is on (dispatch.py).
 
 Run it locally, read-only, to see every task's verdict:
 
-    doppler run -- uv run python -m task_manager_cog.sweep
+    doppler run --config prd -- uv run python -m task_manager_cog.sweep
 """
 
 from __future__ import annotations
