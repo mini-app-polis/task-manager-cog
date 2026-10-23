@@ -6,8 +6,9 @@
 Puts tasks on the board. Every source of tasks (voice notes, GitHub issues)
 hands this cog a draft of the work, and it adds what every task has in common:
 the board's template block, an id, tags, the column and the assignee. Every
-hour it also sweeps the board, and moves each task that meets the definition
-of ready to Ready. It is the only thing that writes to the board. See
+hour it also sweeps the board, moves each task that meets the definition
+of ready to Ready, and dispatches an agent for each Ready task it can take.
+It is the only thing that writes to the board. See
 [ADR-001](docs/decisions/ADR-001-one-writer-to-the-board.md).
 
 ## Flow
@@ -34,11 +35,18 @@ schedule (hourly) ──task.sweep──► task-manager-jobs.fifo ──► tas
                                                   task-groomer-cog (GROOM_DISPATCH)
                                                5. write the grooming records
                                                   that changed (the API)
+                                               6. dispatch an agent for each
+                                                  Ready task it can take
+                                                  (AGENT_DISPATCH)
 
 task-groomer-cog ──proposal──► API ──task.groom-proposal──► task-manager-jobs.fifo
                                                apply it (groom.py): name, template,
                                                body; then Ready, or Refining with
                                                any questions as a comment
+
+agent workflow ──result──► API ──task.agent-result──► task-manager-jobs.fifo
+                                               apply it (results.py): PR line and
+                                               Review, or a comment and In progress
 ```
 
 ## The definition of ready
@@ -101,6 +109,50 @@ it was made for:
 A groomed task is not sent again until someone changes it, so a task
 waiting on you costs nothing.
 
+## Agent dispatch
+
+Every task in Ready is meant for an agent: a headless Claude Code run in
+GitHub Actions, in the repository the task names, that opens a **draft**
+pull request into `dev`. The fleet's automerge skips drafts, so a person
+always reviews and merges what an agent wrote. `dispatch.py` picks the
+tasks and `github.py` starts the runs; the workflow itself is the agent
+caller in each target repository, from the shared `.github` repository.
+
+After grooming, the sweep takes Ready tasks in board order that:
+
+- are not the template task nor a detected problem (`CI-`, `RUN-`, `CONF-`,
+  `API-`);
+- are Effort `S`: larger tasks are left for a person;
+- name exactly one repository in Where, and that repository has the agent
+  caller (`AGENT_WORKFLOW`) with the agent GitHub App installed. The
+  repositories with a caller are the ones the agent may change;
+- target a repository with no run in flight, and none dispatched to it this
+  sweep;
+- fit the month: the month's spend, with each run in flight counted at
+  `AGENT_TASK_CAP_USD`, plus one more run, stays within
+  `AGENT_MONTHLY_CAP_USD`.
+
+Each dispatch records the run in api-kaianolevine-com
+(`/v1/tasks/agent-runs`), whose record is the lock on the repository, moves
+the task to In progress, then starts the caller with a token for that one
+repository that can only start workflows. A run is never retried: one that
+fails, hits its budget, cannot be started, or never reports (after
+`AGENT_RUN_TIMEOUT_MINUTES`) leaves its task in In progress with a comment,
+and nothing dispatches from In progress.
+
+The run's result comes back through the API, and `results.py` applies it. A
+run that succeeded puts its pull request on the task's PR line and moves
+the task to Review. **Nothing here ever marks a task done:** a person
+merges the draft, confirms the change in dev, and completes the task.
+
+The trigger is the hourly sweep, not Asana webhooks. Asana delivers webhook
+events at most once and recommends polling as a fallback, and this cog has
+no public endpoint for the webhook handshake, so a poll is needed either
+way; an hour's wait does not matter for this work.
+
+`AGENT_DRY_RUN=true` reports what would be dispatched, and the most each
+could cost, without writing anything.
+
 ## Sources
 
 | Source         | Id                  | Minted here |
@@ -126,6 +178,9 @@ src/task_manager_cog/
   registry.py   the fleet's repositories, from ecosystem.yaml
   records.py    grooming records: fingerprints, verdicts, sent back from Ready
   groom.py      applying a groomer's proposal to the board
+  dispatch.py   dispatching an agent for each Ready task it can take
+  github.py     the agent GitHub App: is there a caller, start it
+  results.py    applying an agent run's result to the board
   _deadline.py  stop a run before the function timeout
 ```
 
