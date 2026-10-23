@@ -1,3 +1,10 @@
+## [1.10.1](https://github.com/mini-app-polis/task-manager-cog/compare/v1.10.0...v1.10.1) (2026-10-23)
+
+
+### Bug Fixes
+
+* **worker:** release the move onto the shared Lambda worker module and queue message models ([45cd141](https://github.com/mini-app-polis/task-manager-cog/commit/45cd1410f3bdd8d68baa597b01cf087b8e06f602))
+
 # [1.10.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.9.0...v1.10.0) (2026-10-23)
 
 
