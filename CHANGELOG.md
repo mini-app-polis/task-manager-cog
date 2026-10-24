@@ -1,3 +1,10 @@
+# [1.11.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.10.2...v1.11.0) (2026-10-24)
+
+
+### Features
+
+* **sweep:** move tasks waiting only on blockers to Blocked and fail tasks whose body lists open questions ([9cbc05f](https://github.com/mini-app-polis/task-manager-cog/commit/9cbc05f970b764eaadc30de8b8abcc753bd66b3d))
+
 ## [1.10.2](https://github.com/mini-app-polis/task-manager-cog/compare/v1.10.1...v1.10.2) (2026-10-24)
 
 
