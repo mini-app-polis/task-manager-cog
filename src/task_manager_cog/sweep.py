@@ -21,17 +21,21 @@ sent, so the next sweep sends it again.
 
 A task whose only problems are blockers that are not done, or a date in
 Blocked by still ahead, is never sent: grooming cannot finish another task
-or bring a date closer. It waits, and moves to Ready on the first sweep
-after its blockers are done and on or after its date (a UTC day).
+or bring a date closer. It waits in the blocked column, moved there from
+the column it was in, and moves to Ready on the first sweep after its
+blockers are done and on or after its date (a UTC day). Moving it changes
+nothing in its content, so it is not sent for grooming either way.
 
-Moving is a setting, ``GROOM_AUTO_READY``, off unless set, so the sweep can
-run and say what it would move before it moves anything. The columns are
-named, not configured by gid, so they read the same in Doppler as on the
-board:
+Moving, to Ready or to the blocked column, is a setting,
+``GROOM_AUTO_READY``, off unless set, so the sweep can run and say what it
+would move before it moves anything. The columns are named, not configured
+by gid, so they read the same in Doppler as on the board:
 
   GROOM_SECTIONS    the columns swept (default: Ideas, Refining, Blocked)
   READY_SECTION     the column a ready task moves to (default: Ready)
-  GROOM_AUTO_READY  true to move ready tasks; anything else only reports
+  BLOCKED_SECTION   the column a task waiting on blockers moves to
+                    (default: Blocked)
+  GROOM_AUTO_READY  true to move tasks; anything else only reports
   GROOM_DISPATCH    true to send tasks for grooming, which is paid; off
                     unless set
   GROOM_DISPATCH_LIMIT  tasks sent a sweep (default: 5)
@@ -97,6 +101,7 @@ MACHINE_NAME = "task-manager-cog"
 
 DEFAULT_GROOM_SECTIONS: tuple[str, ...] = ("Ideas", "Refining", "Blocked")
 DEFAULT_READY_SECTION = "Ready"
+DEFAULT_BLOCKED_SECTION = "Blocked"
 DEFAULT_DISPATCH_LIMIT = 5
 
 #: In the template task's name. A task saying this is never swept.
@@ -183,6 +188,11 @@ class SweepResult:
     waiting: int = 0
     #: Tasks not ready only because a blocker is not done: never sent.
     blocked: int = 0
+    #: Tasks waiting on blockers that were moved to the blocked column.
+    moved_to_blocked: list[AsanaTaskRecord] = field(default_factory=list)
+    #: Tasks waiting on blockers that would have been moved there, had
+    #: moving been on.
+    blocked_not_moved: int = 0
 
     @property
     def ready(self) -> list[Verdict]:
@@ -200,6 +210,11 @@ def groom_sections() -> tuple[str, ...]:
 def ready_section() -> str:
     """The column a ready task moves to: ``READY_SECTION``, or Ready."""
     return (os.environ.get("READY_SECTION") or "").strip() or DEFAULT_READY_SECTION
+
+
+def blocked_section() -> str:
+    """Where a task waits on its blockers: ``BLOCKED_SECTION``, or Blocked."""
+    return (os.environ.get("BLOCKED_SECTION") or "").strip() or DEFAULT_BLOCKED_SECTION
 
 
 def auto_ready() -> bool:
@@ -349,6 +364,7 @@ def sweep(
     records = records or {}
     sections = board.sections()
     ready = _section_named(sections, ready_section())
+    blocked: AsanaSection | None = None
     tasks = board.tasks()
     open_gids = {t.gid for t in tasks if not t.completed}
     # Only a task with questions out has answers to read: one request each.
@@ -393,6 +409,18 @@ def sweep(
         sent = False
         if only_blocked(verdict.problems):
             result.blocked += 1
+            blocked = blocked or _section_named(sections, blocked_section())
+            if task.section_gid == blocked.gid:
+                log.info("sweep: %s waits on blockers", task.name)
+            elif move:
+                board.move(task.gid, blocked.gid)
+                result.moved_to_blocked.append(task)
+                log.info("sweep: %s moved to %s", task.name, blocked.name)
+            else:
+                result.blocked_not_moved += 1
+                log.info(
+                    "sweep: %s waits on blockers (GROOM_AUTO_READY is off)", task.name
+                )
         elif not verdict.ready and needs_grooming(task, previous, verdict.replies):
             if send is not None and len(result.sent) < limit:
                 sent = send(grooming_job(verdict, open_names, done_by_id))
@@ -471,8 +499,11 @@ def run_sweep(
             )
         if not auto_ready():
             report.count("ready_not_moved", len(result.ready))
+            report.count("blocked_not_moved", result.blocked_not_moved)
         for task in result.moved:
             report.updated("task moved to Ready", task.name, link=board.url(task.gid))
+        for task in result.moved_to_blocked:
+            report.updated("task moved to Blocked", task.name, link=board.url(task.gid))
         for task in result.returned:
             report.updated(
                 "task sent back from Ready", task.name, link=board.url(task.gid)

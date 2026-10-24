@@ -373,3 +373,39 @@ def test_children_are_read_from_the_opening_of_done_when(
     done_when: str, children: list[str]
 ) -> None:
     assert children_of(done_when) == children
+
+
+# ── open questions written in the body ────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("section", "head"),
+    [
+        ("Open decisions:\n- Which queue?", "Open decisions"),
+        ("open questions: whether to page on WARN", "Open questions"),
+        ("Still open, for the owner:\n1. The retention period.", "Still open"),
+        ("STILL OPEN: the alert threshold", "Still open"),
+    ],
+)
+def test_a_body_with_an_open_section_is_not_ready(section: str, head: str) -> None:
+    problems = _lint(notes=f"{READY_NOTES}\n\n{section}")
+    assert problems == [f"body lists open questions ({head})"]
+
+
+@pytest.mark.parametrize(
+    "section",
+    [
+        "Open decisions:",
+        "Open questions:\n\nThe rest of the body.",
+        "Open questions: None",
+        "Still open, for the owner:\n- none",
+    ],
+    ids=["head alone", "head then a blank line", "none inline", "none listed"],
+)
+def test_an_emptied_open_section_passes(section: str) -> None:
+    assert _lint(notes=f"{READY_NOTES}\n\n{section}") == []
+
+
+def test_a_body_without_an_open_section_passes() -> None:
+    notes = f"{READY_NOTES}\n\nStill opening the queue is not a question."
+    assert _lint(notes=notes) == []
