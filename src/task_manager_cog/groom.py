@@ -61,7 +61,14 @@ from ._version import __version__
 from .board import Board
 from .compose import REVIEW_TAG, TEMPLATE_FIELDS
 from .ids import next_id, task_name
-from .lint import executor_of, lint, looks_like_label, parse, task_id_of
+from .lint import (
+    ORIGINAL_MARKER,
+    executor_of,
+    lint,
+    looks_like_label,
+    parse,
+    task_id_of,
+)
 from .records import QUESTIONS_PREFIX, answers, fingerprint
 from .registry import load_repos
 from .sweep import (
@@ -80,9 +87,6 @@ FLOW_NAME = "apply-grooming"
 
 #: The prefix a task gets when grooming finds it has no id.
 MANUAL_PREFIX = "MINI"
-
-#: Heads the task's original text, below the groomed body.
-ORIGINAL_MARKER = "Before grooming:"
 
 DEFAULT_REFINING_SECTION = "Refining"
 

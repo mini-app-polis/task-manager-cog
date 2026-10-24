@@ -83,6 +83,10 @@ OPEN_SECTION_HEADS: tuple[str, ...] = (
     "Still open",
 )
 
+#: Heads the task's original text, kept below the groomed body. What follows
+#: it is the author's text before grooming, not the task's current state.
+ORIGINAL_MARKER = "Before grooming:"
+
 #: A list item's marker: ``-``, ``*``, ``•``, ``1.`` or ``1)``.
 _LIST_MARKER = re.compile(r"^(?:[-*\u2022]|\d+[.)])\s*")
 
@@ -150,10 +154,17 @@ def open_section(body: str) -> str | None:
     anything, or None.
 
     The section's items are what follows the head on its line, and the lines
-    after it up to the next blank line. A head with nothing after it, or only
+    after it up to the next blank line. Nothing from the
+    :data:`ORIGINAL_MARKER` line on is read: that is the author's text from
+    before grooming. A head with nothing after it, or only
     ``None``, is an emptied section and lists nothing.
     """
     lines = body.replace("\r\n", "\n").split("\n")
+    original = next(
+        (i for i, line in enumerate(lines) if line.strip() == ORIGINAL_MARKER),
+        len(lines),
+    )
+    lines = lines[:original]
     for position, line in enumerate(lines):
         text = line.strip()
         head = next(

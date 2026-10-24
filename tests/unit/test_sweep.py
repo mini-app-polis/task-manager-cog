@@ -938,3 +938,67 @@ def test_task_shapes_are_off_unless_set(monkeypatch: pytest.MonkeyPatch) -> None
     (verdict,) = assess([two], swept=("Ideas",), repos=frozenset({"infra", "other"}))
     assert not verdict.ready
     assert verdict.problems[0].startswith("Where names more than one repository")
+
+
+@dataclass
+class CountingBoard(FakeBoard):
+    """A board that remembers whose comments were read."""
+
+    read: list[str] = field(default_factory=list)
+
+    def comments(self, task_gid: str) -> list[str]:
+        self.read.append(task_gid)
+        return super().comments(task_gid)
+
+
+def test_a_questions_comment_from_anyone_holds_a_ready_task() -> None:
+    task = BOARD_TASKS[0]  # passes the linter, and has no grooming record
+    board = FakeBoard([task], comments_={"1": ["Grooming questions:\n1. Which queue?"]})
+    result = sweep(board, repos=REPOS, move=True)
+    (verdict,) = result.verdicts
+    assert verdict.problems == (sweep_mod.OPEN_QUESTIONS,)
+    assert verdict.awaiting_owner
+    assert board.moves == []
+    assert result.awaiting_owner == 1
+
+    board.comment("1", "Answers to grooming questions:\n1. The FIFO one.")
+    sweep(board, repos=REPOS, move=True)
+    assert board.moves == [("1", "s-ready")]
+
+
+def test_comments_without_questions_do_not_hold_a_task() -> None:
+    board = FakeBoard([BOARD_TASKS[0]], comments_={"1": ["A note, not a question."]})
+    sweep(board, repos=REPOS, move=True)
+    assert board.moves == [("1", "s-ready")]
+
+
+def test_comments_are_read_only_for_tasks_that_would_be_ready() -> None:
+    board = CountingBoard(list(BOARD_TASKS))
+    sweep(board, repos=REPOS, move=False)
+    # MINI-1 is the only swept task the linter passes; MINI-2, MINI-6 and
+    # MINI-7 fail it, and the rest are not swept.
+    assert board.read == ["1"]
+
+
+def test_a_task_waiting_on_its_owner_is_never_sent() -> None:
+    board = FakeBoard(
+        [BOARD_TASKS[0]], comments_={"1": ["Grooming questions:\n1. Which queue?"]}
+    )
+    sent: list[GroomingJobRequest] = []
+
+    def send(job: GroomingJobRequest) -> bool:
+        sent.append(job)
+        return True
+
+    first = sweep(board, repos=REPOS, move=True, send=send, limit=5)
+    assert first.verdicts[0].awaiting_owner
+    # Edited while the question is out: changed, and still not sent.
+    board._replace("1", notes=f"{READY}\nEdited while the question is out.")
+    records = {
+        w.task_gid: GroomingRecord(**w.model_dump(), updated_at=dt.datetime.now(dt.UTC))
+        for w in first.writes
+    }
+    again = sweep(board, repos=REPOS, move=True, records=records, send=send, limit=5)
+    assert again.verdicts[0].changed
+    assert sent == []
+    assert board.moves == []

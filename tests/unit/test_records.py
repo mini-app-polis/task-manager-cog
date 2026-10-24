@@ -5,7 +5,7 @@ import datetime as dt
 from mini_app_polis.api.contract import GroomingRecord
 from mini_app_polis.asana import AsanaTaskRecord
 
-from task_manager_cog.records import changed, fingerprint, next_record
+from task_manager_cog.records import changed, fingerprint, next_record, unanswered
 
 NOW = dt.datetime(2026, 10, 21, 20, tzinfo=dt.UTC)
 
@@ -88,3 +88,13 @@ def test_a_task_with_no_id_has_none() -> None:
     record = next_record(_task(name="Replace retag music"), (), None, moved_at=None)
     assert record is not None
     assert record.task_id is None
+
+
+def test_unanswered_questions_are_the_last_questions_with_nothing_after() -> None:
+    asked = "Grooming questions:\n1. Which queue?"
+    assert unanswered([asked])
+    assert unanswered(["An earlier note.", asked])
+    assert not unanswered([asked, "The FIFO one."])
+    assert unanswered([asked, "The FIFO one.", asked])
+    assert not unanswered(["A note, not a question."])
+    assert not unanswered([])

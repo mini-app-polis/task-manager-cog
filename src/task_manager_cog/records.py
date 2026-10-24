@@ -60,6 +60,16 @@ def answers(comments: Sequence[str]) -> list[str]:
     return [c for c in comments[asked[-1] + 1 :] if c.strip()]
 
 
+def unanswered(comments: Sequence[str]) -> bool:
+    """Whether the last grooming questions on a task have nothing after them.
+
+    Whoever posted them, a groomer or a person: the comments are oldest
+    first, so any comment after the last questions answers them.
+    """
+    asked = any(c.startswith(QUESTIONS_PREFIX) for c in comments)
+    return asked and not answers(comments)
+
+
 def fingerprint(task: AsanaTaskRecord, replies: Sequence[str] = ()) -> str:
     """sha256 of the task's name, body and tags, and any answers."""
     content = "\n\x1f".join(
