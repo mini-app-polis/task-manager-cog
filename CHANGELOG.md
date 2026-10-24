@@ -1,3 +1,10 @@
+# [1.12.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.11.0...v1.12.0) (2026-10-24)
+
+
+### Features
+
+* **sweep:** hold a task out of Ready while a Grooming questions comment is unanswered ([5ccdc60](https://github.com/mini-app-polis/task-manager-cog/commit/5ccdc60d1b00d6c4b3a4b2ec966d1e73180131b3))
+
 # [1.11.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.10.2...v1.11.0) (2026-10-24)
 
 
