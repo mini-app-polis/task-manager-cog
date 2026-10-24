@@ -52,12 +52,11 @@ from .groom import MANUAL_PREFIX, groomed_html, groomed_text
 from .ids import next_id, task_name
 from .lint import NONE_WORDS, lint, only_blocked, parse, task_id_of, where_repos
 from .records import fingerprint
-from .sweep import Records, _section_named, task_shapes
+from .sweep import Records, _section_named, blocked_section, task_shapes
 
 log = logger_mod.get_logger()
 
 DEFAULT_MAX_CHILDREN = 25
-DEFAULT_BLOCKED_SECTION = "Blocked"
 
 #: Starts the comment a dry run leaves; with the content it was made for,
 #: so a redelivered proposal posts no second one.
@@ -78,11 +77,6 @@ def max_children() -> int:
     """The most children one split may create: ``GROOM_SPLIT_MAX_CHILDREN``."""
     raw = (os.environ.get("GROOM_SPLIT_MAX_CHILDREN") or "").strip()
     return max(0, int(raw)) if raw else DEFAULT_MAX_CHILDREN
-
-
-def blocked_section() -> str:
-    """Where a compound task waits on its children: ``BLOCKED_SECTION``."""
-    return (os.environ.get("BLOCKED_SECTION") or "").strip() or DEFAULT_BLOCKED_SECTION
 
 
 def external_id(parent_gid: str, content: str, position: int) -> str:
@@ -229,7 +223,12 @@ def apply_split(
         why = "GROOM_SPLIT_DRY_RUN is on"
         _not_applied(task, proposal, why, board=board, store=store, previous=previous)
         report.count("children_proposed", count)
-        report.note("split reported, not created (dry run)", label)
+        report.count("cost_usd", f"{proposal.cost_usd:.4f}")
+        report.updated(
+            "split proposed (dry run)",
+            f"{label} children={count}",
+            link=board.url(task.gid),
+        )
         return
 
     names = list(board.names())

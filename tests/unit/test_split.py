@@ -8,7 +8,7 @@ from task_manager_cog.records import fingerprint
 from task_manager_cog.split import DRY_RUN_MARKER, external_id
 
 from .test_groom import VAGUE, _proposal
-from .test_sweep import SECTIONS, FakeBoard, FakeRecords, _task
+from .test_sweep import SECTIONS, FakeBoard, FakeRecords, _sweep_sending, _task
 
 CHILDREN = [
     GroomingChild(
@@ -145,6 +145,41 @@ def test_a_dry_run_reports_the_split_and_creates_nothing(
     assert "executor cowork; waits on children 0; blocked by 2026-11-02" in comment
     # Held until it changes: not sent to be groomed (and paid for) again.
     assert store.stored["7"].groomed_fingerprint == fingerprint(VAGUE)
+
+
+def test_a_dry_run_split_posts_a_run_report(
+    production, monkeypatch: pytest.MonkeyPatch, _no_outbound_reports
+) -> None:
+    monkeypatch.delenv("GROOM_SPLIT_DRY_RUN", raising=False)
+    named = _task("7", "MINI-140 · Look into the runners", notes=VAGUE.notes)
+    board = FakeBoard([named], sections_=[*SECTIONS])
+    _apply_split(_split(fingerprint=fingerprint(named)), board, FakeRecords())
+
+    ((args, kwargs),) = _no_outbound_reports
+    assert args[:2] == ("apply-grooming", "SUCCESS")
+    assert kwargs["notable"] is True
+    assert "split proposed (dry run): [MINI-140 children=2]" in kwargs["text"]
+    assert kwargs["cost_usd"] == "0.0900"
+    assert kwargs["children_proposed"] == 2
+
+
+def test_a_dry_run_split_is_not_sent_for_grooming_again_until_it_changes(
+    production, monkeypatch: pytest.MonkeyPatch, _no_outbound_reports
+) -> None:
+    monkeypatch.delenv("GROOM_SPLIT_DRY_RUN", raising=False)
+    board, store = _board(), FakeRecords()
+
+    _sweep_sending(store, board, monkeypatch, "5")
+    (job,) = store.jobs
+    _apply_split(_split(fingerprint=job.task.fingerprint), board, store)
+    assert board.created == []
+    _sweep_sending(store, board, monkeypatch, "5")
+    assert len(store.jobs) == 1
+
+    # Edited after the proposal: sent again.
+    board._replace("7", notes="ubuntu-latest is moving, and soon")
+    _sweep_sending(store, board, monkeypatch, "5")
+    assert len(store.jobs) == 2
 
 
 def test_a_split_over_the_cap_is_not_applied(

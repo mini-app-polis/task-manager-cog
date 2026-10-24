@@ -406,6 +406,23 @@ def test_a_task_with_open_questions_is_not_moved_even_when_it_lints_clean() -> N
     assert result.writes == []
 
 
+def test_a_task_with_open_questions_in_its_body_is_not_moved_to_ready() -> None:
+    task = _task(
+        "1", "MINI-1 · Undecided", notes=f"{READY}\n\nOpen decisions:\n- A or B"
+    )
+    board = FakeBoard([task])
+    result = sweep(board, repos=REPOS, move=True)
+    assert board.moves == []
+    assert result.verdicts[0].problems == (
+        "body lists open questions (Open decisions)",
+    )
+
+    settled = _task("1", "MINI-1 · Undecided", notes=f"{READY}\n\nOpen decisions:")
+    board = FakeBoard([settled])
+    sweep(board, repos=REPOS, move=True)
+    assert board.moves == [("1", "s-ready")]
+
+
 def test_run_sweep_does_nothing_outside_production(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -518,6 +535,149 @@ def test_a_task_only_waiting_on_a_blocker_is_never_sent() -> None:
     assert result.blocked == 1
     assert result.waiting == 0
     assert result.moved == []
+
+
+# ── moving a task that waits on blockers to Blocked ─────────────────────
+
+
+WAITS_ON_OPEN_TASK = READY.replace("Blocked by:", "Blocked by: MINI-7")
+WAITS_ON_A_DATE = READY.replace("Blocked by:", "Blocked by: 2999-01-01")
+OPEN_BLOCKER = _task("7", "MINI-7 · Open blocker", section="In progress")
+
+
+@pytest.mark.parametrize(
+    "notes", [WAITS_ON_OPEN_TASK, WAITS_ON_A_DATE], ids=["open task", "date ahead"]
+)
+@pytest.mark.parametrize("section", ["Ideas", "Refining"])
+def test_a_task_only_waiting_on_blockers_moves_to_blocked(
+    notes: str, section: str
+) -> None:
+    task = _task("6", "MINI-6 · Waits", notes=notes, section=section)
+    board = FakeBoard([task, OPEN_BLOCKER])
+    sent: list[GroomingJobRequest] = []
+    result = sweep(
+        board,
+        repos=REPOS,
+        move=True,
+        send=lambda job: sent.append(job) or True,
+        limit=5,
+    )
+    assert board.moves == [("6", "s-blocked")]
+    assert [t.gid for t in result.moved_to_blocked] == ["6"]
+    assert sent == []
+    # The move is not a change to its content.
+    (write,) = result.writes
+    assert write.fingerprint == fingerprint(task)
+    assert write.groomed_fingerprint is None
+
+
+def test_with_moving_off_a_waiting_task_is_only_counted() -> None:
+    task = _task("6", "MINI-6 · Waits", notes=WAITS_ON_OPEN_TASK, section="Refining")
+    board = FakeBoard([task, OPEN_BLOCKER])
+    result = sweep(board, repos=REPOS, move=False)
+    assert board.moves == []
+    assert result.moved_to_blocked == []
+    assert result.blocked_not_moved == 1
+
+
+def test_a_task_already_in_blocked_stays_until_its_blockers_are_done() -> None:
+    task = _task("6", "MINI-6 · Waits", notes=WAITS_ON_OPEN_TASK, section="Blocked")
+    board = FakeBoard([task, OPEN_BLOCKER])
+    result = sweep(board, repos=REPOS, move=True)
+    assert board.moves == []
+    assert result.moved_to_blocked == []
+    assert result.blocked_not_moved == 0
+
+    done = dataclasses.replace(OPEN_BLOCKER, completed=True)
+    board = FakeBoard([task, done])
+    result = sweep(board, repos=REPOS, move=True)
+    assert board.moves == [("6", "s-ready")]
+
+
+def test_a_blocked_task_with_another_problem_stays_where_it_is() -> None:
+    task = _task(
+        "6",
+        "MINI-6 · Waits",
+        notes=WAITS_ON_OPEN_TASK.replace("Done when: the plan is clean", "Done when:"),
+        section="Refining",
+    )
+    board = FakeBoard([task, OPEN_BLOCKER])
+    sent: list[GroomingJobRequest] = []
+    result = sweep(
+        board,
+        repos=REPOS,
+        move=True,
+        send=lambda job: sent.append(job) or True,
+        limit=5,
+    )
+    assert board.moves == []
+    assert result.moved_to_blocked == []
+    assert [j.task.name for j in sent] == ["MINI-6 · Waits"]
+
+
+@pytest.mark.parametrize(
+    ("name", "section"),
+    [
+        ("CI-6 · infra: CI failing on dev", "Ideas"),
+        ("RUN-6 · a run failed", "Ideas"),
+        ("CONF-6 · a conformance finding", "Ideas"),
+        ("API-6 · API: GET /v1/x answering 500", "Ideas"),
+        ("MINI-6 · TEMPLATE — do not work", "Ideas"),
+        ("MINI-6 · Being worked", "In progress"),
+    ],
+)
+def test_unswept_tasks_are_never_moved_to_blocked(name: str, section: str) -> None:
+    task = _task("6", name, notes=WAITS_ON_OPEN_TASK, section=section)
+    board = FakeBoard([task, OPEN_BLOCKER])
+    result = sweep(board, repos=REPOS, move=True)
+    assert board.moves == []
+    assert result.moved_to_blocked == []
+
+
+def test_the_blocked_column_comes_from_a_setting(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert sweep_mod.blocked_section() == "Blocked"
+    monkeypatch.setenv("BLOCKED_SECTION", "Waiting")
+    assert sweep_mod.blocked_section() == "Waiting"
+    task = _task("6", "MINI-6 · Waits", notes=WAITS_ON_OPEN_TASK)
+    board = FakeBoard(
+        [task, OPEN_BLOCKER], sections_=[*SECTIONS, AsanaSection("s-wait", "Waiting")]
+    )
+    sweep(board, repos=REPOS, move=True)
+    assert board.moves == [("6", "s-wait")]
+
+
+def test_run_sweep_names_each_task_moved_to_blocked(
+    production, monkeypatch: pytest.MonkeyPatch, _no_outbound_reports
+) -> None:
+    monkeypatch.setenv("GROOM_AUTO_READY", "true")
+    task = _task("6", "MINI-6 · Waits", notes=WAITS_ON_OPEN_TASK, section="Refining")
+    board = FakeBoard([task, OPEN_BLOCKER])
+    run_sweep(
+        run_id="r",
+        board_factory=lambda: board,
+        repos_loader=lambda: REPOS,
+        records_factory=lambda: FakeRecords(),
+    )
+    ((_, kwargs),) = _no_outbound_reports
+    assert "task moved to Blocked: [MINI-6 · Waits](https://board/6)" in kwargs["text"]
+
+
+def test_run_sweep_counts_tasks_it_would_move_to_blocked(
+    production, _no_outbound_reports
+) -> None:
+    task = _task("6", "MINI-6 · Waits", notes=WAITS_ON_OPEN_TASK, section="Refining")
+    board = FakeBoard([task, OPEN_BLOCKER])
+    run_sweep(
+        run_id="r",
+        board_factory=lambda: board,
+        repos_loader=lambda: REPOS,
+        records_factory=lambda: FakeRecords(),
+    )
+    assert board.moves == []
+    ((_, kwargs),) = _no_outbound_reports
+    assert kwargs["blocked_not_moved"] == 1
 
 
 def test_a_blocked_task_with_another_problem_is_still_sent() -> None:

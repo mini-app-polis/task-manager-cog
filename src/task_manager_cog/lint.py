@@ -74,6 +74,18 @@ _DONE_CLAUSE = re.compile(r"\s*(?P<ids>.+?)\s+(?:are|is)\s+done\b", re.DOTALL)
 #: A question mark ends a word or the line; one inside a URL's query does not.
 _UNDECIDED = re.compile(r"\bTBD\b|\?(?!\w)", re.IGNORECASE)
 
+#: Heads of a section in a task's body that lists what is still undecided,
+#: matched at the start of a line, ignoring case. A head with no colon of
+#: its own may say more before one (``Still open, for the owner:``).
+OPEN_SECTION_HEADS: tuple[str, ...] = (
+    "Open decisions:",
+    "Open questions:",
+    "Still open",
+)
+
+#: A list item's marker: ``-``, ``*``, ``•``, ``1.`` or ``1)``.
+_LIST_MARKER = re.compile(r"^(?:[-*\u2022]|\d+[.)])\s*")
+
 #: A line that reads as ``<Word or two>: …``: a label, known or not.
 _ANY_LABEL = re.compile(r"^[A-Z][A-Za-z]*(?: [a-z]+)?:(?:\s|$)")
 
@@ -125,6 +137,44 @@ def parse(notes: str) -> ParsedTask:
             fields[current] = f"{fields[current]}\n{text}".strip()
     body = "\n".join([*stray, "\n".join(lines[end:]).strip()]).strip()
     return ParsedTask(fields=fields, body=body)
+
+
+def _is_item(text: str) -> bool:
+    """Whether a line under an open section names something still open."""
+    item = _LIST_MARKER.sub("", text.strip()).strip().rstrip(".")
+    return bool(item) and item.lower() not in NONE_WORDS
+
+
+def open_section(body: str) -> str | None:
+    """The head of the first open-questions section in ``body`` that lists
+    anything, or None.
+
+    The section's items are what follows the head on its line, and the lines
+    after it up to the next blank line. A head with nothing after it, or only
+    ``None``, is an emptied section and lists nothing.
+    """
+    lines = body.replace("\r\n", "\n").split("\n")
+    for position, line in enumerate(lines):
+        text = line.strip()
+        head = next(
+            (h for h in OPEN_SECTION_HEADS if text.lower().startswith(h.lower())),
+            None,
+        )
+        if head is None:
+            continue
+        rest = text[len(head) :]
+        if not head.endswith(":"):
+            if rest[:1].isalnum():
+                continue  # A longer word: "Still opening …".
+            rest = rest.split(":", 1)[1] if ":" in rest else ""
+        items = [rest]
+        for following in lines[position + 1 :]:
+            if not following.strip():
+                break
+            items.append(following)
+        if any(_is_item(item) for item in items):
+            return head
+    return None
 
 
 def looks_like_label(line: str) -> bool:
@@ -336,6 +386,8 @@ def lint(
 
     if not parsed.body:
         problems.append("no body saying why, with links to what is needed")
+    elif (head := open_section(parsed.body)) is not None:
+        problems.append(f"body lists open questions ({head.rstrip(':')})")
 
     if shapes:
         problems.extend(

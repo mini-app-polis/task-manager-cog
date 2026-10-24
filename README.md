@@ -28,7 +28,9 @@ schedule (hourly) ──task.sweep──► task-manager queue ──► task-ma
                                                1. read the board and the registry
                                                2. lint every open task in
                                                   Ideas, Refining and Blocked
-                                               3. move each ready task to Ready
+                                               3. move each ready task to Ready,
+                                                  and each task waiting only on
+                                                  blockers to Blocked
                                                   (GROOM_AUTO_READY)
                                                4. send tasks that are not ready
                                                   and have changed to
@@ -65,9 +67,17 @@ linter (`lint.py`) checks what can be checked without a model:
 | PR | Blank. It belongs to whoever works the task. |
 | Blocked by | Blank, `None`, or only tasks that are done and dates (`YYYY-MM-DD`, a UTC day) that have come. A task can wait on a date alone, beside task ids, or both. Before the date it is not ready (`Blocked until <date>`) and is not sent for grooming; it moves to Ready on the first sweep on or after it. A date written any other way is a problem of its own. |
 | Tags | No `review` tag. |
-| Body | Says why, and links what is needed. |
+| Body | Says why, and links what is needed. No open-questions section (a line starting with one of `OPEN_SECTION_HEADS` in `lint.py`, such as `Open questions:`) lists anything: empty or remove it once it is decided. |
 | Shape | With `GROOM_TASK_SHAPES=true`: a **leaf** (Where names at most one repository, and at most one executor tag; only a `cowork` or `person` task may name none) or a **compound** task (Done when opens with its children's ids, "… are done", and Blocked by lists every one of them). Off until splitting is in place, so the existing board is not judged against it first. |
 | Grooming questions | None unanswered. A task whose last grooming asked questions waits until a grooming answers them, even if its template is complete. |
+
+A task whose only problems are blockers (a task in Blocked by that is not
+done, or a date still ahead) is never sent for grooming. With
+`GROOM_AUTO_READY` on, the sweep moves it from the column it is in to
+Blocked (`BLOCKED_SECTION`), and names it in the run report; with it off,
+the report counts it (`blocked_not_moved`). From Blocked it moves to Ready
+on the first sweep after its blockers are done and its date has come. A
+task with any other problem stays where it is and is groomed.
 
 The sweep never touches a task whose name says "do not work" (the board's
 template), nor a task from a source `sources.py` marks unswept: the problems
