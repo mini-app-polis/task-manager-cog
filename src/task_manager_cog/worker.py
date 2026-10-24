@@ -1,7 +1,7 @@
 """The Lambda entrypoint: one queue message in, at most one task out, or a sweep.
 
-task-manager-cog runs on Lambda behind its own FIFO queue,
-``task-manager-jobs.fifo``, with one message group, so jobs run one at a
+task-manager-cog runs on Lambda behind its own FIFO queue, declared in
+mini-app-polis/infra, with one message group, so jobs run one at a
 time. That is what makes minting safe: two jobs can never both read the
 board's highest id and take the same next one.
 

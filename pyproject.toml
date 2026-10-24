@@ -1,7 +1,7 @@
 [project]
 name = "task-manager-cog"
 dynamic = ["version"]
-description = "Puts tasks on the board and keeps them groomed: turns each source's task draft into one task, with the board's template, an id, tags and section, and moves tasks that meet the definition of ready to Ready. Runs as the task-manager-jobs Lambda worker."
+description = "Puts tasks on the board and keeps them groomed: turns each source's task draft into one task, with the board's template, an id, tags and section, and moves tasks that meet the definition of ready to Ready. Runs as a Lambda worker behind its own queue."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

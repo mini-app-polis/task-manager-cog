@@ -14,7 +14,7 @@ It is the only thing that writes to the board. See
 ## Flow
 
 ```
-source ──POST /v1/tasks──► api-kaianolevine-com ──► task-manager-jobs.fifo
+source ──POST /v1/tasks──► api-kaianolevine-com ──► task-manager queue
                                                           │ one job at a time
                                                           ▼
                                              task-manager-cog (Lambda)
@@ -24,7 +24,7 @@ source ──POST /v1/tasks──► api-kaianolevine-com ──► task-manager
                                                4. create it on the board
                                                5. run report names the task
 
-schedule (hourly) ──task.sweep──► task-manager-jobs.fifo ──► task-manager-cog
+schedule (hourly) ──task.sweep──► task-manager queue ──► task-manager-cog
                                                1. read the board and the registry
                                                2. lint every open task in
                                                   Ideas, Refining and Blocked
@@ -39,12 +39,12 @@ schedule (hourly) ──task.sweep──► task-manager-jobs.fifo ──► tas
                                                   Ready task it can take
                                                   (AGENT_DISPATCH)
 
-task-groomer-cog ──proposal──► API ──task.groom-proposal──► task-manager-jobs.fifo
+task-groomer-cog ──proposal──► API ──task.groom-proposal──► task-manager queue
                                                apply it (groom.py): name, template,
                                                body; then Ready, or Refining with
                                                any questions as a comment
 
-agent workflow ──result──► API ──task.agent-result──► task-manager-jobs.fifo
+agent workflow ──result──► API ──task.agent-result──► task-manager queue
                                                apply it (results.py): PR line and
                                                Review, or a comment and In progress
 ```
@@ -315,8 +315,8 @@ uv run mypy src/
 ## Deployment
 
 A release on `main` deploys the Lambda through the shared `lambda-deploy`
-workflow. The function, queue, dead-letter queue and alarms are
-`module "task_manager"` in `mini-app-polis/infra`; the repository variables
-`AWS_DEPLOY_ROLE_ARN`, `AWS_REGION` and `AWS_FUNCTION_NAME` come from that
-stack's `cogs` output. The hourly sweep is the module's `schedules` entry,
-which puts `{"type": "task.sweep", "version": 1}` on the queue.
+workflow. The function, queue, dead-letter queue, alarms and the hourly
+schedule are declared in `mini-app-polis/infra`, which also supplies the
+repository variables `AWS_DEPLOY_ROLE_ARN`, `AWS_REGION` and
+`AWS_FUNCTION_NAME`. The schedule puts
+`{"type": "task.sweep", "version": 1}` on the queue.
