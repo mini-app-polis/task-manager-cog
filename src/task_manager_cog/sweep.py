@@ -87,7 +87,14 @@ from ._version import __version__
 from .board import Board
 from .github import AgentApp
 from .lint import lint, mentioned_ids, only_blocked, task_id_of
-from .records import answers, changed, fingerprint, needs_grooming, next_record
+from .records import (
+    answers,
+    changed,
+    fingerprint,
+    needs_grooming,
+    next_record,
+    unanswered,
+)
 from .registry import load_repos
 from .sources import UNSWEPT_PREFIXES
 
@@ -164,6 +171,9 @@ class Verdict:
     changed: bool = True
     #: The owner's answers to the task's grooming questions, if it has any.
     replies: tuple[str, ...] = ()
+    #: Ready but for a "Grooming questions:" comment nothing answers yet.
+    #: Such a task waits for its owner and is not sent for grooming.
+    awaiting_owner: bool = False
 
     @property
     def ready(self) -> bool:
@@ -186,6 +196,8 @@ class SweepResult:
     #: Tasks that needed grooming and were not sent: over the limit, off,
     #: or refused.
     waiting: int = 0
+    #: Tasks held back by a "Grooming questions:" comment nothing answers.
+    awaiting_owner: int = 0
     #: Tasks not ready only because a blocker is not done: never sent.
     blocked: int = 0
     #: Tasks waiting on blockers that were moved to the blocked column.
@@ -248,11 +260,15 @@ def assess(
     repos: Collection[str],
     records: Mapping[str, GroomingRecord] | None = None,
     replies: Mapping[str, tuple[str, ...]] | None = None,
+    comments: Callable[[str], list[str]] | None = None,
 ) -> list[Verdict]:
     """A verdict for every open task in a swept column, in board order.
 
     A task whose last grooming asked questions is not ready until a
-    grooming answers them, whatever the linter says.
+    grooming answers them, whatever the linter says. So is a task that
+    would otherwise be ready while a "Grooming questions:" comment on it,
+    from anyone, has nothing after it; ``comments`` reads a task's comments,
+    and is called only for such a task.
     """
     replies = replies or {}
     records = records or {}
@@ -279,14 +295,19 @@ def assess(
             shapes=task_shapes(),
         )
         previous = records.get(task.gid)
+        awaiting_owner = False
         if previous is not None and previous.outcome == "questions":
             problems.append(OPEN_QUESTIONS)
+        elif not problems and comments is not None and unanswered(comments(task.gid)):
+            problems.append(OPEN_QUESTIONS)
+            awaiting_owner = True
         verdicts.append(
             Verdict(
                 task=task,
                 problems=tuple(problems),
                 changed=changed(task, records, replies.get(task.gid, ())),
                 replies=replies.get(task.gid, ()),
+                awaiting_owner=awaiting_owner,
             )
         )
     return verdicts
@@ -380,6 +401,7 @@ def sweep(
             repos=repos,
             records=records,
             replies=replies,
+            comments=board.comments,
         )
     )
     open_names = [t.name for t in tasks if not t.completed]
@@ -421,6 +443,9 @@ def sweep(
                 log.info(
                     "sweep: %s waits on blockers (GROOM_AUTO_READY is off)", task.name
                 )
+        elif verdict.awaiting_owner:
+            result.awaiting_owner += 1
+            log.info("sweep: %s waits on its owner's answers", task.name)
         elif not verdict.ready and needs_grooming(task, previous, verdict.replies):
             if send is not None and len(result.sent) < limit:
                 sent = send(grooming_job(verdict, open_names, done_by_id))
@@ -493,6 +518,7 @@ def run_sweep(
         report.count("records_written", len(result.writes))
         report.count("waiting_for_grooming", result.waiting)
         report.count("waiting_on_blockers", result.blocked)
+        report.count("waiting_on_owner", result.awaiting_owner)
         for task in result.sent:
             report.updated(
                 "task sent for grooming", task.name, link=board.url(task.gid)

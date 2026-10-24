@@ -409,3 +409,16 @@ def test_an_emptied_open_section_passes(section: str) -> None:
 def test_a_body_without_an_open_section_passes() -> None:
     notes = f"{READY_NOTES}\n\nStill opening the queue is not a question."
     assert _lint(notes=notes) == []
+
+
+def test_an_open_section_under_the_original_text_is_not_read() -> None:
+    notes = f"{READY_NOTES}\n\nBefore grooming:\nOpen questions:\n- Which queue?"
+    assert _lint(notes=notes) == []
+
+
+def test_an_open_section_above_the_original_text_still_counts() -> None:
+    notes = (
+        f"{READY_NOTES}\n\nOpen questions:\n- Which queue?\n\n"
+        "Before grooming:\nOpen questions:\n- Which queue?"
+    )
+    assert _lint(notes=notes) == ["body lists open questions (Open questions)"]
