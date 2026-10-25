@@ -5,7 +5,13 @@ import datetime as dt
 from mini_app_polis.api.contract import GroomingRecord
 from mini_app_polis.asana import AsanaTaskRecord
 
-from task_manager_cog.records import changed, fingerprint, next_record, unanswered
+from task_manager_cog.records import (
+    answers,
+    changed,
+    fingerprint,
+    next_record,
+    unanswered,
+)
 
 NOW = dt.datetime(2026, 10, 21, 20, tzinfo=dt.UTC)
 
@@ -98,3 +104,16 @@ def test_unanswered_questions_are_the_last_questions_with_nothing_after() -> Non
     assert unanswered([asked, "The FIFO one.", asked])
     assert not unanswered(["A note, not a question."])
     assert not unanswered([])
+
+
+def test_a_reported_split_is_asked_like_questions() -> None:
+    reported = "Proposed split (not created: GROOM_SPLIT_DRY_RUN is on; content abc)"
+    assert unanswered([reported])
+    assert not unanswered([reported, "Create it."])
+    assert answers([reported, "Create it."]) == ["Create it."]
+    # Only what follows the last asking comment answers it.
+    asked = "Grooming questions:\n1. Which queue?"
+    assert answers([asked, "The FIFO one.", reported, "Swap 1 and 2."]) == [
+        "Swap 1 and 2."
+    ]
+    assert answers([reported, "Create it.", asked]) == []

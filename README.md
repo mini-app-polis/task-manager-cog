@@ -71,7 +71,7 @@ linter (`lint.py`) checks what can be checked without a model:
 | Tags | No `review` tag. |
 | Body | Says why, and links what is needed. No open-questions section (a line starting with one of `OPEN_SECTION_HEADS` in `lint.py`, such as `Open questions:`) lists anything: empty or remove it once it is decided. The author's original text, from the `Before grooming:` line on, is not checked. |
 | Shape | With `GROOM_TASK_SHAPES=true`: a **leaf** (Where names at most one repository, and at most one executor tag; only a `cowork` or `person` task may name none) or a **compound** task (Done when opens with its children's ids, "… are done", and Blocked by lists every one of them). Off until splitting is in place, so the existing board is not judged against it first. |
-| Grooming questions | None unanswered. A task whose last grooming asked questions waits until a grooming answers them, even if its template is complete. A task that passes everything else is also held while its last `Grooming questions:` comment, from anyone, has no comment after it; it waits for its owner and is not sent for grooming (`waiting_on_owner` in the run report). Comments are read only for such a task. |
+| Grooming questions | None unanswered. A task whose last grooming asked questions waits until a grooming answers them, even if its template is complete. A task that passes everything else is also held while its last `Grooming questions:` comment or reported split, from anyone, has no comment after it; it waits for its owner and is not sent for grooming (`waiting_on_owner` in the run report). Comments are read only for such a task. |
 
 A task whose only problems are blockers (a task in Blocked by that is not
 done, or a date still ahead) is never sent for grooming. With
@@ -170,11 +170,15 @@ task, and `split.py` applies it:
   "A compound task: no work of its own.", Effort its largest child's. It
   waits in Blocked (`BLOCKED_SECTION`) until they are done.
 - **Dry run first.** Unless `GROOM_SPLIT_DRY_RUN=false`, nothing is
-  created: the children are posted on the task as one comment and named in
-  the run report. The task is held until it changes, so once dry run is
-  off, edit a task that was reported to have it split for real.
+  created: the children are posted on the task as one comment starting
+  `Proposed split (not created` and named in the run report.
 - **A cap.** A split with more children than `GROOM_SPLIT_MAX_CHILDREN`
   (default 25) is reported the same way and not applied.
+- **A reported split waits on you**, as grooming questions do. **Answer in
+  a comment** — approve it, or correct it — and the next sweep sends the
+  task to be groomed again with your answer; with dry run off and the split
+  under the cap, that grooming creates it. Until then the task is held and
+  costs nothing.
 - **Once.** Each child's external id is its parent, the content the split
   was made for, and its position, so a redelivered proposal creates no
   second set, even one cut short partway.
@@ -257,6 +261,9 @@ doppler run --config prd -- uv run python -m task_manager_cog.groomed 1219828105
 
 It lints each task as the sweep does and writes its grooming record with
 the task's current content as groomed; it never writes the board.
+`--awaiting-owner` records each task as waiting on its owner instead, as if
+its grooming had asked questions: it is held, and the comments after its
+last `Grooming questions:` comment or reported split are read as answers.
 `--dry-run` prints what it would record. A gid that is not an open task
 is refused.
 

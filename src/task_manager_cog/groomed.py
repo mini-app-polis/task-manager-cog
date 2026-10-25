@@ -12,6 +12,12 @@ It reads the board and the API with the same settings as the sweep:
 
     doppler run --config prd -- uv run python -m task_manager_cog.groomed <gid> ...
 
+``--awaiting-owner`` records each task as waiting on its owner instead, as
+if its grooming had asked questions: it is held, and the comments after its
+last ``Grooming questions:`` comment or reported split are read as answers,
+so an answer sends it to be groomed again. Use it for a task a session
+leaves with a question for its owner.
+
 ``--dry-run`` prints what it would record and writes nothing.
 """
 
@@ -37,9 +43,13 @@ def record_groomed(
     store: Records,
     repos: Collection[str],
     write: bool,
+    awaiting_owner: bool = False,
     out: Callable[[str], None] = print,
 ) -> int:
-    """Record each task as groomed. Returns the number of gids refused."""
+    """Record each task as groomed. Returns the number of gids refused.
+
+    With ``awaiting_owner``, each is recorded as having questions instead.
+    """
     previous = {r.task_gid: r for r in store.list_groomings()}
     tasks = board.tasks()
     open_tasks = {t.gid: t for t in tasks if not t.completed}
@@ -64,6 +74,8 @@ def record_groomed(
         current = fingerprint(task)
         prior = previous.get(gid)
         outcome: GroomingOutcome = "ready" if not problems else "not_ready"
+        if awaiting_owner:
+            outcome = "questions"
         record = GroomingRecordWrite(
             task_gid=gid,
             task_id=task_id_of(task.name),
@@ -75,7 +87,8 @@ def record_groomed(
         )
         if write:
             store.record_grooming(record)
-        verb = "recorded as groomed" if write else "would record as groomed"
+        what = "waiting on its owner" if awaiting_owner else "groomed"
+        verb = f"recorded as {what}" if write else f"would record as {what}"
         out(f"{task.name}\n  {verb}; problems: {'; '.join(problems) or 'none'}")
     return refused
 
@@ -84,6 +97,11 @@ def main(argv: list[str] | None = None) -> int:
     """Record the tasks named by gid as groomed by hand."""
     parser = argparse.ArgumentParser(prog="python -m task_manager_cog.groomed")
     parser.add_argument("gids", nargs="+", help="the tasks' gids on the board")
+    parser.add_argument(
+        "--awaiting-owner",
+        action="store_true",
+        help="record each as waiting on its owner's answers",
+    )
     parser.add_argument(
         "--dry-run", action="store_true", help="print only; write nothing"
     )
@@ -94,6 +112,7 @@ def main(argv: list[str] | None = None) -> int:
         store=_api(),
         repos=load_repos(),
         write=not args.dry_run,
+        awaiting_owner=args.awaiting_owner,
     )
     return 1 if refused else 0
 
