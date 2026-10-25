@@ -23,7 +23,10 @@ the task already has one: the tag a task carries is never replaced.
 
 **A split.** A proposal with children divides its task: split.py creates
 them and rewrites the task as their compound task, behind a dry run and a
-cap.
+cap. A proposal with children and questions is not split: its questions are
+posted as below, with the children listed under them so the owner sees what
+the answers decide, and the task is left as it reads. Answering sends it to
+be groomed again, and that grooming may split it.
 
 **Where it goes.** The task is linted again as it now reads.
 
@@ -45,7 +48,7 @@ from __future__ import annotations
 
 import datetime as dt
 import os
-from collections.abc import Callable, Collection
+from collections.abc import Callable, Collection, Sequence
 
 from mini_app_polis import logger as logger_mod
 from mini_app_polis.api.contract import (
@@ -152,11 +155,22 @@ def groomed_html(block: str, body: str) -> str:
     return rich_text_body(escape_rich_text(block), escape_rich_text(body))
 
 
-def questions_comment(questions: list[str]) -> str:
-    """The comment that asks the owner a grooming's questions, numbered."""
+def questions_comment(questions: list[str], split: Sequence[str] = ()) -> str:
+    """The comment that asks the owner a grooming's questions, numbered.
+
+    ``split`` is the split the grooming proposed, one child a line, listed
+    under the questions: what the answers decide. Nothing in it is created.
+    """
     numbered = "\n".join(f"{i}. {q}" for i, q in enumerate(questions, start=1))
+    proposed = (
+        "The split these answers decide (nothing is created yet):\n"
+        + "\n".join(split)
+        + "\n\n"
+        if split
+        else ""
+    )
     return (
-        f"{QUESTIONS_PREFIX}\n{numbered}\n\n"
+        f"{QUESTIONS_PREFIX}\n{numbered}\n\n{proposed}"
         "Answer in a comment below; the task is groomed again with your answers."
     )
 
@@ -190,6 +204,20 @@ def apply_proposal(
             # Changed since it was sent: the next sweep sends it again.
             log.info("groom: %s changed since it was sent; not applied", task.name)
             report.note("task changed since it was sent", task.name)
+            return
+
+        if proposal.children and proposal.questions:
+            # Asked before it is split: no child is created either way.
+            from .split import ask_before_splitting
+
+            ask_before_splitting(
+                proposal,
+                task,
+                board=board,
+                store=store,
+                previous=previous,
+                report=report,
+            )
             return
 
         if proposal.children:

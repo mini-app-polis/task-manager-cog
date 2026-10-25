@@ -186,6 +186,12 @@ task, and `split.py` applies it:
   task to be groomed again with your answer; with dry run off and the split
   under the cap, that grooming creates it. Until then the task is held and
   costs nothing.
+- **Questions first.** A proposal with children and questions is not
+  split: its questions are posted as one `Grooming questions:` comment,
+  with the proposed children listed under them (and any child that says it
+  waits but names no blocker), and the task moves to Refining as it reads.
+  **Answer in a comment**, and the next sweep sends it to be groomed again
+  with your answers; that grooming may then split it.
 - **Once.** Each child's external id is its parent, the content the split
   was made for, and its position, so a redelivered proposal creates no
   second set, even one cut short partway.

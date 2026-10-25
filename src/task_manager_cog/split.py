@@ -21,6 +21,12 @@ created with an empty Blocked by and moved to Ready ahead of what it waits
 for. Such a proposal is inconsistent and is reported like a split over the
 cap, naming each such child. The check reads the proposal only.
 
+**Questions first.** A proposal with children and questions is not split:
+its questions are posted as one ``Grooming questions:`` comment with the
+children listed under them, and any child that says it waits but names no
+blocker, and the task moves to Refining and waits on its owner. Answering
+sends it to be groomed again, and that grooming may split it.
+
 A reported split waits on its owner as grooming questions do: the task is
 recorded as having questions, and is not groomed again until the owner
 answers in a comment (approving it, or correcting it) or edits the task.
@@ -59,7 +65,7 @@ from mini_app_polis.pipeline_status import RunReport
 
 from .board import Board
 from .compose import REVIEW_TAG, ComposedTask
-from .groom import MANUAL_PREFIX, groomed_html, groomed_text
+from .groom import MANUAL_PREFIX, groomed_html, groomed_text, questions_comment
 from .ids import next_id, task_name
 from .lint import NONE_WORDS, lint, only_blocked, parse, task_id_of, where_repos
 from .records import SPLIT_REPORT_PREFIX, fingerprint
@@ -185,9 +191,9 @@ def compound_fields(
     }
 
 
-def dry_run_comment(proposal: GroomingProposal, why: str) -> str:
+def child_lines(proposal: GroomingProposal) -> list[str]:
     """The split as it would be created, one child a line."""
-    lines = [f"{DRY_RUN_MARKER}: {why}; content {proposal.fingerprint[:12]})"]
+    lines = []
     for position, child in enumerate(proposal.children):
         waits = ", ".join(str(s) for s in child.blocked_by_siblings) or "none"
         lines.append(
@@ -195,7 +201,13 @@ def dry_run_comment(proposal: GroomingProposal, why: str) -> str:
             f"executor {child.executor or 'agent'}; waits on children {waits}"
             + (f"; blocked by {child.blocked_by}" if child.blocked_by else "")
         )
-    return "\n".join(lines)
+    return lines
+
+
+def dry_run_comment(proposal: GroomingProposal, why: str) -> str:
+    """The split as it would be created, one child a line."""
+    first = f"{DRY_RUN_MARKER}: {why}; content {proposal.fingerprint[:12]})"
+    return "\n".join([first, *child_lines(proposal)])
 
 
 def _groomed_record(
@@ -240,6 +252,47 @@ def _not_applied(
             list(previous.problems) if previous else [],
             previous,
         ).model_copy(update={"outcome": "questions"})
+    )
+
+
+def ask_before_splitting(
+    proposal: GroomingProposal,
+    task: AsanaTaskRecord,
+    *,
+    board: Board,
+    store: Records,
+    previous: GroomingRecord | None,
+    report: RunReport,
+) -> None:
+    """Post a split's questions, with its children under them; create nothing.
+
+    The task is left as it reads, moved to Refining, and recorded as having
+    questions, so an answer sends it to be groomed again.
+    """
+    label = task_id_of(task.name) or task.name
+    count = len(proposal.children)
+    split = child_lines(proposal) + [f"- {w}" for w in unblocked_waits(proposal)]
+    text = questions_comment(list(proposal.questions), split)
+    if text not in board.comments(task.gid):
+        board.comment(task.gid, text)
+    column = _section_named(board.sections(), _refining())
+    if task.section_gid != column.gid:
+        board.move(task.gid, column.gid)
+    store.record_grooming(
+        _groomed_record(
+            task,
+            task_id_of(task.name),
+            list(previous.problems) if previous else [],
+            previous,
+        ).model_copy(update={"outcome": "questions"})
+    )
+    report.count("questions", len(proposal.questions))
+    report.count("children_proposed", count)
+    report.count("cost_usd", f"{proposal.cost_usd:.4f}")
+    report.updated(
+        f"split proposed with questions, now in {column.name}",
+        f"{label} children={count}",
+        link=board.url(task.gid),
     )
 
 

@@ -4,7 +4,7 @@ import pytest
 from mini_app_polis.api.contract import GroomingChild, GroomingProposal
 
 from task_manager_cog.lint import parse
-from task_manager_cog.records import fingerprint
+from task_manager_cog.records import QUESTIONS_PREFIX, fingerprint
 from task_manager_cog.split import DRY_RUN_MARKER, external_id, unblocked_waits
 
 from .test_groom import VAGUE, _proposal
@@ -338,4 +338,69 @@ def test_a_split_without_wait_language_is_applied(live, _no_outbound_reports) ->
     plain = WAITS_UNSAID.model_copy(update={"body": "Says what changed."})
     board, store = _board(), FakeRecords()
     _apply_split(_split(children=[CHILDREN[0], plain]), board, store)
+    assert len(board.created) == 2
+
+
+# ── a split that also asks questions ─────────────────────────────────────
+
+
+def test_a_split_with_questions_asks_them_and_creates_nothing(
+    live, _no_outbound_reports
+) -> None:
+    board, store = _board(), FakeRecords()
+    proposal = _split(questions=["One release, or one per repository?"])
+    _apply_split(proposal, board, store)
+    _apply_split(proposal, board, store)  # redelivered
+
+    assert board.created == []
+    task = board.get("7")
+    assert task is not None
+    assert (task.name, task.notes) == (VAGUE.name, VAGUE.notes)
+    assert task.section_name == "Refining"
+    (comment,) = board.comments_["7"]
+    assert comment.startswith(QUESTIONS_PREFIX)
+    questions, children = comment.split("The split these answers decide")
+    assert "1. One release, or one per repository?" in questions
+    assert "0. common-python-utils: the shared contract" in children
+    assert "1. infra: apply it" in children
+    assert store.stored["7"].outcome == "questions"
+    assert store.stored["7"].groomed_fingerprint == fingerprint(VAGUE)
+
+
+def test_a_split_with_questions_names_a_child_that_waits_on_nothing(
+    live, _no_outbound_reports
+) -> None:
+    # The questions come first; the comment says what the split lacks too.
+    board, store = _board(), FakeRecords()
+    _apply_split(
+        _split(children=[*CHILDREN, WAITS_UNSAID], questions=["Which standard?"]),
+        board,
+        store,
+    )
+    assert board.created == []
+    (comment,) = board.comments_["7"]
+    assert comment.startswith(QUESTIONS_PREFIX)
+    assert '- child 2 (docs: describe it) says "Waits on"' in comment
+
+
+def test_an_answer_to_a_split_with_questions_grooms_it_again_and_may_split_it(
+    live, monkeypatch: pytest.MonkeyPatch, _no_outbound_reports
+) -> None:
+    board, store = _board(), FakeRecords()
+    _sweep_sending(store, board, monkeypatch, "5")
+    (job,) = store.jobs
+    asked = _split(fingerprint=job.task.fingerprint, questions=["One release?"])
+    _apply_split(asked, board, store)
+    assert board.created == []
+
+    # Unanswered: held, and not paid for again.
+    _sweep_sending(store, board, monkeypatch, "5")
+    assert len(store.jobs) == 1
+
+    board.comment("7", "One release.")
+    _sweep_sending(store, board, monkeypatch, "5")
+    assert len(store.jobs) == 2
+    assert store.jobs[1].task.comments == ["One release."]
+
+    _apply_split(_split(fingerprint=store.jobs[1].task.fingerprint), board, store)
     assert len(board.created) == 2
