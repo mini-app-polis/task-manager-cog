@@ -9,7 +9,7 @@ the board's template block, an id, tags, the column and the assignee. Every
 hour it also sweeps the board, moves each task that meets the definition
 of ready to Ready, and dispatches an agent for each Ready task it can take.
 It is the only thing that writes to the board. See
-[ADR-001](docs/decisions/ADR-001-one-writer-to-the-board.md).
+[ADR-0001](docs/decisions/ADR-0001-one-writer-to-the-board.md).
 
 ## Flow
 
