@@ -5,7 +5,7 @@ from mini_app_polis.api.contract import GroomingChild, GroomingProposal
 
 from task_manager_cog.lint import parse
 from task_manager_cog.records import fingerprint
-from task_manager_cog.split import DRY_RUN_MARKER, external_id
+from task_manager_cog.split import DRY_RUN_MARKER, external_id, unblocked_waits
 
 from .test_groom import VAGUE, _proposal
 from .test_sweep import SECTIONS, FakeBoard, FakeRecords, _sweep_sending, _task
@@ -37,15 +37,17 @@ REPOS_WITH_LIB = frozenset({"infra", "common-python-utils"})
 
 def _split(**overrides) -> GroomingProposal:
     return _proposal(
-        title="Ship the contract and apply it",
-        done_when=None,
-        where=None,
-        constraints=None,
-        effort=None,
-        blocked_by=None,
-        body="Two repositories, so two tasks.",
-        children=CHILDREN,
-        **overrides,
+        **{
+            "title": "Ship the contract and apply it",
+            "done_when": None,
+            "where": None,
+            "constraints": None,
+            "effort": None,
+            "blocked_by": None,
+            "body": "Two repositories, so two tasks.",
+            "children": CHILDREN,
+            **overrides,
+        }
     )
 
 
@@ -262,3 +264,78 @@ def test_a_split_over_the_cap_waits_on_its_owner_too(
     board, store = _board(), FakeRecords()
     _apply_split(_split(), board, store)
     assert store.stored["7"].outcome == "questions"
+
+
+# ── a child that says it waits names its blocker ─────────────────────────
+
+
+WAITS_UNSAID = GroomingChild(
+    title="docs: describe it",
+    done_when="The README says it.",
+    where="infra",
+    constraints="None",
+    effort="S",
+    body="Waits on the standard.",
+)
+
+
+def test_a_child_that_says_it_waits_but_names_no_blocker_refuses_the_split(
+    live, _no_outbound_reports
+) -> None:
+    board, store = _board(), FakeRecords()
+    _apply_split(_split(children=[*CHILDREN, WAITS_UNSAID]), board, store)
+
+    assert board.created == []
+    assert board.get("7") == VAGUE
+    (comment,) = board.comments_["7"]
+    assert comment.startswith(DRY_RUN_MARKER)
+    assert 'child 2 (docs: describe it) says "Waits on" in its body' in comment
+    # Only the child that says it waits is named.
+    assert "child 1 (infra: apply it)" not in comment
+    assert store.stored["7"].outcome == "questions"
+    ((_, kwargs),) = _no_outbound_reports
+    assert "not applied" in kwargs["text"]
+
+
+def test_a_child_that_says_it_waits_and_names_the_sibling_is_applied(
+    live, _no_outbound_reports
+) -> None:
+    waits = WAITS_UNSAID.model_copy(update={"blocked_by_siblings": [0]})
+    board, store = _board(), FakeRecords()
+    _apply_split(_split(children=[*CHILDREN, waits]), board, store)
+    assert len(board.created) == 3
+    third = board.get("93")
+    assert third is not None
+    assert parse(third.notes).fields["Blocked by"] == "MINI-2"
+
+
+@pytest.mark.parametrize(
+    ("said", "phrase"),
+    [
+        (
+            "It can start after the shared contract child.",
+            "after the shared contract child",
+        ),
+        ("We WAIT ON infra.", "WAIT ON"),
+    ],
+)
+def test_other_ways_of_saying_it_waits_are_caught(said: str, phrase: str) -> None:
+    child = WAITS_UNSAID.model_copy(update={"body": "Plain.", "done_when": said})
+    assert unblocked_waits(_split(children=[child])) == [
+        f'child 0 (docs: describe it) says "{phrase}" in its Done when '
+        "but names no blocker"
+    ]
+
+
+def test_a_blocked_by_of_none_is_no_blocker() -> None:
+    child = WAITS_UNSAID.model_copy(update={"blocked_by": "None"})
+    assert unblocked_waits(_split(children=[child]))
+    named = WAITS_UNSAID.model_copy(update={"blocked_by": "MINI-4"})
+    assert unblocked_waits(_split(children=[named])) == []
+
+
+def test_a_split_without_wait_language_is_applied(live, _no_outbound_reports) -> None:
+    plain = WAITS_UNSAID.model_copy(update={"body": "Says what changed."})
+    board, store = _board(), FakeRecords()
+    _apply_split(_split(children=[CHILDREN[0], plain]), board, store)
+    assert len(board.created) == 2

@@ -174,6 +174,13 @@ task, and `split.py` applies it:
   `Proposed split (not created` and named in the run report.
 - **A cap.** A split with more children than `GROOM_SPLIT_MAX_CHILDREN`
   (default 25) is reported the same way and not applied.
+- **Waits are named.** A child whose title, Done when or body says it
+  waits ("waits on", "wait on", "after the … child", in any case) but whose
+  proposal names no earlier child and no existing task or date for it to be
+  blocked by makes the split inconsistent: created, it would reach Ready
+  ahead of what it waits for. Such a split is reported the same way, naming
+  each child and what it says, with an issue in the run report, and not
+  applied. The check reads the proposal only.
 - **A reported split waits on you**, as grooming questions do. **Answer in
   a comment** — approve it, or correct it — and the next sweep sends the
   task to be groomed again with your answer; with dry run off and the split

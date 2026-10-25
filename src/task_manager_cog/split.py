@@ -14,6 +14,13 @@ comment and named in the run report, and nothing is created.
 **A cap.** A split with more children than ``GROOM_SPLIT_MAX_CHILDREN`` is
 not applied: it is reported on the task and in the run report.
 
+**Waits it names.** A child whose title, Done when or body says it waits
+("waits on", "wait on", "after the … child") but names nothing it is
+blocked by, neither an earlier child nor an existing task or date, would be
+created with an empty Blocked by and moved to Ready ahead of what it waits
+for. Such a proposal is inconsistent and is reported like a split over the
+cap, naming each such child. The check reads the proposal only.
+
 A reported split waits on its owner as grooming questions do: the task is
 recorded as having questions, and is not groomed again until the owner
 answers in a comment (approving it, or correcting it) or edits the task.
@@ -36,6 +43,7 @@ the definition of ready without sending them to be groomed again.
 from __future__ import annotations
 
 import os
+import re
 from collections.abc import Collection, Mapping
 
 from mini_app_polis import logger as logger_mod
@@ -70,6 +78,10 @@ COMPOUND_CONSTRAINTS = "A compound task: no work of its own."
 
 _EFFORT_ORDER = ("S", "M", "L")
 
+#: What a child says when it waits on something: "waits on", "wait on",
+#: "after the … child".
+_WAIT_WORDS = re.compile(r"\bwaits? on\b|\bafter the\b[^.\n]*?\bchild\b", re.I)
+
 
 def dry_run() -> bool:
     """Whether a split is only reported: ``GROOM_SPLIT_DRY_RUN``, on unless false."""
@@ -100,6 +112,33 @@ def child_blocked_by(child: GroomingChild, ids: list[str]) -> str:
     if own and own.lower() not in NONE_WORDS:
         waits.append(own)
     return ", ".join(waits) or "None"
+
+
+def _names_a_blocker(child: GroomingChild) -> bool:
+    own = (child.blocked_by or "").strip()
+    return bool(child.blocked_by_siblings) or (
+        bool(own) and own.lower() not in NONE_WORDS
+    )
+
+
+def unblocked_waits(proposal: GroomingProposal) -> list[str]:
+    """Each child that says it waits but names no blocker, and where it says so."""
+    found = []
+    for position, child in enumerate(proposal.children):
+        if _names_a_blocker(child):
+            continue
+        for part, text in (
+            ("title", child.title),
+            ("Done when", child.done_when),
+            ("body", child.body),
+        ):
+            if match := _WAIT_WORDS.search(text):
+                found.append(
+                    f'child {position} ({child.title}) says "{match[0]}" in its '
+                    f"{part} but names no blocker"
+                )
+                break
+    return found
 
 
 def child_notes(
@@ -221,6 +260,13 @@ def apply_split(
         why = f"{count} children is over GROOM_SPLIT_MAX_CHILDREN ({max_children()})"
         _not_applied(task, proposal, why, board=board, store=store, previous=previous)
         report.issue("split over the cap; not applied", label, detail=why)
+        return
+    if waits := unblocked_waits(proposal):
+        why = "; ".join(waits)
+        _not_applied(task, proposal, why, board=board, store=store, previous=previous)
+        report.issue(
+            "split names waits it has no blocker for; not applied", label, detail=why
+        )
         return
     if dry_run():
         why = "GROOM_SPLIT_DRY_RUN is on"
