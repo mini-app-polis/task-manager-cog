@@ -51,7 +51,28 @@ task-groomer-cog ──proposal──► API ──task.groom-proposal──► 
 agent workflow ──result──► API ──task.agent-result──► task-manager queue
                                                apply it (results.py): PR line and
                                                Review, or a comment and In progress
+
+source ──update──► API ──task.update──► task-manager queue
+                                               apply it (update.py): find the task
+                                               by external id, comment, and move
+                                               it to the named column
 ```
+
+### Updating a task
+
+A `task.update` (`mini_app_polis.api.contract.TaskUpdateRequest`) names a
+task by the `external_id` it was created under, with a comment and,
+optionally, a column by name. `update.py` posts the comment and moves the
+task there. `Review` is the board's Review column (`REVIEW_SECTION`); any
+other name is matched against the board's columns, ignoring case.
+
+- A task not on the board is reported in the run, not retried.
+- A completed task, or one already in the named column, is left alone.
+- A task in In progress gets the comment and is not moved.
+- A column the board does not have still gets the comment, and the run
+  reports the name as an issue.
+- A comment whose text is already on the task is not posted again, so a
+  redelivered update changes nothing. Nothing here completes a task.
 
 ## The definition of ready
 
@@ -318,6 +339,7 @@ src/task_manager_cog/
   dispatch.py   dispatching an agent for each Ready task it can take
   github.py     the agent GitHub App: is there a caller, start it
   results.py    applying an agent run's result to the board
+  update.py     applying an update to a task: a comment, and a column
 ```
 
 ## Running locally (DOC-013)
