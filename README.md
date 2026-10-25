@@ -51,7 +51,28 @@ task-groomer-cog ──proposal──► API ──task.groom-proposal──► 
 agent workflow ──result──► API ──task.agent-result──► task-manager queue
                                                apply it (results.py): PR line and
                                                Review, or a comment and In progress
+
+source ──update──► API ──task.update──► task-manager queue
+                                               apply it (update.py): find the task
+                                               by external id, comment, and move
+                                               it to the named column
 ```
+
+### Updating a task
+
+A `task.update` (`mini_app_polis.api.contract.TaskUpdateRequest`) names a
+task by the `external_id` it was created under, with a comment and,
+optionally, a column by name. `update.py` posts the comment and moves the
+task there. `Review` is the board's Review column (`REVIEW_SECTION`); any
+other name is matched against the board's columns, ignoring case.
+
+- A task not on the board is reported in the run, not retried.
+- A completed task, or one already in the named column, is left alone.
+- A task in In progress gets the comment and is not moved.
+- A column the board does not have still gets the comment, and the run
+  reports the name as an issue.
+- A comment whose text is already on the task is not posted again, so a
+  redelivered update changes nothing. Nothing here completes a task.
 
 ## The definition of ready
 
@@ -155,6 +176,14 @@ it was made for:
 A groomed task is not sent again until someone changes it, so a task
 waiting on you costs nothing.
 
+A task that is not ready, has no grooming questions out, is not waiting
+only on blockers, and is not sent because it is unchanged since it was last
+groomed is held with nobody asked: nothing happens to it until a person
+changes it. Each sweep counts these (`held_without_questions`) and names
+each with its link as an issue in the run report (`task held with nobody
+asked`), so it is seen rather than silent. The sweep does nothing to it: it
+is not moved, sent or commented on.
+
 ### Splits
 
 A proposal with children (from a groomer with splitting on) divides its
@@ -174,11 +203,24 @@ task, and `split.py` applies it:
   `Proposed split (not created` and named in the run report.
 - **A cap.** A split with more children than `GROOM_SPLIT_MAX_CHILDREN`
   (default 25) is reported the same way and not applied.
+- **Waits are named.** A child whose title, Done when or body says it
+  waits ("waits on", "wait on", "after the … child", in any case) but whose
+  proposal names no earlier child and no existing task or date for it to be
+  blocked by makes the split inconsistent: created, it would reach Ready
+  ahead of what it waits for. Such a split is reported the same way, naming
+  each child and what it says, with an issue in the run report, and not
+  applied. The check reads the proposal only.
 - **A reported split waits on you**, as grooming questions do. **Answer in
   a comment** — approve it, or correct it — and the next sweep sends the
   task to be groomed again with your answer; with dry run off and the split
   under the cap, that grooming creates it. Until then the task is held and
   costs nothing.
+- **Questions first.** A proposal with children and questions is not
+  split: its questions are posted as one `Grooming questions:` comment,
+  with the proposed children listed under them (and any child that says it
+  waits but names no blocker), and the task moves to Refining as it reads.
+  **Answer in a comment**, and the next sweep sends it to be groomed again
+  with your answers; that grooming may then split it.
 - **Once.** Each child's external id is its parent, the content the split
   was made for, and its position, so a redelivered proposal creates no
   second set, even one cut short partway.
@@ -297,6 +339,7 @@ src/task_manager_cog/
   dispatch.py   dispatching an agent for each Ready task it can take
   github.py     the agent GitHub App: is there a caller, start it
   results.py    applying an agent run's result to the board
+  update.py     applying an update to a task: a comment, and a column
 ```
 
 ## Running locally (DOC-013)

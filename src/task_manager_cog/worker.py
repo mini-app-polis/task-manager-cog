@@ -31,6 +31,11 @@ So does an agent run's result, which is applied by results.py:
 
     {"type": "task.agent-result", "version": 1, "payload": <AgentRun>}
 
+And so does a change to a task a source already asked for, found by its
+``external_id``: a comment, and the column to move it to (update.py):
+
+    {"type": "task.update", "version": 1, "payload": <TaskUpdateRequest>}
+
 **A duplicate request makes no second task.** The source's ``external_id`` is stored on
 the task, and looked up before anything is composed or minted. A job that
 created its task and then failed (a timeout on the response, a lost report)
@@ -62,6 +67,8 @@ from mini_app_polis.api.contract import (
     TaskCreateRequest,
     TaskGroomProposalMessage,
     TaskSweepMessage,
+    TaskUpdateMessage,
+    TaskUpdateRequest,
 )
 from mini_app_polis.environment import Effect, effect_enabled
 from mini_app_polis.lambda_worker import (
@@ -82,6 +89,7 @@ from .ids import next_id, task_name
 from .results import apply_result
 from .sources import SOURCES
 from .sweep import run_sweep
+from .update import apply_update
 
 log = logger_mod.get_logger()
 
@@ -104,7 +112,7 @@ class SweepJob:
 
 def parse_message(
     body: str,
-) -> TaskCreateRequest | SweepJob | GroomingProposal | AgentRun:
+) -> TaskCreateRequest | SweepJob | GroomingProposal | AgentRun | TaskUpdateRequest:
     """The job a message carries. Raises UnprocessableMessage otherwise."""
     message = parse_queue_message(
         body,
@@ -112,6 +120,7 @@ def parse_message(
         TaskSweepMessage,
         TaskGroomProposalMessage,
         TaskAgentResultMessage,
+        TaskUpdateMessage,
     )
     if isinstance(message, TaskSweepMessage):
         return SweepJob()
@@ -184,6 +193,10 @@ def process_message(
         log.info("worker: run %s applies agent run %s", run_id, request.id)
         apply_result(request, run_id=run_id, board_factory=board_factory)
         return
+    if isinstance(request, TaskUpdateRequest):
+        log.info("worker: run %s updates %s", run_id, request.external_id)
+        apply_update(request, run_id=run_id, board_factory=board_factory)
+        return
     log.info(
         "worker: run %s source=%s external_id=%s",
         run_id,
@@ -219,6 +232,8 @@ def _source_label(body: str) -> str:
             return "grooming"
         if isinstance(job, AgentRun):
             return "agent-result"
+        if isinstance(job, TaskUpdateRequest):
+            return "update"
         return job.source
     except Exception:  # noqa: BLE001 — a label must not fail the run
         return "unreadable"

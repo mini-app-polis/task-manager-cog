@@ -67,7 +67,7 @@ def _run(body: str, board: FakeBoard) -> None:
         ("not json", "not JSON"),
         ("[1]", "not an object"),
         (json.dumps({"type": "task.create", "version": 2}), "version"),
-        (json.dumps({"type": "task.update", "version": 1}), "message type"),
+        (json.dumps({"type": "task.delete", "version": 1}), "message type"),
         (
             json.dumps({"type": "task.create", "version": 1, "payload": {}}),
             "not a valid task.create",
@@ -317,3 +317,38 @@ def test_an_agent_result_is_applied(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     worker.process_message(_agent_result(), run_id="m-1")
     assert applied == ["1"]
+
+
+# --- updates -------------------------------------------------------------------
+
+
+def _update(**changes: Any) -> str:
+    payload: dict[str, Any] = {
+        "external_id": "ci.watcher-cog.main",
+        "comment": "CI is green again.",
+        "section": "Review",
+    }
+    payload.update(changes)
+    return json.dumps({"type": "task.update", "version": 1, "payload": payload})
+
+
+def test_an_update_is_read_as_an_update_request() -> None:
+    request = worker.parse_message(_update())
+    assert isinstance(request, worker.TaskUpdateRequest)
+    assert request.external_id == "ci.watcher-cog.main"
+    assert request.section == "Review"
+    assert worker._source_label(_update()) == "update"
+
+
+def test_an_unreadable_update_is_refused() -> None:
+    with pytest.raises(worker.UnprocessableMessage, match="not a valid task.update"):
+        worker.parse_message(_update(comment=""))
+
+
+def test_an_update_is_applied(monkeypatch: pytest.MonkeyPatch) -> None:
+    applied: list[str] = []
+    monkeypatch.setattr(
+        worker, "apply_update", lambda request, **_: applied.append(request.comment)
+    )
+    worker.process_message(_update(), run_id="m-1")
+    assert applied == ["CI is green again."]

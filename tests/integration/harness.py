@@ -77,6 +77,17 @@ def create_body(
     return json.dumps({"type": "task.create", "version": 1, "payload": request})
 
 
+def update_body(
+    *,
+    external_id: str = "ci.infra.main",
+    comment: str = "CI on infra main is green again.",
+    section: str | None = "Review",
+) -> str:
+    """A ``task.update`` message as the API enqueues it."""
+    request = {"external_id": external_id, "comment": comment, "section": section}
+    return json.dumps({"type": "task.update", "version": 1, "payload": request})
+
+
 def sweep_body() -> str:
     """A ``task.sweep`` message as the schedule enqueues it."""
     return json.dumps({"type": "task.sweep", "version": 1})
@@ -212,6 +223,7 @@ class FakeAsana:
     def _routes(self) -> list[tuple[str, str, Any]]:
         return [
             (r"/tasks/external:(?P<external_id>.+)", "GET external", self._find),
+            (r"/tasks/(?P<task>\d+)", "GET task", self._get_task),
             (r"/projects/(?P<project>\d+)/tasks", "GET tasks", self._list_tasks),
             (r"/projects/(?P<project>\d+)/sections", "GET sections", self._sections),
             (r"/tags", "GET tags", self._list_tags),
@@ -227,6 +239,11 @@ class FakeAsana:
             if task["external"] == external_id:
                 return _data({"gid": task["gid"]})
         return _asana_error(404, "Unknown object")
+
+    def _get_task(self, request: httpx.Request, task: str) -> httpx.Response:
+        if task not in self.tasks:
+            return _asana_error(404, "Unknown object")
+        return _data(self._record(self.tasks[task]))
 
     def _list_tasks(self, request: httpx.Request, project: str) -> httpx.Response:
         assert project == PROJECT_GID, f"listed project {project}"

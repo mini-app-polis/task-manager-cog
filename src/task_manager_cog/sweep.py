@@ -34,6 +34,12 @@ counts as sent back from Ready. Moving it back does not send it for
 grooming: it waits for a person to change it. The agent dispatch at the end
 of the sweep never takes a task the sweep found failing in Ready.
 
+A task that is not ready, has no grooming questions out, is not waiting
+only on blockers, and is not sent because it is unchanged since it was last
+groomed is held with nobody asked: nothing will happen to it until a person
+changes it. The sweep leaves it as it is and names it in the run report
+(``held_without_questions``), so it is seen rather than silent.
+
 Moving, to Ready, back from it, or to the blocked column, is a setting,
 ``GROOM_AUTO_READY``, off unless set, so the sweep can run and say what it
 would move before it moves anything. The columns are named, not configured
@@ -216,6 +222,9 @@ class SweepResult:
     awaiting_owner: int = 0
     #: Tasks not ready only because a blocker is not done: never sent.
     blocked: int = 0
+    #: Tasks not ready, unchanged since they were groomed, and with no
+    #: questions out: nobody is asked about them, and nothing is done.
+    held: list[AsanaTaskRecord] = field(default_factory=list)
     #: Tasks waiting on blockers that were moved to the blocked column.
     moved_to_blocked: list[AsanaTaskRecord] = field(default_factory=list)
     #: Tasks waiting on blockers that would have been moved there, had
@@ -536,6 +545,9 @@ def sweep(
                 log.info("sweep: %s sent for grooming", task.name)
             else:
                 result.waiting += 1
+        elif not verdict.ready and OPEN_QUESTIONS not in verdict.problems:
+            result.held.append(task)
+            log.info("sweep: %s held, groomed as it reads; nobody is asked", task.name)
 
         record = next_record(
             task,
@@ -601,6 +613,11 @@ def run_sweep(
         report.count("waiting_for_grooming", result.waiting)
         report.count("waiting_on_blockers", result.blocked)
         report.count("waiting_on_owner", result.awaiting_owner)
+        report.count("held_without_questions", len(result.held))
+        for task in result.held:
+            report.issue(
+                "task held with nobody asked", f"[{task.name}]({board.url(task.gid)})"
+            )
         for task in result.sent:
             report.updated(
                 "task sent for grooming", task.name, link=board.url(task.gid)

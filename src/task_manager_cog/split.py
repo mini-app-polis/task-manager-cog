@@ -14,6 +14,19 @@ comment and named in the run report, and nothing is created.
 **A cap.** A split with more children than ``GROOM_SPLIT_MAX_CHILDREN`` is
 not applied: it is reported on the task and in the run report.
 
+**Waits it names.** A child whose title, Done when or body says it waits
+("waits on", "wait on", "after the … child") but names nothing it is
+blocked by, neither an earlier child nor an existing task or date, would be
+created with an empty Blocked by and moved to Ready ahead of what it waits
+for. Such a proposal is inconsistent and is reported like a split over the
+cap, naming each such child. The check reads the proposal only.
+
+**Questions first.** A proposal with children and questions is not split:
+its questions are posted as one ``Grooming questions:`` comment with the
+children listed under them, and any child that says it waits but names no
+blocker, and the task moves to Refining and waits on its owner. Answering
+sends it to be groomed again, and that grooming may split it.
+
 A reported split waits on its owner as grooming questions do: the task is
 recorded as having questions, and is not groomed again until the owner
 answers in a comment (approving it, or correcting it) or edits the task.
@@ -36,6 +49,7 @@ the definition of ready without sending them to be groomed again.
 from __future__ import annotations
 
 import os
+import re
 from collections.abc import Collection, Mapping
 
 from mini_app_polis import logger as logger_mod
@@ -51,7 +65,7 @@ from mini_app_polis.pipeline_status import RunReport
 
 from .board import Board
 from .compose import REVIEW_TAG, ComposedTask
-from .groom import MANUAL_PREFIX, groomed_html, groomed_text
+from .groom import MANUAL_PREFIX, groomed_html, groomed_text, questions_comment
 from .ids import next_id, task_name
 from .lint import NONE_WORDS, lint, only_blocked, parse, task_id_of, where_repos
 from .records import SPLIT_REPORT_PREFIX, fingerprint
@@ -69,6 +83,10 @@ DRY_RUN_MARKER = SPLIT_REPORT_PREFIX
 COMPOUND_CONSTRAINTS = "A compound task: no work of its own."
 
 _EFFORT_ORDER = ("S", "M", "L")
+
+#: What a child says when it waits on something: "waits on", "wait on",
+#: "after the … child".
+_WAIT_WORDS = re.compile(r"\bwaits? on\b|\bafter the\b[^.\n]*?\bchild\b", re.I)
 
 
 def dry_run() -> bool:
@@ -100,6 +118,33 @@ def child_blocked_by(child: GroomingChild, ids: list[str]) -> str:
     if own and own.lower() not in NONE_WORDS:
         waits.append(own)
     return ", ".join(waits) or "None"
+
+
+def _names_a_blocker(child: GroomingChild) -> bool:
+    own = (child.blocked_by or "").strip()
+    return bool(child.blocked_by_siblings) or (
+        bool(own) and own.lower() not in NONE_WORDS
+    )
+
+
+def unblocked_waits(proposal: GroomingProposal) -> list[str]:
+    """Each child that says it waits but names no blocker, and where it says so."""
+    found = []
+    for position, child in enumerate(proposal.children):
+        if _names_a_blocker(child):
+            continue
+        for part, text in (
+            ("title", child.title),
+            ("Done when", child.done_when),
+            ("body", child.body),
+        ):
+            if match := _WAIT_WORDS.search(text):
+                found.append(
+                    f'child {position} ({child.title}) says "{match[0]}" in its '
+                    f"{part} but names no blocker"
+                )
+                break
+    return found
 
 
 def child_notes(
@@ -146,9 +191,9 @@ def compound_fields(
     }
 
 
-def dry_run_comment(proposal: GroomingProposal, why: str) -> str:
+def child_lines(proposal: GroomingProposal) -> list[str]:
     """The split as it would be created, one child a line."""
-    lines = [f"{DRY_RUN_MARKER}: {why}; content {proposal.fingerprint[:12]})"]
+    lines = []
     for position, child in enumerate(proposal.children):
         waits = ", ".join(str(s) for s in child.blocked_by_siblings) or "none"
         lines.append(
@@ -156,7 +201,13 @@ def dry_run_comment(proposal: GroomingProposal, why: str) -> str:
             f"executor {child.executor or 'agent'}; waits on children {waits}"
             + (f"; blocked by {child.blocked_by}" if child.blocked_by else "")
         )
-    return "\n".join(lines)
+    return lines
+
+
+def dry_run_comment(proposal: GroomingProposal, why: str) -> str:
+    """The split as it would be created, one child a line."""
+    first = f"{DRY_RUN_MARKER}: {why}; content {proposal.fingerprint[:12]})"
+    return "\n".join([first, *child_lines(proposal)])
 
 
 def _groomed_record(
@@ -204,6 +255,47 @@ def _not_applied(
     )
 
 
+def ask_before_splitting(
+    proposal: GroomingProposal,
+    task: AsanaTaskRecord,
+    *,
+    board: Board,
+    store: Records,
+    previous: GroomingRecord | None,
+    report: RunReport,
+) -> None:
+    """Post a split's questions, with its children under them; create nothing.
+
+    The task is left as it reads, moved to Refining, and recorded as having
+    questions, so an answer sends it to be groomed again.
+    """
+    label = task_id_of(task.name) or task.name
+    count = len(proposal.children)
+    split = child_lines(proposal) + [f"- {w}" for w in unblocked_waits(proposal)]
+    text = questions_comment(list(proposal.questions), split)
+    if text not in board.comments(task.gid):
+        board.comment(task.gid, text)
+    column = _section_named(board.sections(), _refining())
+    if task.section_gid != column.gid:
+        board.move(task.gid, column.gid)
+    store.record_grooming(
+        _groomed_record(
+            task,
+            task_id_of(task.name),
+            list(previous.problems) if previous else [],
+            previous,
+        ).model_copy(update={"outcome": "questions"})
+    )
+    report.count("questions", len(proposal.questions))
+    report.count("children_proposed", count)
+    report.count("cost_usd", f"{proposal.cost_usd:.4f}")
+    report.updated(
+        f"split proposed with questions, now in {column.name}",
+        f"{label} children={count}",
+        link=board.url(task.gid),
+    )
+
+
 def apply_split(
     proposal: GroomingProposal,
     task: AsanaTaskRecord,
@@ -221,6 +313,13 @@ def apply_split(
         why = f"{count} children is over GROOM_SPLIT_MAX_CHILDREN ({max_children()})"
         _not_applied(task, proposal, why, board=board, store=store, previous=previous)
         report.issue("split over the cap; not applied", label, detail=why)
+        return
+    if waits := unblocked_waits(proposal):
+        why = "; ".join(waits)
+        _not_applied(task, proposal, why, board=board, store=store, previous=previous)
+        report.issue(
+            "split names waits it has no blocker for; not applied", label, detail=why
+        )
         return
     if dry_run():
         why = "GROOM_SPLIT_DRY_RUN is on"
