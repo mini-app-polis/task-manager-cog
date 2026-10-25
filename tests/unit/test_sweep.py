@@ -1151,3 +1151,55 @@ def test_the_run_report_counts_tasks_sent_back_from_ready(
     assert kwargs["sent_back_from_ready"] == 1
     assert "task sent back from Ready to Refining" in kwargs["text"]
     assert store.stored["1"].returned_count == 1
+
+
+# ── held with nobody asked ────────────────────────────────────────────────
+
+
+def _groomed(task: AsanaTaskRecord, outcome: str = "not_ready") -> GroomingRecord:
+    """The record of a task groomed as it now reads."""
+    return GroomingRecord(
+        task_gid=task.gid,
+        task_id=task.name.split(" ")[0],
+        fingerprint=fingerprint(task),
+        groomed_fingerprint=fingerprint(task),
+        outcome=outcome,
+        problems=["Effort is missing"],
+        updated_at=dt.datetime(2026, 10, 23, tzinfo=dt.UTC),
+    )
+
+
+def test_a_task_held_with_nobody_asked_is_counted_and_named(
+    production, monkeypatch: pytest.MonkeyPatch, _no_outbound_reports
+) -> None:
+    held = _task("2", "MINI-2 · Held", notes="look into this", section="Refining")
+    asked = _task("3", "MINI-3 · Asked", notes="look into this")
+    waits = _task("6", "MINI-6 · Waits", notes=WAITS_ON_OPEN_TASK, section="Blocked")
+    new = _task("8", "MINI-8 · New", notes="look into this")
+    unswept = _task("9", "CI-9 · infra: CI failing", notes="look into this")
+    template = _task("5", "MINI-5 · TEMPLATE — do not work", notes="x")
+    board = FakeBoard([held, asked, waits, OPEN_BLOCKER, new, unswept, template])
+    store = FakeRecords(
+        stored={
+            "2": _groomed(held),
+            "3": _groomed(asked, "questions"),
+            "9": _groomed(unswept),
+            "5": _groomed(template),
+        }
+    )
+    _sweep_sending(store, board, monkeypatch, "5")
+
+    assert [j.task.name for j in store.jobs] == ["MINI-8 · New"]
+    ((_, kwargs),) = _no_outbound_reports
+    assert kwargs["held_without_questions"] == 1
+    (line,) = [
+        line
+        for line in kwargs["text"].splitlines()
+        if line.startswith("task held with nobody asked")
+    ]
+    assert line == "task held with nobody asked: [MINI-2 · Held](https://board/2)"
+    # Nothing about it changes.
+    assert board.moves == []
+    assert board.comments("2") == []
+    assert board.get("2") == held
+    assert store.stored["2"].groomed_fingerprint == fingerprint(held)

@@ -155,6 +155,14 @@ it was made for:
 A groomed task is not sent again until someone changes it, so a task
 waiting on you costs nothing.
 
+A task that is not ready, has no grooming questions out, is not waiting
+only on blockers, and is not sent because it is unchanged since it was last
+groomed is held with nobody asked: nothing happens to it until a person
+changes it. Each sweep counts these (`held_without_questions`) and names
+each with its link as an issue in the run report (`task held with nobody
+asked`), so it is seen rather than silent. The sweep does nothing to it: it
+is not moved, sent or commented on.
+
 ### Splits
 
 A proposal with children (from a groomer with splitting on) divides its
