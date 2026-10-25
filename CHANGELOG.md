@@ -1,3 +1,18 @@
+# [1.14.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.13.3...v1.14.0) (2026-10-25)
+
+
+### Bug Fixes
+
+* **deps:** bump miniapppolis-common-utils to 6.24.0 ([7268047](https://github.com/mini-app-polis/task-manager-cog/commit/72680476d5f6920e2fc4ef66df4e3ce8fc9963b6))
+* **groom:** post a split proposal's questions instead of applying it ([72c73b2](https://github.com/mini-app-polis/task-manager-cog/commit/72c73b2573755596475fa45362d78da0e6e38280))
+* **split:** refuse a split whose child says it waits but names no blocker ([0c497bb](https://github.com/mini-app-polis/task-manager-cog/commit/0c497bb9bd8d5fc884fb015389724ec861d41352))
+
+
+### Features
+
+* **sweep:** name tasks held with nobody asked in the run report ([4e14742](https://github.com/mini-app-polis/task-manager-cog/commit/4e14742e0fa6d41270e33c3fefb7b926c405f03d))
+* **update:** handle task.update by commenting on a task and moving it to a named column ([02dd9e0](https://github.com/mini-app-polis/task-manager-cog/commit/02dd9e09e2760f93fa9babc840c39410a3dc6e23))
+
 ## [1.13.3](https://github.com/mini-app-polis/task-manager-cog/compare/v1.13.2...v1.13.3) (2026-10-25)
 
 
