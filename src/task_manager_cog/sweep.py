@@ -26,13 +26,24 @@ the column it was in, and moves to Ready on the first sweep after its
 blockers are done and on or after its date (a UTC day). Moving it changes
 nothing in its content, so it is not sent for grooming either way.
 
-Moving, to Ready or to the blocked column, is a setting,
+The ready column is linted too, so a task put there by hand, or edited
+after it got there, is checked again. One that passes is left alone. One
+that fails moves to the refining column with one comment listing its
+problems, or to the blocked column when blockers are its only problem, and
+counts as sent back from Ready. Moving it back does not send it for
+grooming: it waits for a person to change it. The agent dispatch at the end
+of the sweep never takes a task the sweep found failing in Ready.
+
+Moving, to Ready, back from it, or to the blocked column, is a setting,
 ``GROOM_AUTO_READY``, off unless set, so the sweep can run and say what it
 would move before it moves anything. The columns are named, not configured
 by gid, so they read the same in Doppler as on the board:
 
   GROOM_SECTIONS    the columns swept (default: Ideas, Refining, Blocked)
-  READY_SECTION     the column a ready task moves to (default: Ready)
+  READY_SECTION     the column a ready task moves to, and is checked in
+                    again (default: Ready)
+  REFINING_SECTION  the column a task failing in Ready moves back to
+                    (default: Refining)
   BLOCKED_SECTION   the column a task waiting on blockers moves to
                     (default: Blocked)
   GROOM_AUTO_READY  true to move tasks; anything else only reports
@@ -93,6 +104,7 @@ from .records import (
     fingerprint,
     needs_grooming,
     next_record,
+    sent_back_record,
     unanswered,
 )
 from .registry import load_repos
@@ -108,8 +120,12 @@ MACHINE_NAME = "task-manager-cog"
 
 DEFAULT_GROOM_SECTIONS: tuple[str, ...] = ("Ideas", "Refining", "Blocked")
 DEFAULT_READY_SECTION = "Ready"
+DEFAULT_REFINING_SECTION = "Refining"
 DEFAULT_BLOCKED_SECTION = "Blocked"
 DEFAULT_DISPATCH_LIMIT = 5
+
+#: Starts the comment on a task the sweep moved back out of Ready.
+SENT_BACK_PREFIX = "Sent back from Ready:"
 
 #: In the template task's name. A task saying this is never swept.
 DO_NOT_WORK = "do not work"
@@ -205,6 +221,10 @@ class SweepResult:
     #: Tasks waiting on blockers that would have been moved there, had
     #: moving been on.
     blocked_not_moved: int = 0
+    #: Tasks in Ready that no longer pass, moved or not.
+    failed_ready: list[AsanaTaskRecord] = field(default_factory=list)
+    #: Of those, the ones moved back, with the column each went to.
+    sent_back: list[tuple[AsanaTaskRecord, str]] = field(default_factory=list)
 
     @property
     def ready(self) -> list[Verdict]:
@@ -222,6 +242,13 @@ def groom_sections() -> tuple[str, ...]:
 def ready_section() -> str:
     """The column a ready task moves to: ``READY_SECTION``, or Ready."""
     return (os.environ.get("READY_SECTION") or "").strip() or DEFAULT_READY_SECTION
+
+
+def refining_section() -> str:
+    """Where a task failing in Ready goes back to: ``REFINING_SECTION``."""
+    return (
+        os.environ.get("REFINING_SECTION") or ""
+    ).strip() or DEFAULT_REFINING_SECTION
 
 
 def blocked_section() -> str:
@@ -366,6 +393,21 @@ def grooming_job(
     )
 
 
+def sent_back_comment(problems: Collection[str]) -> str:
+    """The one comment on a task moved back out of Ready: what it fails."""
+    lines = "\n".join(f"- {p}" for p in problems)
+    return (
+        f"{SENT_BACK_PREFIX} this task no longer meets the definition of "
+        f"ready.\n{lines}"
+    )
+
+
+def _already_said(comments: list[str], text: str) -> bool:
+    """Whether the last sent-back comment on a task is this one."""
+    said = [c for c in comments if c.startswith(SENT_BACK_PREFIX)]
+    return bool(said) and said[-1] == text
+
+
 def sweep(
     board: Board,
     *,
@@ -386,6 +428,7 @@ def sweep(
     sections = board.sections()
     ready = _section_named(sections, ready_section())
     blocked: AsanaSection | None = None
+    refining: AsanaSection | None = None
     tasks = board.tasks()
     open_gids = {t.gid for t in tasks if not t.completed}
     # Only a task with questions out has answers to read: one request each.
@@ -397,7 +440,7 @@ def sweep(
     result = SweepResult(
         verdicts=assess(
             tasks,
-            swept=groom_sections(),
+            swept=(*groom_sections(), ready.name),
             repos=repos,
             records=records,
             replies=replies,
@@ -413,6 +456,45 @@ def sweep(
     for verdict in result.verdicts:
         task = verdict.task
         previous = records.get(task.gid)
+        if task.section_gid == ready.gid:
+            # Already in Ready: a pass leaves it, and its record, alone.
+            if verdict.ready:
+                continue
+            result.failed_ready.append(task)
+            if not move:
+                log.info(
+                    "sweep: %s in %s no longer passes (GROOM_AUTO_READY is off): %s",
+                    task.name,
+                    ready.name,
+                    "; ".join(verdict.problems),
+                )
+                continue
+            if only_blocked(verdict.problems):
+                blocked = blocked or _section_named(sections, blocked_section())
+                target = blocked
+                board.move(task.gid, target.gid)
+            else:
+                refining = refining or _section_named(sections, refining_section())
+                target = refining
+                board.move(task.gid, target.gid)
+                text = sent_back_comment(verdict.problems)
+                if not _already_said(board.comments(task.gid), text):
+                    board.comment(task.gid, text)
+            result.sent_back.append((task, target.name))
+            result.writes.append(
+                sent_back_record(
+                    task, verdict.problems, previous, replies=verdict.replies
+                )
+            )
+            log.info(
+                "sweep: %s sent back from %s to %s: %s",
+                task.name,
+                ready.name,
+                target.name,
+                "; ".join(verdict.problems),
+            )
+            continue
+
         if previous is not None and previous.moved_to_ready_at is not None:
             result.returned.append(task)
             log.info("sweep: %s was sent back from Ready", task.name)
@@ -523,9 +605,11 @@ def run_sweep(
             report.updated(
                 "task sent for grooming", task.name, link=board.url(task.gid)
             )
+        report.count("sent_back_from_ready", len(result.sent_back))
         if not auto_ready():
             report.count("ready_not_moved", len(result.ready))
             report.count("blocked_not_moved", result.blocked_not_moved)
+            report.count("failing_in_ready_not_moved", len(result.failed_ready))
         for task in result.moved:
             report.updated("task moved to Ready", task.name, link=board.url(task.gid))
         for task in result.moved_to_blocked:
@@ -534,9 +618,21 @@ def run_sweep(
             report.updated(
                 "task sent back from Ready", task.name, link=board.url(task.gid)
             )
+        for task, column in result.sent_back:
+            report.updated(
+                f"task sent back from Ready to {column}",
+                task.name,
+                link=board.url(task.gid),
+            )
 
         if agent.enabled() or agent.dry_run():
-            _dispatch_agents(board, store, starter_factory, report)
+            _dispatch_agents(
+                board,
+                store,
+                starter_factory,
+                report,
+                exclude={t.gid for t in result.failed_ready},
+            )
 
 
 def _dispatch_agents(
@@ -544,10 +640,14 @@ def _dispatch_agents(
     store: Records,
     starter_factory: Callable[[], agent.Starter],
     report: Any,
+    *,
+    exclude: Collection[str] = (),
 ) -> None:
     """Dispatch an agent for each Ready task it can take, and report it.
 
-    A dry run, or dispatch switched off, writes nothing.
+    ``exclude`` are the tasks this sweep found failing in Ready: never
+    dispatched, whether or not they were moved. A dry run, or dispatch
+    switched off, writes nothing.
     """
     write = agent.enabled() and not agent.dry_run()
     try:
@@ -558,7 +658,7 @@ def _dispatch_agents(
         return
     sections = board.sections()
     result = agent.dispatch(
-        board.tasks(),
+        [t for t in board.tasks() if t.gid not in exclude],
         sections,
         ready_gid=_section_named(sections, ready_section()).gid,
         board=board,
@@ -606,7 +706,7 @@ def main(argv: list[str] | None = None) -> int:
         "%d of %d tasks ready in %s.",
         len(result.ready),
         len(result.verdicts),
-        ", ".join(groom_sections()),
+        ", ".join((*groom_sections(), ready_section())),
     )
     return 0
 

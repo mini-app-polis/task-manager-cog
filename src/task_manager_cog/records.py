@@ -11,8 +11,10 @@ task whose fingerprint still matches its record is unchanged since it was
 last judged, and grooming it again would cost a run to learn nothing new.
 
 **Sent back from Ready.** A task this cog moved to Ready that turns up in a
-grooming column again was moved back by a person. That is counted on the
-record (``returned_count``): it is the measure of whether ready meant ready.
+grooming column again was moved back by a person. A task in Ready that no
+longer passes is moved back by the sweep itself (:func:`sent_back_record`).
+Either is counted on the record (``returned_count``): it is the measure of
+whether ready meant ready.
 
 **Sent for grooming.** ``groomed_fingerprint`` is the content last sent to
 task-groomer-cog, or that a grooming wrote. A task that is not ready is sent
@@ -153,6 +155,38 @@ def next_record(
     if previous is not None and _same(record, previous):
         return None
     return record
+
+
+def sent_back_record(
+    task: AsanaTaskRecord,
+    problems: tuple[str, ...],
+    previous: GroomingRecord | None,
+    *,
+    replies: Sequence[str] = (),
+) -> GroomingRecordWrite:
+    """The record for a task the sweep moved out of Ready because it failed.
+
+    It counts once as sent back from Ready, and no longer says this cog moved
+    it there, so the next sweep does not count it again. Its content is
+    recorded as groomed: moving it back does not send it for grooming, and a
+    person changing it does.
+    """
+    current = fingerprint(task, replies)
+    outcome: GroomingOutcome = (
+        "questions"
+        if previous is not None and previous.outcome == "questions"
+        else "not_ready"
+    )
+    return GroomingRecordWrite(
+        task_gid=task.gid,
+        task_id=task_id_of(task.name),
+        fingerprint=current,
+        outcome=outcome,
+        problems=list(problems),
+        moved_to_ready_at=None,
+        returned_count=(previous.returned_count if previous else 0) + 1,
+        groomed_fingerprint=current,
+    )
 
 
 def _same(record: GroomingRecordWrite, previous: GroomingRecord) -> bool:

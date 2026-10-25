@@ -27,10 +27,12 @@ source ──POST /v1/tasks──► api-kaianolevine-com ──► task-manager
 schedule (hourly) ──task.sweep──► task-manager queue ──► task-manager-cog
                                                1. read the board and the registry
                                                2. lint every open task in
-                                                  Ideas, Refining and Blocked
+                                                  Ideas, Refining, Blocked
+                                                  and Ready
                                                3. move each ready task to Ready,
-                                                  and each task waiting only on
-                                                  blockers to Blocked
+                                                  each task waiting only on
+                                                  blockers to Blocked, and each
+                                                  task failing in Ready back
                                                   (GROOM_AUTO_READY)
                                                4. send tasks that are not ready
                                                   and have changed to
@@ -79,6 +81,19 @@ the report counts it (`blocked_not_moved`). From Blocked it moves to Ready
 on the first sweep after its blockers are done and its date has come. A
 task with any other problem stays where it is and is groomed.
 
+Ready is checked too, so a task put there by hand, or edited after it got
+there, is held to the same bar. One that passes is left alone, and its
+record is not rewritten. With `GROOM_AUTO_READY` on, one that fails moves
+to Refining (`REFINING_SECTION`) with one comment starting
+`Sent back from Ready:` that lists its problems, or to Blocked when its
+blockers are its only problem. Either counts as sent back from Ready, on
+its record and in the run report (`sent_back_from_ready`). A task put back
+in Ready unchanged is moved again, but gets no second comment. Moving it
+back does not send it for grooming: it waits until a person changes it.
+With `GROOM_AUTO_READY` off, the report counts it
+(`failing_in_ready_not_moved`). Either way, the agent dispatch at the end of
+the sweep never takes it.
+
 The sweep never touches a task whose name says "do not work" (the board's
 template), nor a task from a source `sources.py` marks unswept: the problems
 the fleet detected (`CI-`, `RUN-`, `CONF-`, `API-`). Those wait for a person,
@@ -89,8 +104,9 @@ Each swept task's verdict is kept as a grooming record in
 api-kaianolevine-com (`/v1/tasks/groomings`), written only when it changed.
 A record's fingerprint covers the task's name, body and tags, so a later
 sweep can tell an edited task from one still waiting. A task this cog moved
-to Ready that a person moves back is counted on its record, and named in
-the run report: that count is how to tell whether ready meant ready.
+to Ready that a person moves back, or that the sweep sends back from Ready,
+is counted on its record, and named in the run report: that count is how to
+tell whether ready meant ready.
 
 ## Who does a task
 
