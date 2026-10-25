@@ -7,17 +7,4 @@ type: pipeline-cog
 # and dead-letter queue, the function, the event source mapping, reserved
 # concurrency and the alarms are declared in mini-app-polis/infra.
 
-deferrals:
-  - rule: TEST-021
-    reason: >
-      No tests/integration/ yet. The handler is covered by unit tests with an
-      in-memory board; integration tests that run lambda_handler end to end
-      on SQS events, with Asana and the API stubbed by respx, are planned as
-      their own piece of work so they are done thoroughly, not rushed into
-      the first release.
-    until: null
-  - rule: TEST-015
-    reason: >
-      Follows from the TEST-021 deferral: the redelivery and bad-record cases
-      this rule asks for belong in that integration suite.
-    until: null
+# No active deferrals.

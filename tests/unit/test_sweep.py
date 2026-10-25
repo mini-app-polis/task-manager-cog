@@ -1002,3 +1002,152 @@ def test_a_task_waiting_on_its_owner_is_never_sent() -> None:
     assert again.verdicts[0].changed
     assert sent == []
     assert board.moves == []
+
+
+# ── Ready re-linted ───────────────────────────────────────────────────────
+
+
+def _moved_record(task: AsanaTaskRecord) -> GroomingRecord:
+    """The record of a task this cog moved to Ready when it passed."""
+    return GroomingRecord(
+        task_gid=task.gid,
+        task_id=task.name.split(" ")[0],
+        fingerprint=fingerprint(task),
+        groomed_fingerprint=fingerprint(task),
+        outcome="ready",
+        moved_to_ready_at=dt.datetime(2026, 10, 23, tzinfo=dt.UTC),
+        updated_at=dt.datetime(2026, 10, 23, tzinfo=dt.UTC),
+    )
+
+
+def _stored(write: GroomingRecordWrite) -> GroomingRecord:
+    return GroomingRecord(**write.model_dump(), updated_at=dt.datetime.now(dt.UTC))
+
+
+def test_a_passing_ready_task_is_left_alone() -> None:
+    task = _task("1", "MINI-1 · Ready", section="Ready")
+    board = FakeBoard([task])
+    result = sweep(board, repos=REPOS, move=True, records={"1": _moved_record(task)})
+    assert result.verdicts[0].ready
+    assert board.moves == []
+    assert board.comments_ == {}
+    assert result.writes == []
+    assert result.returned == [] and result.sent_back == []
+
+
+def test_a_failing_ready_task_goes_back_to_refining_and_is_counted() -> None:
+    passed = _task("1", "MINI-1 · Edited", section="Ready")
+    task = _task("1", "MINI-1 · Edited", notes="look into this", section="Ready")
+    board = FakeBoard([task])
+    sent: list[GroomingJobRequest] = []
+
+    def send(job: GroomingJobRequest) -> bool:
+        sent.append(job)
+        return True
+
+    result = sweep(
+        board,
+        repos=REPOS,
+        move=True,
+        records={"1": _moved_record(passed)},
+        send=send,
+        limit=5,
+    )
+    assert board.moves == [("1", "s-refining")]
+    (comment,) = board.comments_["1"]
+    assert comment.startswith(sweep_mod.SENT_BACK_PREFIX)
+    for problem in result.verdicts[0].problems:
+        assert f"- {problem}" in comment
+    assert [(t.gid, column) for t, column in result.sent_back] == [("1", "Refining")]
+    (write,) = result.writes
+    assert write.returned_count == 1
+    assert write.moved_to_ready_at is None
+    assert write.outcome == "not_ready"
+    # Moving it back is not a change: it is not sent, now or next sweep.
+    assert write.groomed_fingerprint == fingerprint(task)
+    assert sent == []
+    after = sweep(
+        board,
+        repos=REPOS,
+        move=True,
+        records={"1": _stored(write)},
+        send=send,
+        limit=5,
+    )
+    assert sent == []
+    assert after.writes == [] and after.returned == []
+
+
+def test_a_ready_task_waiting_on_a_blocker_goes_to_blocked() -> None:
+    task = _task(
+        "6",
+        "MINI-6 · Waits on MINI-7",
+        notes=READY.replace("Blocked by:", "Blocked by: MINI-7"),
+        section="Ready",
+    )
+    blocker = _task("7", "MINI-7 · Open blocker", section="Refining", notes="later")
+    board = FakeBoard([task, blocker])
+    result = sweep(board, repos=REPOS, move=True)
+    assert ("6", "s-blocked") in board.moves
+    assert "6" not in board.comments_
+    assert [(t.gid, column) for t, column in result.sent_back] == [("6", "Blocked")]
+    write = next(w for w in result.writes if w.task_gid == "6")
+    assert write.returned_count == 1
+
+
+def test_an_unchanged_failed_task_put_back_in_ready_gets_no_second_comment() -> None:
+    task = _task("1", "MINI-1 · Vague", notes="look into this", section="Ready")
+    board = FakeBoard([task])
+    first = sweep(board, repos=REPOS, move=True)
+    # A person puts it back in Ready without changing it.
+    board._replace("1", section_gid="s-ready", section_name="Ready")
+    again = sweep(
+        board, repos=REPOS, move=True, records={"1": _stored(first.writes[0])}
+    )
+    assert board.moves == [("1", "s-refining"), ("1", "s-refining")]
+    assert len(board.comments_["1"]) == 1
+    assert again.writes[0].returned_count == 2
+
+
+def test_a_failing_ready_task_is_only_reported_when_moving_is_off() -> None:
+    task = _task("1", "MINI-1 · Vague", notes="look into this", section="Ready")
+    board = FakeBoard([task])
+    result = sweep(board, repos=REPOS, move=False)
+    assert [t.gid for t in result.failed_ready] == ["1"]
+    assert board.moves == [] and board.comments_ == {}
+    assert result.writes == [] and result.sent_back == []
+
+
+def test_a_task_failing_in_ready_is_never_dispatched(
+    production, monkeypatch: pytest.MonkeyPatch, _no_outbound_reports
+) -> None:
+    monkeypatch.setenv("AGENT_DISPATCH", "true")
+    # Moving off, so it stays in Ready: dispatch still leaves it.
+    board = FakeBoard(
+        [_task("1", "MINI-1 · Vague", notes="look into this", section="Ready")]
+    )
+    store, starter = FakeRecords(), FakeStarter()
+    _sweep_dispatching(store, board, lambda: starter)
+    assert starter.started == [] and store.agent_runs == []
+    ((_, kwargs),) = _no_outbound_reports
+    assert kwargs["failing_in_ready_not_moved"] == 1
+
+
+def test_the_run_report_counts_tasks_sent_back_from_ready(
+    production, monkeypatch: pytest.MonkeyPatch, _no_outbound_reports
+) -> None:
+    monkeypatch.setenv("GROOM_AUTO_READY", "true")
+    board = FakeBoard(
+        [_task("1", "MINI-1 · Vague", notes="look into this", section="Ready")]
+    )
+    store = FakeRecords()
+    run_sweep(
+        run_id="r-1",
+        board_factory=lambda: board,
+        repos_loader=lambda: REPOS,
+        records_factory=lambda: store,
+    )
+    ((_, kwargs),) = _no_outbound_reports
+    assert kwargs["sent_back_from_ready"] == 1
+    assert "task sent back from Ready to Refining" in kwargs["text"]
+    assert store.stored["1"].returned_count == 1

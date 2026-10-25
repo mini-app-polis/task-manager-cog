@@ -50,7 +50,7 @@ quote-style = "double"
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
-testpaths = ["tests/unit"]
+testpaths = ["tests/unit", "tests/integration"]
 addopts = "--cov=task_manager_cog --cov-report=term-missing"
 
 [tool.mypy]
