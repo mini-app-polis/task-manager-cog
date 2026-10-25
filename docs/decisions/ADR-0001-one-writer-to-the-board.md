@@ -1,4 +1,4 @@
-# ADR-001: One writer to the task board
+# ADR-0001: One writer to the task board
 
 ## Status
 
