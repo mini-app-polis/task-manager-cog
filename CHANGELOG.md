@@ -1,3 +1,10 @@
+## [1.13.1](https://github.com/mini-app-polis/task-manager-cog/compare/v1.13.0...v1.13.1) (2026-10-25)
+
+
+### Bug Fixes
+
+* **split:** a reported split waits on its owner, and an answer re-grooms it ([3681da0](https://github.com/mini-app-polis/task-manager-cog/commit/3681da01d1c9b3a5e1c5288908a64d57fe682405))
+
 # [1.13.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.12.0...v1.13.0) (2026-10-25)
 
 
