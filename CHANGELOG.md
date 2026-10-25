@@ -1,3 +1,10 @@
+# [1.13.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.12.0...v1.13.0) (2026-10-25)
+
+
+### Features
+
+* **sweep:** re-lint Ready and send a task that no longer passes back to Refining ([48fc864](https://github.com/mini-app-polis/task-manager-cog/commit/48fc8646dc91736f3833517a8f82525f657ef9c8))
+
 # [1.12.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.11.0...v1.12.0) (2026-10-24)
 
 
