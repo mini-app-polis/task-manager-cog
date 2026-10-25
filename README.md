@@ -332,6 +332,14 @@ doppler run --config prd -- uv run python -m task_manager_cog.sweep
 
 ## Running tests
 
+Two layers, run in one pytest invocation: `tests/unit/` and
+`tests/integration/`. The integration suite invokes `lambda_handler` end to
+end on SQS events, with Asana, the ecosystem registry and
+api-kaianolevine-com stubbed at the HTTP boundary by respx, so it needs
+nothing provisioned. It covers redelivery (the same message twice makes one
+task) and a bad record in a batch (named in `batchItemFailures` while the
+rest completes).
+
 ```bash
 uv run pytest                              # with coverage, as CI runs it
 uv run ruff check . && uv run ruff format --check .
