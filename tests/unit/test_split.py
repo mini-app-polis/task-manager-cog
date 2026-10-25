@@ -220,3 +220,45 @@ def test_a_split_cut_short_finishes_without_duplicates(
     parent = board.get("7")
     assert parent is not None
     assert parse(parent.notes).fields["Done when"] == "MINI-5 and MINI-7 are done."
+
+
+def test_a_reported_split_waits_on_its_owner_and_an_answer_sends_it_again(
+    production, monkeypatch: pytest.MonkeyPatch, _no_outbound_reports
+) -> None:
+    monkeypatch.delenv("GROOM_SPLIT_DRY_RUN", raising=False)
+    board, store = _board(), FakeRecords()
+
+    _sweep_sending(store, board, monkeypatch, "5")
+    (job,) = store.jobs
+    _apply_split(_split(fingerprint=job.task.fingerprint), board, store)
+    assert store.stored["7"].outcome == "questions"
+
+    # Unanswered: held, and not paid for again.
+    _sweep_sending(store, board, monkeypatch, "5")
+    assert len(store.jobs) == 1
+
+    # An answer is read like an answer to grooming questions.
+    board.comment("7", "Approved as written: create it.")
+    _sweep_sending(store, board, monkeypatch, "5")
+    assert len(store.jobs) == 2
+    assert store.jobs[1].task.comments == ["Approved as written: create it."]
+
+    # With dry run off, the answered split is created, and is then done with.
+    monkeypatch.setenv("GROOM_SPLIT_DRY_RUN", "false")
+    _apply_split(_split(fingerprint=store.jobs[1].task.fingerprint), board, store)
+    assert [name for name, _ in board.created] == [
+        "MINI-2 · common-python-utils: the shared contract",
+        "MINI-3 · infra: apply it",
+    ]
+    assert store.stored["7"].outcome != "questions"
+    _sweep_sending(store, board, monkeypatch, "5")
+    assert len(store.jobs) == 2
+
+
+def test_a_split_over_the_cap_waits_on_its_owner_too(
+    live, monkeypatch: pytest.MonkeyPatch, _no_outbound_reports
+) -> None:
+    monkeypatch.setenv("GROOM_SPLIT_MAX_CHILDREN", "1")
+    board, store = _board(), FakeRecords()
+    _apply_split(_split(), board, store)
+    assert store.stored["7"].outcome == "questions"

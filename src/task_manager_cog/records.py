@@ -22,10 +22,12 @@ when its content differs from it: once per change, never in a loop, and a
 groomed task that is waiting costs nothing until someone changes it.
 
 **Answers.** A grooming that has questions posts them as one comment that
-starts with :data:`QUESTIONS_PREFIX`. The comments after the last such
-comment are the owner's answers, and count as the task's content: answering
-changes the fingerprint, which sends the task to be groomed again, answers
-included.
+starts with :data:`QUESTIONS_PREFIX`. A split that is reported rather than
+created (a dry run, or over the cap) is posted as one comment starting with
+:data:`SPLIT_REPORT_PREFIX`, and waits on its owner the same way. The
+comments after the last such comment are the owner's answers, and count as
+the task's content: answering changes the fingerprint, which sends the task
+to be groomed again, answers included.
 
 A record is written only when something in it changed, so a sweep of a quiet
 board writes nothing.
@@ -49,14 +51,20 @@ from .lint import task_id_of
 #: Starts the comment a grooming's questions are posted as.
 QUESTIONS_PREFIX = "Grooming questions:"
 
+#: Starts the comment a split reported but not created is posted as.
+SPLIT_REPORT_PREFIX = "Proposed split (not created"
+
+#: The comments that ask the owner something; what follows answers them.
+ASKING_PREFIXES = (QUESTIONS_PREFIX, SPLIT_REPORT_PREFIX)
+
 
 def answers(comments: Sequence[str]) -> list[str]:
-    """The comments after the last grooming questions: the owner's answers.
+    """The comments after the last grooming questions or reported split.
 
-    A task never asked anything has none: its comments are not answers to
-    anything, and are not part of its content.
+    Those are the owner's answers. A task never asked anything has none: its
+    comments are not answers to anything, and are not part of its content.
     """
-    asked = [i for i, c in enumerate(comments) if c.startswith(QUESTIONS_PREFIX)]
+    asked = [i for i, c in enumerate(comments) if c.startswith(ASKING_PREFIXES)]
     if not asked:
         return []
     return [c for c in comments[asked[-1] + 1 :] if c.strip()]
@@ -65,10 +73,11 @@ def answers(comments: Sequence[str]) -> list[str]:
 def unanswered(comments: Sequence[str]) -> bool:
     """Whether the last grooming questions on a task have nothing after them.
 
-    Whoever posted them, a groomer or a person: the comments are oldest
-    first, so any comment after the last questions answers them.
+    Whoever posted them, a groomer or a person, and a reported split counts
+    as a question: the comments are oldest first, so any comment after the
+    last one answers it.
     """
-    asked = any(c.startswith(QUESTIONS_PREFIX) for c in comments)
+    asked = any(c.startswith(ASKING_PREFIXES) for c in comments)
     return asked and not answers(comments)
 
 

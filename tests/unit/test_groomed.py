@@ -6,7 +6,7 @@ from mini_app_polis.api.contract import GroomingRecord
 
 from task_manager_cog.groomed import record_groomed
 from task_manager_cog.records import fingerprint
-from task_manager_cog.sweep import assess
+from task_manager_cog.sweep import assess, sweep
 
 from .test_sweep import REPOS, FakeBoard, FakeRecords, _task
 
@@ -83,3 +83,36 @@ def test_an_unknown_or_finished_task_is_refused() -> None:
     assert lines[0] == "404: not an open task on the board; nothing recorded"
     assert lines[1] == "3: not an open task on the board; nothing recorded"
     assert lines[-1] == "refused=2"
+
+
+def test_awaiting_owner_holds_a_task_until_its_owner_answers() -> None:
+    store = FakeRecords()
+    lines: list[str] = []
+    record_groomed(
+        ["2"],
+        board=FakeBoard([VAGUE_TASK]),
+        store=store,
+        repos=REPOS,
+        write=True,
+        awaiting_owner=True,
+        out=lines.append,
+    )
+    record = store.stored["2"]
+    assert record.outcome == "questions"
+    assert record.groomed_fingerprint == fingerprint(VAGUE_TASK)
+    assert "recorded as waiting on its owner" in lines[0]
+
+    # Held while nothing answers it, and sent once something does.
+    reported = "Proposed split (not created: GROOM_SPLIT_DRY_RUN is on; content abc)"
+    sent: list[object] = []
+
+    def send(job: object) -> bool:
+        sent.append(job)
+        return True
+
+    held = FakeBoard([VAGUE_TASK], comments_={"2": [reported]})
+    sweep(held, repos=REPOS, move=True, records=store.stored, send=send, limit=5)
+    assert sent == []
+    answered = FakeBoard([VAGUE_TASK], comments_={"2": [reported, "Create it."]})
+    sweep(answered, repos=REPOS, move=True, records=store.stored, send=send, limit=5)
+    assert len(sent) == 1

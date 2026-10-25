@@ -9,12 +9,15 @@ blocked by every one of them, with no work of its own.
 
 **Dry run first.** Unless ``GROOM_SPLIT_DRY_RUN`` is ``false``, a split is
 only reported: the children it would create are posted on the task as one
-comment and named in the run report, and nothing is created. A task
-reported this way is not groomed again until it changes, so once dry run
-is off, edit it to have it split for real.
+comment and named in the run report, and nothing is created.
 
 **A cap.** A split with more children than ``GROOM_SPLIT_MAX_CHILDREN`` is
 not applied: it is reported on the task and in the run report.
+
+A reported split waits on its owner as grooming questions do: the task is
+recorded as having questions, and is not groomed again until the owner
+answers in a comment (approving it, or correcting it) or edits the task.
+The next sweep then sends it to be groomed again with the answers.
 
 **Once.** Each child is created with an external id made of its parent, the
 content the split was made for, and its position, so a redelivered proposal
@@ -51,7 +54,7 @@ from .compose import REVIEW_TAG, ComposedTask
 from .groom import MANUAL_PREFIX, groomed_html, groomed_text
 from .ids import next_id, task_name
 from .lint import NONE_WORDS, lint, only_blocked, parse, task_id_of, where_repos
-from .records import fingerprint
+from .records import SPLIT_REPORT_PREFIX, fingerprint
 from .sweep import Records, _section_named, blocked_section, task_shapes
 
 log = logger_mod.get_logger()
@@ -60,7 +63,7 @@ DEFAULT_MAX_CHILDREN = 25
 
 #: Starts the comment a dry run leaves; with the content it was made for,
 #: so a redelivered proposal posts no second one.
-DRY_RUN_MARKER = "Proposed split (not created"
+DRY_RUN_MARKER = SPLIT_REPORT_PREFIX
 
 #: What a compound task's Constraints say.
 COMPOUND_CONSTRAINTS = "A compound task: no work of its own."
@@ -185,7 +188,7 @@ def _not_applied(
     store: Records,
     previous: GroomingRecord | None,
 ) -> None:
-    """Report a split without creating it, and hold the task until it changes."""
+    """Report a split without creating it; the task waits on its owner."""
     marker = f"content {proposal.fingerprint[:12]})"
     if not any(
         c.startswith(DRY_RUN_MARKER) and marker in c for c in board.comments(task.gid)
@@ -197,7 +200,7 @@ def _not_applied(
             task_id_of(task.name),
             list(previous.problems) if previous else [],
             previous,
-        ).model_copy(update={"outcome": "not_ready"})
+        ).model_copy(update={"outcome": "questions"})
     )
 
 
