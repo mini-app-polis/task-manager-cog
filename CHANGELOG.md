@@ -1,3 +1,15 @@
+# [1.15.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.14.3...v1.15.0) (2026-10-26)
+
+
+### Bug Fixes
+
+* **deps:** bump miniapppolis-common-utils to 6.28.0 ([e7739c2](https://github.com/mini-app-polis/task-manager-cog/commit/e7739c2f118ead80704c4815423cbc4aa9419e25))
+
+
+### Features
+
+* **sources:** mint ROT- ids for secret-rotation tasks and leave them out of the sweep ([a487bb5](https://github.com/mini-app-polis/task-manager-cog/commit/a487bb50eb3c156240b4d31631fe981113ad7d19))
+
 ## [1.14.3](https://github.com/mini-app-polis/task-manager-cog/compare/v1.14.2...v1.14.3) (2026-10-26)
 
 
