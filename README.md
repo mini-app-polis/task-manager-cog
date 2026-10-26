@@ -237,6 +237,11 @@ always reviews and merges what an agent wrote. `dispatch.py` picks the
 tasks and `github.py` starts the runs; the workflow itself is the agent
 caller in each target repository, from the shared `.github` repository.
 
+Dispatch is triggered by the hourly sweep, not by Asana webhooks: Asana
+delivers a webhook at most once and recommends polling beside it, and this
+cog has no public endpoint for the webhook handshake, so the sweep is the
+one trigger.
+
 After grooming, the sweep takes Ready tasks in board order that:
 
 - are not the template task nor a detected problem (`CI-`, `RUN-`, `CONF-`,
