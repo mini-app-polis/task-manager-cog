@@ -161,6 +161,7 @@ BOARD_TASKS = [
     _task("7", "MINI-7 · Open blocker", section="Refining", notes="later"),
     _task("8", "CI-8 · infra: CI failing on dev"),
     _task("9", "API-9 · API: GET /v1/x answering 500", notes="look into this"),
+    _task("10", "ROT-10 · Rotate BREVO_API_KEY in prd", notes="look into this"),
 ]
 
 
@@ -622,6 +623,7 @@ def test_a_blocked_task_with_another_problem_stays_where_it_is() -> None:
         ("RUN-6 · a run failed", "Ideas"),
         ("CONF-6 · a conformance finding", "Ideas"),
         ("API-6 · API: GET /v1/x answering 500", "Ideas"),
+        ("ROT-6 · Rotate BREVO_API_KEY in prd", "Ideas"),
         ("MINI-6 · TEMPLATE — do not work", "Ideas"),
         ("MINI-6 · Being worked", "In progress"),
     ],
