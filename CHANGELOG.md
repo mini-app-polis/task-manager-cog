@@ -1,3 +1,10 @@
+## [1.14.3](https://github.com/mini-app-polis/task-manager-cog/compare/v1.14.2...v1.14.3) (2026-10-26)
+
+
+### Bug Fixes
+
+* **sweep:** name a held task as a notice on the sweep that first finds it held, not as a WARN on every sweep ([d9fdf1f](https://github.com/mini-app-polis/task-manager-cog/commit/d9fdf1f77231b55692f9a43ed02694e610938297))
+
 ## [1.14.2](https://github.com/mini-app-polis/task-manager-cog/compare/v1.14.1...v1.14.2) (2026-10-25)
 
 
