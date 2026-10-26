@@ -147,6 +147,22 @@ def test_a_minted_source_gets_the_next_id(production: None) -> None:
     assert external_id == "voicenote.file-1"
 
 
+def test_a_due_secret_rotation_gets_the_next_rot_id(production: None) -> None:
+    board = FakeBoard(existing_names=["ROT-2 · old", "MINI-90 · manual"])
+    _run(
+        _body(
+            source="secret-rotation",
+            external_id="secret-rotation.prd.BREVO_API_KEY.2026-10",
+            draft={"title": "Rotate BREVO_API_KEY in prd", "labels": ["person"]},
+        ),
+        board,
+    )
+    name, task, external_id = board.created[0]
+    assert name == "ROT-3 · Rotate BREVO_API_KEY in prd"
+    assert task.tag_names == ("person",)
+    assert external_id == "secret-rotation.prd.BREVO_API_KEY.2026-10"
+
+
 def test_a_given_id_source_keeps_its_id_and_mints_nothing(production: None) -> None:
     board = FakeBoard(existing_names=["VN-3 · old"])
     _run(

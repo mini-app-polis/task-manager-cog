@@ -26,6 +26,6 @@ def test_keys_match_names() -> None:
     assert all(key == source.name for key, source in SOURCES.items())
 
 
-def test_detected_problems_are_left_for_a_person() -> None:
-    assert {"CI", "RUN", "CONF", "API"} == UNSWEPT_PREFIXES
+def test_detected_problems_and_due_rotations_are_left_for_a_person() -> None:
+    assert {"CI", "RUN", "CONF", "API", "ROT"} == UNSWEPT_PREFIXES
     assert SOURCES["voicenote"].swept

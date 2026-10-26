@@ -45,6 +45,10 @@ SOURCES: dict[str, Source] = {
     "cog-run": Source("cog-run", prefix="RUN", swept=False),
     "conformance": Source("conformance", prefix="CONF", swept=False),
     "api-fault": Source("api-fault", prefix="API", swept=False),
+    # A manual secret that is due. The secrets rotator fills in the whole
+    # template and tags the task for a person, so it is neither groomed nor
+    # dispatched to an agent.
+    "secret-rotation": Source("secret-rotation", prefix="ROT", swept=False),
 }
 
 #: Id prefixes whose tasks the sweep leaves alone.
