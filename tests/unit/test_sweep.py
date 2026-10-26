@@ -1074,8 +1074,20 @@ def test_a_failing_ready_task_goes_back_to_refining_and_is_counted() -> None:
         send=send,
         limit=5,
     )
-    assert sent == []
-    assert after.writes == [] and after.returned == []
+    assert sent == [] and after.returned == []
+    # It is now held, which its record says once, and only once.
+    (held,) = after.writes
+    assert sweep_mod.HELD in held.problems
+    assert [t.gid for t in after.newly_held] == ["1"]
+    again = sweep(
+        board,
+        repos=REPOS,
+        move=True,
+        records={"1": _stored(held)},
+        send=send,
+        limit=5,
+    )
+    assert sent == [] and again.writes == [] and again.newly_held == []
 
 
 def test_a_ready_task_waiting_on_a_blocker_goes_to_blocked() -> None:
@@ -1169,6 +1181,24 @@ def _groomed(task: AsanaTaskRecord, outcome: str = "not_ready") -> GroomingRecor
     )
 
 
+def test_a_task_still_held_is_counted_but_not_named_again(
+    production, monkeypatch: pytest.MonkeyPatch, _no_outbound_reports
+) -> None:
+    held = _task("2", "MINI-2 · Held", notes="look into this", section="Refining")
+    board = FakeBoard([held])
+    store = FakeRecords(stored={"2": _groomed(held)})
+    _sweep_sending(store, board, monkeypatch, "5")
+    _sweep_sending(store, board, monkeypatch, "5")
+
+    first, second = _no_outbound_reports
+    assert "task newly held" in first[1]["text"]
+    args, kwargs = second
+    assert kwargs["held_without_questions"] == 1
+    assert "MINI-2" not in kwargs["text"]
+    assert args[1] == "SUCCESS" and kwargs["notable"] is False
+    assert len(store.written) == 1
+
+
 def test_a_task_held_with_nobody_asked_is_counted_and_named(
     production, monkeypatch: pytest.MonkeyPatch, _no_outbound_reports
 ) -> None:
@@ -1190,14 +1220,19 @@ def test_a_task_held_with_nobody_asked_is_counted_and_named(
     _sweep_sending(store, board, monkeypatch, "5")
 
     assert [j.task.name for j in store.jobs] == ["MINI-8 · New"]
-    ((_, kwargs),) = _no_outbound_reports
+    ((args, kwargs),) = _no_outbound_reports
     assert kwargs["held_without_questions"] == 1
     (line,) = [
         line
         for line in kwargs["text"].splitlines()
-        if line.startswith("task held with nobody asked")
+        if line.startswith("task newly held with nobody asked")
     ]
-    assert line == "task held with nobody asked: [MINI-2 · Held](https://board/2)"
+    assert line == (
+        "task newly held with nobody asked: [MINI-2 · Held](https://board/2)"
+    )
+    # Named, but not a problem with the run.
+    assert args[1] == "SUCCESS" and kwargs["notable"] is True
+    assert sweep_mod.HELD in store.stored["2"].problems
     # Nothing about it changes.
     assert board.moves == []
     assert board.comments("2") == []

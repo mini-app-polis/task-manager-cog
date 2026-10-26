@@ -37,8 +37,11 @@ of the sweep never takes a task the sweep found failing in Ready.
 A task that is not ready, has no grooming questions out, is not waiting
 only on blockers, and is not sent because it is unchanged since it was last
 groomed is held with nobody asked: nothing will happen to it until a person
-changes it. The sweep leaves it as it is and names it in the run report
-(``held_without_questions``), so it is seen rather than silent.
+changes it. The sweep leaves it as it is and counts it in the run report
+(``held_without_questions``). Its record carries ``HELD`` among its
+problems, so the record changes, and is written, on the one sweep that
+finds it newly held; that sweep names it as a notice, which does not make
+the run WARN. A task that stays held is counted, not named again.
 
 Moving, to Ready, back from it, or to the blocked column, is a setting,
 ``GROOM_AUTO_READY``, off unless set, so the sweep can run and say what it
@@ -140,6 +143,9 @@ DO_NOT_WORK = "do not work"
 #: linter only sees the template, and a groomer that asked questions may
 #: still have filled every field; a task waiting on its owner is not ready.
 OPEN_QUESTIONS = "its grooming questions are not answered yet"
+#: Kept among a held task's recorded problems, so its record changes on the
+#: sweep that first finds it held and on no other.
+HELD = "held: groomed as it reads, and nobody is asked"
 
 #: A minted id, ``<PREFIX>-<n>``.
 _MINTED_ID = re.compile(r"([A-Z][A-Z0-9]*)-\d+")
@@ -225,6 +231,8 @@ class SweepResult:
     #: Tasks not ready, unchanged since they were groomed, and with no
     #: questions out: nobody is asked about them, and nothing is done.
     held: list[AsanaTaskRecord] = field(default_factory=list)
+    #: Of those, the ones this sweep found held for the first time.
+    newly_held: list[AsanaTaskRecord] = field(default_factory=list)
     #: Tasks waiting on blockers that were moved to the blocked column.
     moved_to_blocked: list[AsanaTaskRecord] = field(default_factory=list)
     #: Tasks waiting on blockers that would have been moved there, had
@@ -520,6 +528,7 @@ def sweep(
             log.info("sweep: %s is ready (GROOM_AUTO_READY is off)", task.name)
 
         sent = False
+        held = False
         if only_blocked(verdict.problems):
             result.blocked += 1
             blocked = blocked or _section_named(sections, blocked_section())
@@ -546,12 +555,13 @@ def sweep(
             else:
                 result.waiting += 1
         elif not verdict.ready and OPEN_QUESTIONS not in verdict.problems:
+            held = True
             result.held.append(task)
             log.info("sweep: %s held, groomed as it reads; nobody is asked", task.name)
 
         record = next_record(
             task,
-            verdict.problems,
+            (*verdict.problems, HELD) if held else verdict.problems,
             previous,
             moved_at=moved_at,
             replies=verdict.replies,
@@ -559,6 +569,8 @@ def sweep(
         )
         if record is not None:
             result.writes.append(record)
+            if held:
+                result.newly_held.append(task)
     return result
 
 
@@ -614,9 +626,10 @@ def run_sweep(
         report.count("waiting_on_blockers", result.blocked)
         report.count("waiting_on_owner", result.awaiting_owner)
         report.count("held_without_questions", len(result.held))
-        for task in result.held:
-            report.issue(
-                "task held with nobody asked", f"[{task.name}]({board.url(task.gid)})"
+        for task in result.newly_held:
+            report.notice(
+                "task newly held with nobody asked",
+                f"[{task.name}]({board.url(task.gid)})",
             )
         for task in result.sent:
             report.updated(
