@@ -1,3 +1,10 @@
+## [1.18.1](https://github.com/mini-app-polis/task-manager-cog/compare/v1.18.0...v1.18.1) (2026-10-28)
+
+
+### Bug Fixes
+
+* **doc-004:** list GROOM_TIMES, AGENT_TIMES and SWEEP_TIMEZONE in .env.example ([ca7c07f](https://github.com/mini-app-polis/task-manager-cog/commit/ca7c07ff896c076ad22d5587aa5fa804cbc84c64))
+
 # [1.18.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.17.0...v1.18.0) (2026-10-28)
 
 
