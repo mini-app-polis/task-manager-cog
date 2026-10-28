@@ -1,3 +1,17 @@
+# [1.18.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.17.0...v1.18.0) (2026-10-28)
+
+
+### Bug Fixes
+
+* **deps:** bump miniapppolis-common-utils to 6.33.0 ([a67c0e9](https://github.com/mini-app-polis/task-manager-cog/commit/a67c0e9799fd7932903f29b88e2b892791470a0a))
+
+
+### Features
+
+* **sweep:** run grooming and agent dispatch only at GROOM_TIMES and AGENT_TIMES, read in SWEEP_TIMEZONE ([0c0dde5](https://github.com/mini-app-polis/task-manager-cog/commit/0c0dde5bbd5c66d99c5e6c654ea82e05d6a1688e))
+* **sweep:** send a grooming again when it never comes back, up to three sends ([14616aa](https://github.com/mini-app-polis/task-manager-cog/commit/14616aac51559f9089df096f0032aa271c72680b))
+* **sweep:** send grooming only in the hours GROOM_HOURS names, read in GROOM_TIMEZONE ([8526205](https://github.com/mini-app-polis/task-manager-cog/commit/852620554014855ca467f8b2378d779fc01bf672))
+
 # [1.17.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.16.0...v1.17.0) (2026-10-28)
 
 
