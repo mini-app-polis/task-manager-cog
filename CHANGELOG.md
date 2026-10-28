@@ -1,3 +1,10 @@
+# [1.16.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.15.2...v1.16.0) (2026-10-28)
+
+
+### Features
+
+* **groom:** comment the lint problems on a groomed task left not ready ([99e3839](https://github.com/mini-app-polis/task-manager-cog/commit/99e3839ca73c3b29cc9a97189a8887828306fc3e))
+
 ## [1.15.2](https://github.com/mini-app-polis/task-manager-cog/compare/v1.15.1...v1.15.2) (2026-10-28)
 
 
