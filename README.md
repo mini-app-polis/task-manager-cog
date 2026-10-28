@@ -164,8 +164,15 @@ task's record comes back with that content's fingerprint
 (`budget_spent_fingerprint`). While it equals the task's content, the task
 is sent again even though it was sent before, within the same limit and at
 most once a sweep, so content the budget stopped is groomed once there is
-budget. A stop for older content is ignored, and a run that failed for any
-other reason is not retried: it waits until the task changes.
+budget. A stop for older content is ignored.
+
+A grooming lost any other way (a run that crashes, a proposal that never
+reaches the board) is sent again too. Sending stamps the record with
+`groom_sent_at` and counts the send in `groom_attempts`; the record written
+when a grooming comes back, applied or not, clears both. While a send is
+outstanding the task is counted as `awaiting_grooming`. Once it has been
+outstanding for 12 hours it is sent again, up to 3 sends of the same content;
+after that the task is held and named like any other held task.
 
 The groomer's proposal is applied here (`groom.py`), and only to the content
 it was made for:

@@ -118,6 +118,7 @@ from .github import AgentApp
 from .lint import lint, mentioned_ids, only_blocked, task_id_of
 from .records import (
     answers,
+    awaiting_grooming,
     changed,
     fingerprint,
     needs_grooming,
@@ -240,6 +241,8 @@ class SweepResult:
     waiting: int = 0
     #: Tasks held back by a "Grooming questions:" comment nothing answers.
     awaiting_owner: int = 0
+    #: Tasks sent for grooming whose grooming has not come back yet.
+    awaiting_grooming: int = 0
     #: Tasks not ready only because a blocker is not done: never sent.
     blocked: int = 0
     #: Tasks not ready, unchanged since they were groomed, and with no
@@ -487,15 +490,17 @@ def sweep(
     records: Mapping[str, GroomingRecord] | None = None,
     send: Callable[[GroomingJobRequest], bool] | None = None,
     limit: int = 0,
+    now: dt.datetime | None = None,
 ) -> SweepResult:
     """Check the board, and move what is ready when ``move`` is set.
 
     ``records`` are the tasks' grooming records by task gid. The records
     this sweep changes are returned in ``writes``, not written: writing is
     the caller's. ``send`` sends one task for grooming and says whether it
-    landed; at most ``limit`` are sent.
+    landed; at most ``limit`` are sent. ``now`` is when the sweep runs.
     """
     records = records or {}
+    now = now or dt.datetime.now(dt.UTC)
     sections = board.sections()
     ready = _section_named(sections, ready_section())
     blocked: AsanaSection | None = None
@@ -600,7 +605,7 @@ def sweep(
         elif verdict.awaiting_owner:
             result.awaiting_owner += 1
             log.info("sweep: %s waits on its owner's answers", task.name)
-        elif not verdict.ready and needs_grooming(task, previous, verdict.replies):
+        elif not verdict.ready and needs_grooming(task, previous, verdict.replies, now):
             if send is not None and len(result.sent) < limit:
                 sent = send(grooming_job(verdict, open_names, done_by_id))
             if sent:
@@ -608,6 +613,11 @@ def sweep(
                 log.info("sweep: %s sent for grooming", task.name)
             else:
                 result.waiting += 1
+        elif not verdict.ready and awaiting_grooming(
+            task, previous, verdict.replies, now
+        ):
+            result.awaiting_grooming += 1
+            log.info("sweep: %s waits for its grooming to come back", task.name)
         elif not verdict.ready and OPEN_QUESTIONS not in verdict.problems:
             held = True
             result.held.append(task)
@@ -620,6 +630,7 @@ def sweep(
             moved_at=moved_at,
             replies=verdict.replies,
             sent=sent,
+            now=now,
         )
         if record is not None:
             result.writes.append(record)
@@ -679,6 +690,7 @@ def run_sweep(
         report.count("waiting_for_grooming", result.waiting)
         report.count("waiting_on_blockers", result.blocked)
         report.count("waiting_on_owner", result.awaiting_owner)
+        report.count("awaiting_grooming", result.awaiting_grooming)
         report.count("held_without_questions", len(result.held))
         for task in result.newly_held:
             report.notice(

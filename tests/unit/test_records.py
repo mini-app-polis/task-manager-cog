@@ -6,7 +6,10 @@ from mini_app_polis.api.contract import GroomingRecord
 from mini_app_polis.asana import AsanaTaskRecord
 
 from task_manager_cog.records import (
+    GROOM_MAX_ATTEMPTS,
+    GROOM_RETRY_AFTER,
     answers,
+    awaiting_grooming,
     changed,
     fingerprint,
     needs_grooming,
@@ -148,3 +151,86 @@ def test_a_groomed_task_with_no_stop_is_not_sent_again() -> None:
     groomed = _stored(task, groomed_fingerprint=fingerprint(task))
     assert not needs_grooming(task, groomed)
     assert needs_grooming(_task(notes="Done when: edited"), groomed)
+
+
+def test_a_send_is_stamped_and_counted() -> None:
+    task = _task()
+    write = next_record(task, ("x",), None, moved_at=None, sent=True, now=NOW)
+    assert write is not None
+    assert (write.groom_sent_at, write.groom_attempts) == (NOW, 1)
+    # Not sent: the stamp is carried as it was.
+    stored = _stored(
+        task, groomed_fingerprint=fingerprint(task), groom_sent_at=NOW, groom_attempts=1
+    )
+    later = NOW + dt.timedelta(hours=1)
+    assert (
+        next_record(task, tuple(stored.problems), stored, moved_at=None, now=later)
+        is None
+    )
+
+
+def test_a_send_with_no_grooming_back_is_awaited_then_sent_again() -> None:
+    task = _task()
+    sent = _stored(
+        task, groomed_fingerprint=fingerprint(task), groom_sent_at=NOW, groom_attempts=1
+    )
+    soon = NOW + GROOM_RETRY_AFTER - dt.timedelta(minutes=1)
+    assert awaiting_grooming(task, sent, now=soon)
+    assert not needs_grooming(task, sent, now=soon)
+
+    lost = NOW + GROOM_RETRY_AFTER
+    assert not awaiting_grooming(task, sent, now=lost)
+    assert needs_grooming(task, sent, now=lost)
+    again = next_record(
+        task, tuple(sent.problems), sent, moved_at=None, sent=True, now=lost
+    )
+    assert again is not None
+    assert (again.groom_sent_at, again.groom_attempts) == (lost, 2)
+
+
+def test_a_lost_grooming_is_sent_at_most_the_most_attempts() -> None:
+    task = _task()
+    spent = _stored(
+        task,
+        groomed_fingerprint=fingerprint(task),
+        groom_sent_at=NOW,
+        groom_attempts=GROOM_MAX_ATTEMPTS,
+    )
+    later = NOW + 2 * GROOM_RETRY_AFTER
+    assert not needs_grooming(task, spent, now=later)
+    assert not awaiting_grooming(task, spent, now=later)
+
+
+def test_a_grooming_that_came_back_is_neither_awaited_nor_sent() -> None:
+    task = _task()
+    groomed = _stored(task, groomed_fingerprint=fingerprint(task))
+    later = NOW + 2 * GROOM_RETRY_AFTER
+    assert not awaiting_grooming(task, groomed, now=later)
+    assert not needs_grooming(task, groomed, now=later)
+    # Changed content starts a new count.
+    edited = _task(notes="Done when: edited")
+    stamped = _stored(
+        task, groomed_fingerprint=fingerprint(task), groom_sent_at=NOW, groom_attempts=3
+    )
+    write = next_record(edited, ("x",), stamped, moved_at=None, sent=True, now=later)
+    assert write is not None and write.groom_attempts == 1
+
+
+def test_sending_again_for_the_budget_is_not_an_attempt() -> None:
+    task = _task()
+    current = fingerprint(task)
+    stopped = _stored(
+        task,
+        groomed_fingerprint=current,
+        budget_spent_fingerprint=current,
+        groom_sent_at=NOW,
+        groom_attempts=2,
+    )
+    later = NOW + dt.timedelta(hours=1)
+    assert needs_grooming(task, stopped, now=later)
+    assert (
+        next_record(
+            task, tuple(stopped.problems), stopped, moved_at=None, sent=True, now=later
+        )
+        is None
+    )

@@ -19,7 +19,11 @@ from mini_app_polis.api.contract import (
 from mini_app_polis.asana import AsanaSection, AsanaTaskRecord
 
 from task_manager_cog import sweep as sweep_mod
-from task_manager_cog.records import fingerprint
+from task_manager_cog.records import (
+    GROOM_MAX_ATTEMPTS,
+    GROOM_RETRY_AFTER,
+    fingerprint,
+)
 from task_manager_cog.sweep import assess, run_sweep, sweep
 
 REPOS = frozenset({"infra"})
@@ -1160,6 +1164,47 @@ def test_a_task_the_budget_stopped_is_sent_again_once_a_sweep() -> None:
     )
     capped = sweep(board, repos=REPOS, move=True, records=records, send=send, limit=1)
     assert len(capped.sent) == 1 and capped.waiting == 1
+
+
+def test_a_grooming_that_never_comes_back_is_sent_again_then_held() -> None:
+    task = _task("2", "MINI-2 · Vague idea", notes="look into this")
+    sent: list[GroomingJobRequest] = []
+
+    def send(job: GroomingJobRequest) -> bool:
+        sent.append(job)
+        return True
+
+    board = FakeBoard([task])
+    start = dt.datetime(2026, 10, 28, 9, 15, tzinfo=dt.UTC)
+    first = sweep(board, repos=REPOS, move=True, send=send, limit=5, now=start)
+    records = {w.task_gid: _stored(w) for w in first.writes}
+    assert len(sent) == 1 and records["2"].groom_attempts == 1
+
+    # Nothing came back: awaited, not held, until it counts as lost.
+    soon = start + dt.timedelta(hours=1)
+    waiting = sweep(
+        board, repos=REPOS, move=True, records=records, send=send, limit=5, now=soon
+    )
+    assert len(sent) == 1 and waiting.awaiting_grooming == 1
+    assert waiting.held == [] and waiting.writes == []
+
+    at = start
+    for attempt in range(2, GROOM_MAX_ATTEMPTS + 1):
+        at += GROOM_RETRY_AFTER
+        again = sweep(
+            board, repos=REPOS, move=True, records=records, send=send, limit=5, now=at
+        )
+        assert [t.gid for t in again.sent] == ["2"]
+        records = {**records, **{w.task_gid: _stored(w) for w in again.writes}}
+        assert records["2"].groom_attempts == attempt
+
+    # Out of attempts: held and named, and not sent again.
+    at += GROOM_RETRY_AFTER
+    spent = sweep(
+        board, repos=REPOS, move=True, records=records, send=send, limit=5, now=at
+    )
+    assert spent.sent == [] and [t.gid for t in spent.newly_held] == ["2"]
+    assert len(sent) == GROOM_MAX_ATTEMPTS
 
 
 def test_a_ready_task_waiting_on_a_blocker_goes_to_blocked() -> None:

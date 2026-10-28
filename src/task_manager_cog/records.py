@@ -26,8 +26,16 @@ reported by the groomer, and the record comes back with that content's
 fingerprint as ``budget_spent_fingerprint``. While it equals the task's
 content, the task is sent again even though it was sent before, so the
 content is groomed once there is budget. The sweep never writes it. A stop
-for older content is ignored, and a run that failed for any other reason
-still waits until the task changes.
+for older content is ignored.
+
+**Lost.** A grooming can be lost for other reasons too: a run that crashes,
+or a proposal that never reaches the board. Sending stamps the record with
+``groom_sent_at`` and counts the send in ``groom_attempts``; writing the
+record of a grooming that came back, applied or not, clears both. A send
+still outstanding after :data:`GROOM_RETRY_AFTER` is sent again, up to
+:data:`GROOM_MAX_ATTEMPTS` sends of the same content. After that the task is
+held like any other, and the sweep names it. Sending again what the budget
+stopped is not a new attempt, and leaves both as they are.
 
 **Answers.** A grooming that has questions posts them as one comment that
 starts with :data:`QUESTIONS_PREFIX`. A split that is reported rather than
@@ -64,6 +72,12 @@ SPLIT_REPORT_PREFIX = "Proposed split (not created"
 
 #: The comments that ask the owner something; what follows answers them.
 ASKING_PREFIXES = (QUESTIONS_PREFIX, SPLIT_REPORT_PREFIX)
+
+#: How long a send may go with no grooming back before it counts as lost.
+GROOM_RETRY_AFTER = dt.timedelta(hours=12)
+
+#: The most times the same content is sent with no grooming coming back.
+GROOM_MAX_ATTEMPTS = 3
 
 
 def answers(comments: Sequence[str]) -> list[str]:
@@ -112,15 +126,33 @@ def changed(
     return record is None or record.fingerprint != fingerprint(task, replies)
 
 
+def _outstanding(previous: GroomingRecord, current: str) -> bool:
+    """Whether ``current`` was sent and no grooming of it has come back."""
+    return (
+        previous.groomed_fingerprint == current and previous.groom_sent_at is not None
+    )
+
+
+def _lost(previous: GroomingRecord, current: str, now: dt.datetime) -> bool:
+    """Whether a send of ``current`` has been outstanding too long."""
+    sent_at = previous.groom_sent_at
+    return (
+        _outstanding(previous, current)
+        and sent_at is not None
+        and now - sent_at >= GROOM_RETRY_AFTER
+    )
+
+
 def needs_grooming(
     task: AsanaTaskRecord,
     previous: GroomingRecord | None,
     replies: Sequence[str] = (),
+    now: dt.datetime | None = None,
 ) -> bool:
     """Whether a task that is not ready should be sent for grooming.
 
     Yes unless its content is what was last sent, or what a grooming wrote,
-    and no grooming of that content was stopped by the budget.
+    and no grooming of that content was stopped by the budget or lost.
     """
     if previous is None:
         return True
@@ -128,7 +160,40 @@ def needs_grooming(
     return (
         previous.groomed_fingerprint != current
         or previous.budget_spent_fingerprint == current
+        or (
+            _lost(previous, current, now or dt.datetime.now(dt.UTC))
+            and previous.groom_attempts < GROOM_MAX_ATTEMPTS
+        )
     )
+
+
+def awaiting_grooming(
+    task: AsanaTaskRecord,
+    previous: GroomingRecord | None,
+    replies: Sequence[str] = (),
+    now: dt.datetime | None = None,
+) -> bool:
+    """Whether the task's content was sent and its grooming may still come back."""
+    if previous is None:
+        return False
+    current = fingerprint(task, replies)
+    return _outstanding(previous, current) and not _lost(
+        previous, current, now or dt.datetime.now(dt.UTC)
+    )
+
+
+def _send_stamp(
+    previous: GroomingRecord | None, current: str, now: dt.datetime
+) -> tuple[dt.datetime | None, int]:
+    """``groom_sent_at`` and ``groom_attempts`` for a send of ``current``."""
+    if previous is None or previous.groomed_fingerprint != current:
+        return now, 1
+    if previous.budget_spent_fingerprint == current:
+        # Sent again for the budget, not because it was lost.
+        return previous.groom_sent_at, previous.groom_attempts
+    if previous.groom_sent_at is None:
+        return now, 1
+    return now, previous.groom_attempts + 1
 
 
 def next_record(
@@ -139,6 +204,7 @@ def next_record(
     moved_at: dt.datetime | None,
     replies: Sequence[str] = (),
     sent: bool = False,
+    now: dt.datetime | None = None,
 ) -> GroomingRecordWrite | None:
     """The record this sweep leaves for a swept task, or None if unchanged.
 
@@ -146,9 +212,17 @@ def next_record(
     swept task is in a grooming column, so a previous record that says this
     cog moved it to Ready means a person has moved it back. ``sent`` says
     this sweep sent the task for grooming, so its content is now what was
-    last sent.
+    last sent, and the send is stamped until a grooming comes back.
     """
     current = fingerprint(task, replies)
+    if sent:
+        sent_at, attempts = _send_stamp(
+            previous, current, now or dt.datetime.now(dt.UTC)
+        )
+    elif previous is not None:
+        sent_at, attempts = previous.groom_sent_at, previous.groom_attempts
+    else:
+        sent_at, attempts = None, 0
     returned = previous is not None and previous.moved_to_ready_at is not None
     returned_count = (previous.returned_count if previous else 0) + int(returned)
 
@@ -173,6 +247,8 @@ def next_record(
         groomed_fingerprint=(
             current if sent else (previous.groomed_fingerprint if previous else None)
         ),
+        groom_sent_at=sent_at,
+        groom_attempts=attempts,
     )
     if previous is not None and _same(record, previous):
         return None
