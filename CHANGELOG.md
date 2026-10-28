@@ -1,3 +1,10 @@
+# [1.17.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.16.0...v1.17.0) (2026-10-28)
+
+
+### Features
+
+* **sweep:** send a task again when its grooming was stopped by the budget ([c998780](https://github.com/mini-app-polis/task-manager-cog/commit/c998780e24ca83f6e3d015f2fc60ae4c0e1812f5))
+
 # [1.16.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.15.2...v1.16.0) (2026-10-28)
 
 
