@@ -1092,6 +1092,38 @@ def test_a_failing_ready_task_goes_back_to_refining_and_is_counted() -> None:
     assert sent == [] and again.writes == [] and again.newly_held == []
 
 
+def test_a_task_the_budget_stopped_is_sent_again_once_a_sweep() -> None:
+    task = _task("2", "MINI-2 · Vague idea", notes="look into this")
+    other = _task("3", "MINI-3 · Another vague idea", notes="look into this")
+    sent: list[GroomingJobRequest] = []
+
+    def send(job: GroomingJobRequest) -> bool:
+        sent.append(job)
+        return True
+
+    board = FakeBoard([task, other])
+    first = sweep(board, repos=REPOS, move=True, send=send, limit=5)
+    records = {w.task_gid: _stored(w) for w in first.writes}
+    assert len(sent) == 2
+
+    # The budget stopped MINI-2's run: it alone is sent again, once, and its
+    # record is left as it is. MINI-3, sent and unchanged, is not.
+    records["2"] = records["2"].model_copy(
+        update={"budget_spent_fingerprint": fingerprint(task)}
+    )
+    again = sweep(board, repos=REPOS, move=True, records=records, send=send, limit=5)
+    assert [j.task.task_gid for j in sent[2:]] == ["2"]
+    assert [t.gid for t in again.sent] == ["2"]
+    assert "2" not in {w.task_gid for w in again.writes}
+
+    # Within the limit like any other send.
+    records["3"] = records["3"].model_copy(
+        update={"budget_spent_fingerprint": fingerprint(other)}
+    )
+    capped = sweep(board, repos=REPOS, move=True, records=records, send=send, limit=1)
+    assert len(capped.sent) == 1 and capped.waiting == 1
+
+
 def test_a_ready_task_waiting_on_a_blocker_goes_to_blocked() -> None:
     task = _task(
         "6",

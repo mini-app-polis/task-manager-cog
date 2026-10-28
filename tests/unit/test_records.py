@@ -9,6 +9,7 @@ from task_manager_cog.records import (
     answers,
     changed,
     fingerprint,
+    needs_grooming,
     next_record,
     unanswered,
 )
@@ -117,3 +118,33 @@ def test_a_reported_split_is_asked_like_questions() -> None:
         "Swap 1 and 2."
     ]
     assert answers([reported, "Create it.", asked]) == []
+
+
+def test_a_task_whose_grooming_the_budget_stopped_is_sent_again() -> None:
+    task = _task()
+    current = fingerprint(task)
+    stopped = _stored(
+        task, groomed_fingerprint=current, budget_spent_fingerprint=current
+    )
+    assert needs_grooming(task, stopped)
+    # The stop is not written back: sending again leaves the record as it is.
+    assert (
+        next_record(task, tuple(stopped.problems), stopped, moved_at=None, sent=True)
+        is None
+    )
+
+
+def test_a_stop_for_older_content_sends_nothing() -> None:
+    task = _task()
+    older = fingerprint(_task(notes="Done when: before"))
+    stopped = _stored(
+        task, groomed_fingerprint=fingerprint(task), budget_spent_fingerprint=older
+    )
+    assert not needs_grooming(task, stopped)
+
+
+def test_a_groomed_task_with_no_stop_is_not_sent_again() -> None:
+    task = _task()
+    groomed = _stored(task, groomed_fingerprint=fingerprint(task))
+    assert not needs_grooming(task, groomed)
+    assert needs_grooming(_task(notes="Done when: edited"), groomed)
