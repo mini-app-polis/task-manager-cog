@@ -7,12 +7,18 @@ import pytest
 from mini_app_polis.api.contract import GroomingProposal, GroomingRecord
 
 from task_manager_cog.groom import (
+    NOT_READY_PREFIX,
     ORIGINAL_MARKER,
     apply_proposal,
     groomed_text,
 )
 from task_manager_cog.lint import parse
-from task_manager_cog.records import QUESTIONS_PREFIX, fingerprint
+from task_manager_cog.records import (
+    QUESTIONS_PREFIX,
+    SPLIT_REPORT_PREFIX,
+    answers,
+    fingerprint,
+)
 
 from .test_sweep import REPOS, FakeBoard, FakeRecords, _task
 
@@ -134,6 +140,63 @@ def test_not_yet_ready_goes_to_refining_and_loses_its_review_tag(
     assert (
         "Where names no repository called somewhere-else" in store.stored["7"].problems
     )
+
+
+def test_a_not_ready_grooming_comments_its_problems_once(
+    production, _no_outbound_reports
+) -> None:
+    board = FakeBoard([VAGUE])
+    store = FakeRecords()
+    _apply(_proposal(where="somewhere-else"), board, store)
+
+    problems = store.stored["7"].problems
+    assert "Where names no repository called somewhere-else" in problems
+    (comment,) = board.comments("7")
+    assert comment.startswith(NOT_READY_PREFIX)
+    assert not comment.startswith((QUESTIONS_PREFIX, SPLIT_REPORT_PREFIX))
+    assert comment.splitlines()[1:] == [f"- {p}" for p in problems]
+    # Neither a question nor an answer to one.
+    assert answers([comment]) == []
+    record = store.stored["7"]
+    assert record.outcome == "not_ready"
+    assert record.groomed_fingerprint == fingerprint(board.get("7"))
+    ((_, kwargs),) = _no_outbound_reports
+    assert "Where names no repository called somewhere-else" in kwargs["text"]
+
+
+@pytest.mark.parametrize("auto_ready", ["true", "false"])
+def test_a_passing_grooming_posts_no_comment(
+    production, monkeypatch: pytest.MonkeyPatch, _no_outbound_reports, auto_ready
+) -> None:
+    monkeypatch.setenv("GROOM_AUTO_READY", auto_ready)
+    board = FakeBoard([VAGUE])
+    store = FakeRecords()
+    _apply(_proposal(), board, store)
+    assert store.stored["7"].outcome == "ready"
+    assert board.comments("7") == []
+
+
+def test_a_not_ready_grooming_with_questions_posts_only_its_questions(
+    production, _no_outbound_reports
+) -> None:
+    board = FakeBoard([VAGUE])
+    store = FakeRecords()
+    _apply(_proposal(where="somewhere-else", questions=["Which repo?"]), board, store)
+    (comment,) = board.comments("7")
+    assert comment.startswith(QUESTIONS_PREFIX)
+    assert store.stored["7"].outcome == "questions"
+
+
+def test_a_split_is_applied_without_a_not_ready_comment(
+    production, monkeypatch: pytest.MonkeyPatch, _no_outbound_reports
+) -> None:
+    from .test_split import _apply_split, _board, _split
+
+    monkeypatch.setenv("GROOM_SPLIT_DRY_RUN", "false")
+    board = _board()
+    _apply_split(_split(), board, FakeRecords())
+    assert len(board.created) == 2
+    assert not any(c.startswith(NOT_READY_PREFIX) for c in board.comments("7"))
 
 
 def test_a_proposal_for_changed_content_is_not_applied(

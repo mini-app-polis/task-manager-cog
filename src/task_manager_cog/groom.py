@@ -35,7 +35,9 @@ be groomed again, and that grooming may split it.
   comment sends it to be groomed again. Blocked is for a task waiting on
   another task or an event, which grooming does not decide.
 - It passes and ``GROOM_AUTO_READY`` is on: it moves to Ready.
-- Otherwise it moves to Refining.
+- Otherwise it moves to Refining. If it still has problems, they are
+  posted as one comment starting ``Grooming left this task not ready:``,
+  one ``- `` line each, so the owner sees what is left to fix.
 
 Its grooming record is written with the new content as both what was judged
 and what was groomed, so a groomed task is not sent again until someone
@@ -92,6 +94,9 @@ FLOW_NAME = "apply-grooming"
 MANUAL_PREFIX = "MINI"
 
 DEFAULT_REFINING_SECTION = "Refining"
+
+#: How the comment on a groomed task that is still not ready starts.
+NOT_READY_PREFIX = "Grooming left this task not ready:"
 
 _FIELDS_FROM_PROPOSAL = {
     "Done when": "done_when",
@@ -173,6 +178,12 @@ def questions_comment(questions: list[str], split: Sequence[str] = ()) -> str:
         f"{QUESTIONS_PREFIX}\n{numbered}\n\n{proposed}"
         "Answer in a comment below; the task is groomed again with your answers."
     )
+
+
+def not_ready_comment(problems: Collection[str]) -> str:
+    """The one comment on a groomed task that is still not ready: its problems."""
+    lines = "\n".join(f"- {p}" for p in problems)
+    return f"{NOT_READY_PREFIX}\n{lines}"
 
 
 def apply_proposal(
@@ -277,6 +288,8 @@ def apply_proposal(
                 sections, _section_setting("REFINING_SECTION", DEFAULT_REFINING_SECTION)
             )
             outcome = "ready" if not problems else "not_ready"
+            if problems:
+                board.comment(task.gid, not_ready_comment(problems))
         if groomed.section_gid != column.gid:
             board.move(task.gid, column.gid)
 
@@ -297,5 +310,9 @@ def apply_proposal(
         report.count("questions", len(proposal.questions))
         report.count("cost_usd", f"{proposal.cost_usd:.4f}")
         report.updated(
-            f"task groomed into {column.name}", name, link=board.url(task.gid)
+            f"task groomed into {column.name}",
+            f"{name} (not ready: {'; '.join(problems)})"
+            if outcome == "not_ready"
+            else name,
+            link=board.url(task.gid),
         )

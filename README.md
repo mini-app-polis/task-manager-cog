@@ -155,6 +155,14 @@ differs from what was last sent for grooming (the record's
 and only when `GROOM_DISPATCH=true`, because each one is a paid run. A job
 the API refuses is sent again next sweep.
 
+A grooming run the spent budget stopped is reported by the groomer, and the
+task's record comes back with that content's fingerprint
+(`budget_spent_fingerprint`). While it equals the task's content, the task
+is sent again even though it was sent before, within the same limit and at
+most once a sweep, so content the budget stopped is groomed once there is
+budget. A stop for older content is ignored, and a run that failed for any
+other reason is not retried: it waits until the task changes.
+
 The groomer's proposal is applied here (`groom.py`), and only to the content
 it was made for:
 
@@ -171,7 +179,9 @@ it was made for:
   comment:** the answers become part of the task's content, so the next
   sweep sends it to be groomed again, answers included.
 - Without, it moves to Ready if it now passes and `GROOM_AUTO_READY` is on,
-  and to Refining otherwise.
+  and to Refining otherwise. A task that still has problems gets one
+  comment starting `Grooming left this task not ready:` listing them, and
+  the run report names them.
 
 A groomed task is not sent again until someone changes it, so a task
 waiting on you costs nothing.
