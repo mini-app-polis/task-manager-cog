@@ -21,6 +21,14 @@ task-groomer-cog, or that a grooming wrote. A task that is not ready is sent
 when its content differs from it: once per change, never in a loop, and a
 groomed task that is waiting costs nothing until someone changes it.
 
+**Stopped by the budget.** A grooming run the spent budget stopped is
+reported by the groomer, and the record comes back with that content's
+fingerprint as ``budget_spent_fingerprint``. While it equals the task's
+content, the task is sent again even though it was sent before, so the
+content is groomed once there is budget. The sweep never writes it. A stop
+for older content is ignored, and a run that failed for any other reason
+still waits until the task changes.
+
 **Answers.** A grooming that has questions posts them as one comment that
 starts with :data:`QUESTIONS_PREFIX`. A split that is reported rather than
 created (a dry run, or over the cap) is posted as one comment starting with
@@ -111,10 +119,15 @@ def needs_grooming(
 ) -> bool:
     """Whether a task that is not ready should be sent for grooming.
 
-    Yes unless its content is what was last sent, or what a grooming wrote.
+    Yes unless its content is what was last sent, or what a grooming wrote,
+    and no grooming of that content was stopped by the budget.
     """
-    return previous is None or previous.groomed_fingerprint != fingerprint(
-        task, replies
+    if previous is None:
+        return True
+    current = fingerprint(task, replies)
+    return (
+        previous.groomed_fingerprint != current
+        or previous.budget_spent_fingerprint == current
     )
 
 
