@@ -59,6 +59,9 @@ by gid, so they read the same in Doppler as on the board:
   GROOM_DISPATCH    true to send tasks for grooming, which is paid; off
                     unless set
   GROOM_DISPATCH_LIMIT  tasks sent a sweep (default: 5)
+  GROOM_HOURS       the hours of the day tasks are sent in, comma-separated
+                    (e.g. 4,5,6); every hour unless set
+  GROOM_TIMEZONE    the time zone GROOM_HOURS is read in (default: UTC)
   GROOM_TASK_SHAPES true to hold tasks to the leaf or compound shape
                     (lint.py); off unless set
 
@@ -84,6 +87,7 @@ import sys
 from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass, field
 from typing import Any, Protocol
+from zoneinfo import ZoneInfo
 
 from mini_app_polis import logger as logger_mod
 from mini_app_polis.api import KaianoApiClient
@@ -132,6 +136,7 @@ DEFAULT_READY_SECTION = "Ready"
 DEFAULT_REFINING_SECTION = "Refining"
 DEFAULT_BLOCKED_SECTION = "Blocked"
 DEFAULT_DISPATCH_LIMIT = 5
+DEFAULT_GROOM_TIMEZONE = "UTC"
 
 #: Starts the comment on a task the sweep moved back out of Ready.
 SENT_BACK_PREFIX = "Sent back from Ready:"
@@ -283,10 +288,32 @@ def task_shapes() -> bool:
     return (os.environ.get("GROOM_TASK_SHAPES") or "").strip().lower() == "true"
 
 
-def dispatch_limit() -> int:
-    """How many tasks a sweep may send for grooming; 0 when sending is off."""
+def groom_hours() -> frozenset[int] | None:
+    """The hours of the day tasks are sent in (``GROOM_HOURS``); None for every hour."""
+    raw = (os.environ.get("GROOM_HOURS") or "").strip()
+    if not raw:
+        return None
+    return frozenset(int(hour) for hour in raw.split(",") if hour.strip())
+
+
+def groom_timezone() -> ZoneInfo:
+    """The time zone ``GROOM_HOURS`` is read in: ``GROOM_TIMEZONE``, or UTC."""
+    name = (os.environ.get("GROOM_TIMEZONE") or "").strip()
+    return ZoneInfo(name or DEFAULT_GROOM_TIMEZONE)
+
+
+def dispatch_limit(now: dt.datetime | None = None) -> int:
+    """How many tasks a sweep may send for grooming.
+
+    0 when sending is off, or when ``now`` falls outside ``GROOM_HOURS``.
+    """
     if (os.environ.get("GROOM_DISPATCH") or "").strip().lower() != "true":
         return 0
+    hours = groom_hours()
+    if hours is not None:
+        local = (now or dt.datetime.now(dt.UTC)).astimezone(groom_timezone())
+        if local.hour not in hours:
+            return 0
     raw = (os.environ.get("GROOM_DISPATCH_LIMIT") or "").strip()
     return max(0, int(raw)) if raw else DEFAULT_DISPATCH_LIMIT
 

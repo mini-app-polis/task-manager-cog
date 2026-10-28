@@ -153,7 +153,10 @@ A task that is not ready is sent to task-groomer-cog when its content
 differs from what was last sent for grooming (the record's
 `groomed_fingerprint`): at most `GROOM_DISPATCH_LIMIT` a sweep (default 5),
 and only when `GROOM_DISPATCH=true`, because each one is a paid run. A job
-the API refuses is sent again next sweep.
+the API refuses is sent again next sweep. With `GROOM_HOURS` set (hours of
+the day, comma-separated, e.g. `4,5,6`, read in `GROOM_TIMEZONE`, default
+UTC), only the sweeps in those hours send any; the others still lint and move
+tasks.
 
 A grooming run the spent budget stopped is reported by the groomer, and the
 task's record comes back with that content's fingerprint

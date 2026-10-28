@@ -492,6 +492,26 @@ def test_sending_is_off_unless_set(monkeypatch: pytest.MonkeyPatch) -> None:
     assert sweep_mod.dispatch_limit() == 2
 
 
+def test_sending_only_in_groom_hours(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GROOM_DISPATCH", "true")
+    monkeypatch.setenv("GROOM_HOURS", "4,5,6")
+    monkeypatch.setenv("GROOM_TIMEZONE", "America/Chicago")
+    # 09:15 UTC is 04:15 in Chicago in summer (CDT) and 03:15 in winter (CST).
+    summer = dt.datetime(2026, 7, 1, 9, 15, tzinfo=dt.UTC)
+    winter = dt.datetime(2026, 12, 1, 9, 15, tzinfo=dt.UTC)
+    assert sweep_mod.dispatch_limit(summer) == 5
+    assert sweep_mod.dispatch_limit(winter) == 0
+    assert sweep_mod.dispatch_limit(winter + dt.timedelta(hours=1)) == 5
+    assert sweep_mod.dispatch_limit(summer + dt.timedelta(hours=3)) == 0
+
+
+def test_groom_hours_read_in_utc_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GROOM_DISPATCH", "true")
+    monkeypatch.setenv("GROOM_HOURS", "9")
+    assert sweep_mod.dispatch_limit(dt.datetime(2026, 7, 1, 9, 15, tzinfo=dt.UTC)) == 5
+    assert sweep_mod.dispatch_limit(dt.datetime(2026, 7, 1, 10, 15, tzinfo=dt.UTC)) == 0
+
+
 def test_tasks_not_ready_are_sent_once_up_to_the_limit(
     production, monkeypatch: pytest.MonkeyPatch, _no_outbound_reports
 ) -> None:
