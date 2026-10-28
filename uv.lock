@@ -988,7 +988,7 @@ wheels = [
 
 [[package]]
 name = "miniapppolis-common-utils"
-version = "6.32.0"
+version = "6.33.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "google-api-python-client" },
@@ -1005,9 +1005,9 @@ dependencies = [
     { name = "spotipy" },
     { name = "tenacity" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/dc/cf/42ab3a0ce2620399a3ca579a17eec5332f57a7d355cba46c11d9f83a4295/miniapppolis_common_utils-6.32.0.tar.gz", hash = "sha256:9ca3b34dda6b0615cc995cb1b210391c0487b0fca0a69d4c062915fe6f9ee25d", size = 441852, upload-time = "2026-10-28T15:48:49.802Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/0c/16/4f0b6d476b2bb5293809da55f690bc6cc8ef696fe945d82ca008647c3bf6/miniapppolis_common_utils-6.33.0.tar.gz", hash = "sha256:d820e24f33e0981b55c39239f0c6bfb71200c8a10468dba3951eb0303ec00cae", size = 443044, upload-time = "2026-10-28T21:42:48.388Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/59/b6/05b6f847829608db66ab5f8c1b5acab86a60155c80b0cebc028afa3f452f/miniapppolis_common_utils-6.32.0-py3-none-any.whl", hash = "sha256:a4ee6c380ac74460cd6ca70e3bf435ee0faa7d67257fceb5d786efc31deca78d", size = 201366, upload-time = "2026-10-28T15:48:48.362Z" },
+    { url = "https://files.pythonhosted.org/packages/5b/e6/93a0268b4a739624017e91b788c48e7b1f0f234822d3274ddb73bb976dab/miniapppolis_common_utils-6.33.0-py3-none-any.whl", hash = "sha256:682775b706d10b22561b9e25775814a446034093c47277a4c2721c5c1da9f9ae", size = 201746, upload-time = "2026-10-28T21:42:47.088Z" },
 ]
 
 [[package]]
@@ -1818,6 +1818,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "pyyaml" },
     { name = "sentry-sdk" },
+    { name = "tzdata" },
 ]
 
 [package.dev-dependencies]
@@ -1834,10 +1835,11 @@ dev = [
 requires-dist = [
     { name = "cryptography", specifier = ">=43,<51" },
     { name = "httpx", specifier = ">=0.27,<1.0" },
-    { name = "miniapppolis-common-utils", specifier = ">=6.27.0,<7" },
+    { name = "miniapppolis-common-utils", specifier = ">=6.33.0,<7" },
     { name = "pydantic", specifier = ">=2.0.0,<3.0.0" },
     { name = "pyyaml", specifier = ">=6.0,<7.0" },
     { name = "sentry-sdk", specifier = ">=2.0.0,<3.0.0" },
+    { name = "tzdata", specifier = ">=2024.1" },
 ]
 
 [package.metadata.requires-dev]
@@ -1950,6 +1952,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/a3/26/b09b8010994eccc3c09092e6b34058f36a460eea2d4c3e8b910c695975a0/typing_inspection-0.4.4.tar.gz", hash = "sha256:547274fa6b0a561ccf549cc9524b999a578e737d015d8709d021f9d0d13bea47", size = 76928, upload-time = "2026-08-12T12:37:25.997Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/67/81/4add07e5172b7ac40d8ed5ff580409a7801a4fe26d529bdd915401dabfbe/typing_inspection-0.4.4-py3-none-any.whl", hash = "sha256:65b8397ba37ccbce054456aaccddfc91e6e3083c92824df348d96ca832f3f147", size = 14750, upload-time = "2026-08-12T12:37:24.648Z" },
+]
+
+[[package]]
+name = "tzdata"
+version = "2026.6"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/7a/29/6a1391d31cd00ff9e927215a224a880e1e84e826b64ba80a499e51c074d8/tzdata-2026.6.tar.gz", hash = "sha256:85d2cd9c09f81f0bb29db27759fc83af4f1e620efb814f8c5bf8b4cc4feece6d", size = 201017, upload-time = "2026-10-28T09:57:09.137Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/0a/66/9a06c2227fedfd4919f0eaaa8b94377d9730882a7e4f95823c9a331ab5e1/tzdata-2026.6-py2.py3-none-any.whl", hash = "sha256:0a10eec6e13ef16b627fabed9a5f2ba61a62b1c67f327305f4e7e412a70b4aec", size = 348210, upload-time = "2026-10-28T09:57:07.276Z" },
 ]
 
 [[package]]

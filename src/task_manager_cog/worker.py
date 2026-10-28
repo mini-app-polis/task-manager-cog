@@ -15,7 +15,7 @@ The payload is the request as the API validated it, so it is validated here
 against the same model from the shared contract.
 
 The one other producer is this cog's own schedule, which puts a sweep on the
-same queue every hour (sweep.py):
+same queue every half hour (sweep.py):
 
     {"type": "task.sweep", "version": 1}
 

@@ -19,7 +19,11 @@ from mini_app_polis.api.contract import (
 from mini_app_polis.asana import AsanaSection, AsanaTaskRecord
 
 from task_manager_cog import sweep as sweep_mod
-from task_manager_cog.records import fingerprint
+from task_manager_cog.records import (
+    GROOM_MAX_ATTEMPTS,
+    GROOM_RETRY_AFTER,
+    fingerprint,
+)
 from task_manager_cog.sweep import assess, run_sweep, sweep
 
 REPOS = frozenset({"infra"})
@@ -490,6 +494,44 @@ def test_sending_is_off_unless_set(monkeypatch: pytest.MonkeyPatch) -> None:
     assert sweep_mod.dispatch_limit() == 5
     monkeypatch.setenv("GROOM_DISPATCH_LIMIT", "2")
     assert sweep_mod.dispatch_limit() == 2
+
+
+def test_sending_only_in_groom_times(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GROOM_DISPATCH", "true")
+    monkeypatch.setenv("GROOM_TIMES", "04:15,05:15,06:15")
+    monkeypatch.setenv("SWEEP_TIMEZONE", "America/Chicago")
+    # 09:15 UTC is 04:15 in Chicago in summer (CDT) and 03:15 in winter (CST).
+    summer = dt.datetime(2026, 7, 1, 9, 15, tzinfo=dt.UTC)
+    winter = dt.datetime(2026, 12, 1, 9, 15, tzinfo=dt.UTC)
+    assert sweep_mod.dispatch_limit(summer) == 5
+    assert sweep_mod.dispatch_limit(winter) == 0
+    assert sweep_mod.dispatch_limit(winter + dt.timedelta(hours=1)) == 5
+    # The half-hour sweep after a groom time is not one for it.
+    assert sweep_mod.dispatch_limit(summer + dt.timedelta(minutes=30)) == 0
+    assert sweep_mod.dispatch_limit(summer + dt.timedelta(hours=3)) == 0
+
+
+def test_due_every_sweep_unless_set() -> None:
+    assert sweep_mod.due("AGENT_TIMES", dt.datetime(2026, 7, 1, 9, 15, tzinfo=dt.UTC))
+
+
+def test_due_reads_times_in_utc_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AGENT_TIMES", "09:45")
+    assert sweep_mod.due("AGENT_TIMES", dt.datetime(2026, 7, 1, 9, 46, tzinfo=dt.UTC))
+    assert not sweep_mod.due(
+        "AGENT_TIMES", dt.datetime(2026, 7, 1, 9, 16, tzinfo=dt.UTC)
+    )
+    assert not sweep_mod.due(
+        "AGENT_TIMES", dt.datetime(2026, 7, 1, 10, 15, tzinfo=dt.UTC)
+    )
+
+
+def test_due_across_midnight(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AGENT_TIMES", "23:50")
+    assert sweep_mod.due("AGENT_TIMES", dt.datetime(2026, 7, 2, 0, 5, tzinfo=dt.UTC))
+    assert not sweep_mod.due(
+        "AGENT_TIMES", dt.datetime(2026, 7, 2, 0, 25, tzinfo=dt.UTC)
+    )
 
 
 def test_tasks_not_ready_are_sent_once_up_to_the_limit(
@@ -1122,6 +1164,47 @@ def test_a_task_the_budget_stopped_is_sent_again_once_a_sweep() -> None:
     )
     capped = sweep(board, repos=REPOS, move=True, records=records, send=send, limit=1)
     assert len(capped.sent) == 1 and capped.waiting == 1
+
+
+def test_a_grooming_that_never_comes_back_is_sent_again_then_held() -> None:
+    task = _task("2", "MINI-2 · Vague idea", notes="look into this")
+    sent: list[GroomingJobRequest] = []
+
+    def send(job: GroomingJobRequest) -> bool:
+        sent.append(job)
+        return True
+
+    board = FakeBoard([task])
+    start = dt.datetime(2026, 10, 28, 9, 15, tzinfo=dt.UTC)
+    first = sweep(board, repos=REPOS, move=True, send=send, limit=5, now=start)
+    records = {w.task_gid: _stored(w) for w in first.writes}
+    assert len(sent) == 1 and records["2"].groom_attempts == 1
+
+    # Nothing came back: awaited, not held, until it counts as lost.
+    soon = start + dt.timedelta(hours=1)
+    waiting = sweep(
+        board, repos=REPOS, move=True, records=records, send=send, limit=5, now=soon
+    )
+    assert len(sent) == 1 and waiting.awaiting_grooming == 1
+    assert waiting.held == [] and waiting.writes == []
+
+    at = start
+    for attempt in range(2, GROOM_MAX_ATTEMPTS + 1):
+        at += GROOM_RETRY_AFTER
+        again = sweep(
+            board, repos=REPOS, move=True, records=records, send=send, limit=5, now=at
+        )
+        assert [t.gid for t in again.sent] == ["2"]
+        records = {**records, **{w.task_gid: _stored(w) for w in again.writes}}
+        assert records["2"].groom_attempts == attempt
+
+    # Out of attempts: held and named, and not sent again.
+    at += GROOM_RETRY_AFTER
+    spent = sweep(
+        board, repos=REPOS, move=True, records=records, send=send, limit=5, now=at
+    )
+    assert spent.sent == [] and [t.gid for t in spent.newly_held] == ["2"]
+    assert len(sent) == GROOM_MAX_ATTEMPTS
 
 
 def test_a_ready_task_waiting_on_a_blocker_goes_to_blocked() -> None:

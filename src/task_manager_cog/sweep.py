@@ -1,6 +1,6 @@
 """The sweep: every task waiting to be worked, checked against the definition of ready.
 
-A schedule puts one ``task.sweep`` message on this cog's queue every hour,
+A schedule puts one ``task.sweep`` message on this cog's queue every half hour,
 so a sweep runs in line with task creation and never beside it. A sweep
 reads the board once, checks each open task in the grooming columns with
 the linter (lint.py), and moves each task that passes to the ready column.
@@ -59,6 +59,13 @@ by gid, so they read the same in Doppler as on the board:
   GROOM_DISPATCH    true to send tasks for grooming, which is paid; off
                     unless set
   GROOM_DISPATCH_LIMIT  tasks sent a sweep (default: 5)
+  GROOM_TIMES       the times of day tasks are sent at, comma-separated
+                    HH:MM (e.g. 04:15,05:15); every sweep unless set
+  SWEEP_TIMEZONE    the time zone GROOM_TIMES and AGENT_TIMES are read in
+                    (default: UTC)
+
+A sweep is the one for a time in GROOM_TIMES or AGENT_TIMES when it starts
+within half an hour after it, the interval the schedule runs the sweep at.
   GROOM_TASK_SHAPES true to hold tasks to the leaf or compound shape
                     (lint.py); off unless set
 
@@ -68,7 +75,8 @@ problems the fleet detected (``CI-``, ``RUN-``, ``CONF-``, ``API-``) wait
 for a person.
 
 After grooming, the sweep dispatches an agent for each Ready task it can
-take, when ``AGENT_DISPATCH`` or ``AGENT_DRY_RUN`` is on (dispatch.py).
+take, when ``AGENT_DISPATCH`` or ``AGENT_DRY_RUN`` is on (dispatch.py), and
+only in the sweeps for ``AGENT_TIMES`` when that is set.
 
 Run it locally, read-only, to see every task's verdict:
 
@@ -84,6 +92,7 @@ import sys
 from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass, field
 from typing import Any, Protocol
+from zoneinfo import ZoneInfo
 
 from mini_app_polis import logger as logger_mod
 from mini_app_polis.api import KaianoApiClient
@@ -109,6 +118,7 @@ from .github import AgentApp
 from .lint import lint, mentioned_ids, only_blocked, task_id_of
 from .records import (
     answers,
+    awaiting_grooming,
     changed,
     fingerprint,
     needs_grooming,
@@ -132,6 +142,11 @@ DEFAULT_READY_SECTION = "Ready"
 DEFAULT_REFINING_SECTION = "Refining"
 DEFAULT_BLOCKED_SECTION = "Blocked"
 DEFAULT_DISPATCH_LIMIT = 5
+DEFAULT_SWEEP_TIMEZONE = "UTC"
+
+#: How often the schedule runs a sweep: a sweep is the one for a time in
+#: GROOM_TIMES or AGENT_TIMES when it starts within this after it.
+SWEEP_INTERVAL = dt.timedelta(minutes=30)
 
 #: Starts the comment on a task the sweep moved back out of Ready.
 SENT_BACK_PREFIX = "Sent back from Ready:"
@@ -226,6 +241,8 @@ class SweepResult:
     waiting: int = 0
     #: Tasks held back by a "Grooming questions:" comment nothing answers.
     awaiting_owner: int = 0
+    #: Tasks sent for grooming whose grooming has not come back yet.
+    awaiting_grooming: int = 0
     #: Tasks not ready only because a blocker is not done: never sent.
     blocked: int = 0
     #: Tasks not ready, unchanged since they were groomed, and with no
@@ -283,9 +300,49 @@ def task_shapes() -> bool:
     return (os.environ.get("GROOM_TASK_SHAPES") or "").strip().lower() == "true"
 
 
-def dispatch_limit() -> int:
-    """How many tasks a sweep may send for grooming; 0 when sending is off."""
+def sweep_timezone() -> ZoneInfo:
+    """The time zone times of day are read in: ``SWEEP_TIMEZONE``, or UTC."""
+    name = (os.environ.get("SWEEP_TIMEZONE") or "").strip()
+    return ZoneInfo(name or DEFAULT_SWEEP_TIMEZONE)
+
+
+def times_of_day(name: str) -> tuple[dt.time, ...] | None:
+    """The comma-separated HH:MM times in setting ``name``; None when unset."""
+    raw = (os.environ.get(name) or "").strip()
+    if not raw:
+        return None
+    return tuple(dt.time.fromisoformat(t.strip()) for t in raw.split(",") if t.strip())
+
+
+def due(name: str, now: dt.datetime | None = None) -> bool:
+    """Whether the sweep at ``now`` is the one for a time in setting ``name``.
+
+    It is when it starts within ``SWEEP_INTERVAL`` after one of the times,
+    read in ``SWEEP_TIMEZONE``. Every sweep is when the setting is unset.
+    """
+    times = times_of_day(name)
+    if times is None:
+        return True
+    local = (now or dt.datetime.now(dt.UTC)).astimezone(sweep_timezone())
+    for time in times:
+        start = local.replace(
+            hour=time.hour, minute=time.minute, second=0, microsecond=0
+        )
+        # A time late in the evening is due just after midnight too.
+        for at in (start, start - dt.timedelta(days=1)):
+            if at <= local < at + SWEEP_INTERVAL:
+                return True
+    return False
+
+
+def dispatch_limit(now: dt.datetime | None = None) -> int:
+    """How many tasks a sweep may send for grooming.
+
+    0 when sending is off, or when the sweep is not one for ``GROOM_TIMES``.
+    """
     if (os.environ.get("GROOM_DISPATCH") or "").strip().lower() != "true":
+        return 0
+    if not due("GROOM_TIMES", now):
         return 0
     raw = (os.environ.get("GROOM_DISPATCH_LIMIT") or "").strip()
     return max(0, int(raw)) if raw else DEFAULT_DISPATCH_LIMIT
@@ -433,15 +490,17 @@ def sweep(
     records: Mapping[str, GroomingRecord] | None = None,
     send: Callable[[GroomingJobRequest], bool] | None = None,
     limit: int = 0,
+    now: dt.datetime | None = None,
 ) -> SweepResult:
     """Check the board, and move what is ready when ``move`` is set.
 
     ``records`` are the tasks' grooming records by task gid. The records
     this sweep changes are returned in ``writes``, not written: writing is
     the caller's. ``send`` sends one task for grooming and says whether it
-    landed; at most ``limit`` are sent.
+    landed; at most ``limit`` are sent. ``now`` is when the sweep runs.
     """
     records = records or {}
+    now = now or dt.datetime.now(dt.UTC)
     sections = board.sections()
     ready = _section_named(sections, ready_section())
     blocked: AsanaSection | None = None
@@ -546,7 +605,7 @@ def sweep(
         elif verdict.awaiting_owner:
             result.awaiting_owner += 1
             log.info("sweep: %s waits on its owner's answers", task.name)
-        elif not verdict.ready and needs_grooming(task, previous, verdict.replies):
+        elif not verdict.ready and needs_grooming(task, previous, verdict.replies, now):
             if send is not None and len(result.sent) < limit:
                 sent = send(grooming_job(verdict, open_names, done_by_id))
             if sent:
@@ -554,6 +613,11 @@ def sweep(
                 log.info("sweep: %s sent for grooming", task.name)
             else:
                 result.waiting += 1
+        elif not verdict.ready and awaiting_grooming(
+            task, previous, verdict.replies, now
+        ):
+            result.awaiting_grooming += 1
+            log.info("sweep: %s waits for its grooming to come back", task.name)
         elif not verdict.ready and OPEN_QUESTIONS not in verdict.problems:
             held = True
             result.held.append(task)
@@ -566,6 +630,7 @@ def sweep(
             moved_at=moved_at,
             replies=verdict.replies,
             sent=sent,
+            now=now,
         )
         if record is not None:
             result.writes.append(record)
@@ -625,6 +690,7 @@ def run_sweep(
         report.count("waiting_for_grooming", result.waiting)
         report.count("waiting_on_blockers", result.blocked)
         report.count("waiting_on_owner", result.awaiting_owner)
+        report.count("awaiting_grooming", result.awaiting_grooming)
         report.count("held_without_questions", len(result.held))
         for task in result.newly_held:
             report.notice(
@@ -655,7 +721,7 @@ def run_sweep(
                 link=board.url(task.gid),
             )
 
-        if agent.enabled() or agent.dry_run():
+        if (agent.enabled() or agent.dry_run()) and due("AGENT_TIMES"):
             _dispatch_agents(
                 board,
                 store,

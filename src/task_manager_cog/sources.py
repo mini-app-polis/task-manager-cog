@@ -25,7 +25,7 @@ class Source:
     ``prefix`` is the id prefix this cog mints for the source, or ``None``
     for a source that brings its own id.
 
-    ``swept`` is whether the hourly sweep grooms the source's tasks and
+    ``swept`` is whether the sweep grooms the source's tasks and
     moves them to Ready. A detected problem is not: it is for a person to
     look at until fixing one automatically is decided on, so it is neither
     sent for paid grooming nor put where an agent would pick it up.
