@@ -492,24 +492,42 @@ def test_sending_is_off_unless_set(monkeypatch: pytest.MonkeyPatch) -> None:
     assert sweep_mod.dispatch_limit() == 2
 
 
-def test_sending_only_in_groom_hours(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_sending_only_in_groom_times(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GROOM_DISPATCH", "true")
-    monkeypatch.setenv("GROOM_HOURS", "4,5,6")
-    monkeypatch.setenv("GROOM_TIMEZONE", "America/Chicago")
+    monkeypatch.setenv("GROOM_TIMES", "04:15,05:15,06:15")
+    monkeypatch.setenv("SWEEP_TIMEZONE", "America/Chicago")
     # 09:15 UTC is 04:15 in Chicago in summer (CDT) and 03:15 in winter (CST).
     summer = dt.datetime(2026, 7, 1, 9, 15, tzinfo=dt.UTC)
     winter = dt.datetime(2026, 12, 1, 9, 15, tzinfo=dt.UTC)
     assert sweep_mod.dispatch_limit(summer) == 5
     assert sweep_mod.dispatch_limit(winter) == 0
     assert sweep_mod.dispatch_limit(winter + dt.timedelta(hours=1)) == 5
+    # The half-hour sweep after a groom time is not one for it.
+    assert sweep_mod.dispatch_limit(summer + dt.timedelta(minutes=30)) == 0
     assert sweep_mod.dispatch_limit(summer + dt.timedelta(hours=3)) == 0
 
 
-def test_groom_hours_read_in_utc_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("GROOM_DISPATCH", "true")
-    monkeypatch.setenv("GROOM_HOURS", "9")
-    assert sweep_mod.dispatch_limit(dt.datetime(2026, 7, 1, 9, 15, tzinfo=dt.UTC)) == 5
-    assert sweep_mod.dispatch_limit(dt.datetime(2026, 7, 1, 10, 15, tzinfo=dt.UTC)) == 0
+def test_due_every_sweep_unless_set() -> None:
+    assert sweep_mod.due("AGENT_TIMES", dt.datetime(2026, 7, 1, 9, 15, tzinfo=dt.UTC))
+
+
+def test_due_reads_times_in_utc_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AGENT_TIMES", "09:45")
+    assert sweep_mod.due("AGENT_TIMES", dt.datetime(2026, 7, 1, 9, 46, tzinfo=dt.UTC))
+    assert not sweep_mod.due(
+        "AGENT_TIMES", dt.datetime(2026, 7, 1, 9, 16, tzinfo=dt.UTC)
+    )
+    assert not sweep_mod.due(
+        "AGENT_TIMES", dt.datetime(2026, 7, 1, 10, 15, tzinfo=dt.UTC)
+    )
+
+
+def test_due_across_midnight(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AGENT_TIMES", "23:50")
+    assert sweep_mod.due("AGENT_TIMES", dt.datetime(2026, 7, 2, 0, 5, tzinfo=dt.UTC))
+    assert not sweep_mod.due(
+        "AGENT_TIMES", dt.datetime(2026, 7, 2, 0, 25, tzinfo=dt.UTC)
+    )
 
 
 def test_tasks_not_ready_are_sent_once_up_to_the_limit(

@@ -24,7 +24,7 @@ source ──POST /v1/tasks──► api-kaianolevine-com ──► task-manager
                                                4. create it on the board
                                                5. run report names the task
 
-schedule (hourly) ──task.sweep──► task-manager queue ──► task-manager-cog
+schedule (30 min) ──task.sweep──► task-manager queue ──► task-manager-cog
                                                1. read the board and the registry
                                                2. lint every open task in
                                                   Ideas, Refining, Blocked
@@ -153,10 +153,11 @@ A task that is not ready is sent to task-groomer-cog when its content
 differs from what was last sent for grooming (the record's
 `groomed_fingerprint`): at most `GROOM_DISPATCH_LIMIT` a sweep (default 5),
 and only when `GROOM_DISPATCH=true`, because each one is a paid run. A job
-the API refuses is sent again next sweep. With `GROOM_HOURS` set (hours of
-the day, comma-separated, e.g. `4,5,6`, read in `GROOM_TIMEZONE`, default
-UTC), only the sweeps in those hours send any; the others still lint and move
-tasks.
+the API refuses is sent again next sweep. With `GROOM_TIMES` set (times of
+day, comma-separated `HH:MM`, e.g. `04:15,05:15`, read in `SWEEP_TIMEZONE`,
+default UTC), only the sweep starting within half an hour after one of them
+sends any; the others still lint and move tasks. `AGENT_TIMES` does the same
+for agent dispatch.
 
 A grooming run the spent budget stopped is reported by the groomer, and the
 task's record comes back with that content's fingerprint
@@ -252,7 +253,7 @@ always reviews and merges what an agent wrote. `dispatch.py` picks the
 tasks and `github.py` starts the runs; the workflow itself is the agent
 caller in each target repository, from the shared `.github` repository.
 
-Dispatch is triggered by the hourly sweep, not by Asana webhooks: Asana
+Dispatch is triggered by the sweep, not by Asana webhooks: Asana
 delivers a webhook at most once and recommends polling beside it, and this
 cog has no public endpoint for the webhook handshake, so the sweep is the
 one trigger.
@@ -286,7 +287,7 @@ the task to Review; one that needs grooming goes back to Refining (below).
 **Nothing here ever marks a task done:** a person merges the draft,
 confirms the change in dev, and completes the task.
 
-The trigger is the hourly sweep, not Asana webhooks. Asana delivers webhook
+The trigger is the sweep, not Asana webhooks. Asana delivers webhook
 events at most once and recommends polling as a fallback, and this cog has
 no public endpoint for the webhook handshake, so a poll is needed either
 way; an hour's wait does not matter for this work.
@@ -349,7 +350,7 @@ src/task_manager_cog/
   ids.py        reading ids in use, minting the next, naming the task
   sources.py    which sources mint and with what prefix
   board.py      the Asana project, and the only Asana calls
-  sweep.py      the hourly sweep: lint the board, move what is ready
+  sweep.py      the sweep: lint the board, move what is ready
   split.py      applying a split: the children, then the compound task
   groomed.py    recording tasks groomed by hand in a working session
   lint.py       the definition of ready
@@ -419,7 +420,7 @@ uv run mypy src/
 ## Deployment
 
 A release on `main` deploys the Lambda through the shared `lambda-deploy`
-workflow. The function, queue, dead-letter queue, alarms and the hourly
+workflow. The function, queue, dead-letter queue, alarms and the half-hourly
 schedule are declared in `mini-app-polis/infra`, which also supplies the
 repository variables `AWS_DEPLOY_ROLE_ARN`, `AWS_REGION` and
 `AWS_FUNCTION_NAME`. The schedule puts

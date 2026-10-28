@@ -1,6 +1,6 @@
 """Dispatching an agent for each Ready task it can take.
 
-The hourly sweep ends here. A task in Ready is meant for an agent: a
+The sweep ends here. A task in Ready is meant for an agent: a
 headless Claude Code run in GitHub Actions, in the repository the task
 names, that opens a draft pull request into ``dev``. This module picks the
 tasks, keeps the limits, records each run with the API, and starts it with

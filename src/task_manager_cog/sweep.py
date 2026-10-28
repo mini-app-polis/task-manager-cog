@@ -1,6 +1,6 @@
 """The sweep: every task waiting to be worked, checked against the definition of ready.
 
-A schedule puts one ``task.sweep`` message on this cog's queue every hour,
+A schedule puts one ``task.sweep`` message on this cog's queue every half hour,
 so a sweep runs in line with task creation and never beside it. A sweep
 reads the board once, checks each open task in the grooming columns with
 the linter (lint.py), and moves each task that passes to the ready column.
@@ -59,9 +59,13 @@ by gid, so they read the same in Doppler as on the board:
   GROOM_DISPATCH    true to send tasks for grooming, which is paid; off
                     unless set
   GROOM_DISPATCH_LIMIT  tasks sent a sweep (default: 5)
-  GROOM_HOURS       the hours of the day tasks are sent in, comma-separated
-                    (e.g. 4,5,6); every hour unless set
-  GROOM_TIMEZONE    the time zone GROOM_HOURS is read in (default: UTC)
+  GROOM_TIMES       the times of day tasks are sent at, comma-separated
+                    HH:MM (e.g. 04:15,05:15); every sweep unless set
+  SWEEP_TIMEZONE    the time zone GROOM_TIMES and AGENT_TIMES are read in
+                    (default: UTC)
+
+A sweep is the one for a time in GROOM_TIMES or AGENT_TIMES when it starts
+within half an hour after it, the interval the schedule runs the sweep at.
   GROOM_TASK_SHAPES true to hold tasks to the leaf or compound shape
                     (lint.py); off unless set
 
@@ -71,7 +75,8 @@ problems the fleet detected (``CI-``, ``RUN-``, ``CONF-``, ``API-``) wait
 for a person.
 
 After grooming, the sweep dispatches an agent for each Ready task it can
-take, when ``AGENT_DISPATCH`` or ``AGENT_DRY_RUN`` is on (dispatch.py).
+take, when ``AGENT_DISPATCH`` or ``AGENT_DRY_RUN`` is on (dispatch.py), and
+only in the sweeps for ``AGENT_TIMES`` when that is set.
 
 Run it locally, read-only, to see every task's verdict:
 
@@ -136,7 +141,11 @@ DEFAULT_READY_SECTION = "Ready"
 DEFAULT_REFINING_SECTION = "Refining"
 DEFAULT_BLOCKED_SECTION = "Blocked"
 DEFAULT_DISPATCH_LIMIT = 5
-DEFAULT_GROOM_TIMEZONE = "UTC"
+DEFAULT_SWEEP_TIMEZONE = "UTC"
+
+#: How often the schedule runs a sweep: a sweep is the one for a time in
+#: GROOM_TIMES or AGENT_TIMES when it starts within this after it.
+SWEEP_INTERVAL = dt.timedelta(minutes=30)
 
 #: Starts the comment on a task the sweep moved back out of Ready.
 SENT_BACK_PREFIX = "Sent back from Ready:"
@@ -288,32 +297,50 @@ def task_shapes() -> bool:
     return (os.environ.get("GROOM_TASK_SHAPES") or "").strip().lower() == "true"
 
 
-def groom_hours() -> frozenset[int] | None:
-    """The hours of the day tasks are sent in (``GROOM_HOURS``); None for every hour."""
-    raw = (os.environ.get("GROOM_HOURS") or "").strip()
+def sweep_timezone() -> ZoneInfo:
+    """The time zone times of day are read in: ``SWEEP_TIMEZONE``, or UTC."""
+    name = (os.environ.get("SWEEP_TIMEZONE") or "").strip()
+    return ZoneInfo(name or DEFAULT_SWEEP_TIMEZONE)
+
+
+def times_of_day(name: str) -> tuple[dt.time, ...] | None:
+    """The comma-separated HH:MM times in setting ``name``; None when unset."""
+    raw = (os.environ.get(name) or "").strip()
     if not raw:
         return None
-    return frozenset(int(hour) for hour in raw.split(",") if hour.strip())
+    return tuple(dt.time.fromisoformat(t.strip()) for t in raw.split(",") if t.strip())
 
 
-def groom_timezone() -> ZoneInfo:
-    """The time zone ``GROOM_HOURS`` is read in: ``GROOM_TIMEZONE``, or UTC."""
-    name = (os.environ.get("GROOM_TIMEZONE") or "").strip()
-    return ZoneInfo(name or DEFAULT_GROOM_TIMEZONE)
+def due(name: str, now: dt.datetime | None = None) -> bool:
+    """Whether the sweep at ``now`` is the one for a time in setting ``name``.
+
+    It is when it starts within ``SWEEP_INTERVAL`` after one of the times,
+    read in ``SWEEP_TIMEZONE``. Every sweep is when the setting is unset.
+    """
+    times = times_of_day(name)
+    if times is None:
+        return True
+    local = (now or dt.datetime.now(dt.UTC)).astimezone(sweep_timezone())
+    for time in times:
+        start = local.replace(
+            hour=time.hour, minute=time.minute, second=0, microsecond=0
+        )
+        # A time late in the evening is due just after midnight too.
+        for at in (start, start - dt.timedelta(days=1)):
+            if at <= local < at + SWEEP_INTERVAL:
+                return True
+    return False
 
 
 def dispatch_limit(now: dt.datetime | None = None) -> int:
     """How many tasks a sweep may send for grooming.
 
-    0 when sending is off, or when ``now`` falls outside ``GROOM_HOURS``.
+    0 when sending is off, or when the sweep is not one for ``GROOM_TIMES``.
     """
     if (os.environ.get("GROOM_DISPATCH") or "").strip().lower() != "true":
         return 0
-    hours = groom_hours()
-    if hours is not None:
-        local = (now or dt.datetime.now(dt.UTC)).astimezone(groom_timezone())
-        if local.hour not in hours:
-            return 0
+    if not due("GROOM_TIMES", now):
+        return 0
     raw = (os.environ.get("GROOM_DISPATCH_LIMIT") or "").strip()
     return max(0, int(raw)) if raw else DEFAULT_DISPATCH_LIMIT
 
@@ -682,7 +709,7 @@ def run_sweep(
                 link=board.url(task.gid),
             )
 
-        if agent.enabled() or agent.dry_run():
+        if (agent.enabled() or agent.dry_run()) and due("AGENT_TIMES"):
             _dispatch_agents(
                 board,
                 store,
