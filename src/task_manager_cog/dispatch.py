@@ -24,6 +24,12 @@ queue and is applied by results.py.
 
 A task passed over stays in Ready and is looked at again next sweep.
 
+**Time.** Dispatch is the end of the sweep and gets what time the sweep
+leaves. A task is not started with less than ``TIME_RESERVE_SECONDS`` left
+before the run's deadline: it is passed over as out of time, so the run
+stops with its report rather than being cut off between recording a run
+and starting it.
+
 **One run each, never retried.** A run is recorded with the API before it
 is started, and the record is the lock on its repository. The task then
 moves to In progress, and only then is the workflow started, so a task is
@@ -64,6 +70,7 @@ from mini_app_polis.api.contract import (
     AgentSpend,
 )
 from mini_app_polis.asana import AsanaSection, AsanaTaskRecord
+from mini_app_polis.deadline import remaining_seconds
 
 from .lint import executor_of, parse, task_id_of, where_repos
 
@@ -82,6 +89,10 @@ BASE_BRANCH = "dev"
 #: person anyway.
 MAX_TASK_CHARS = 50_000
 
+#: The least time left before the run's deadline to take one more task: its
+#: caller check, record, move and start, each a request or two.
+TIME_RESERVE_SECONDS = 30.0
+
 #: Why a Ready task was passed over, as the run report counts it.
 SKIP_NOT_SMALL = "effort_not_s"
 SKIP_WHERE = "where_not_one_repo"
@@ -89,6 +100,7 @@ SKIP_IN_FLIGHT = "repo_busy"
 SKIP_NO_CALLER = "no_agent_caller"
 SKIP_MONTHLY_CAP = "monthly_cap"
 SKIP_TOO_LONG = "task_too_long"
+SKIP_OUT_OF_TIME = "out_of_time"
 #: Followed by the tag: ``executor_cowork``, ``executor_person``.
 SKIP_EXECUTOR = "executor_"
 
@@ -312,8 +324,13 @@ def dispatch(
     template_marker: str,
     write: bool,
     now: Callable[[], dt.datetime] = lambda: dt.datetime.now(dt.UTC),
+    time_left: Callable[[], float | None] = remaining_seconds,
 ) -> DispatchResult:
-    """Dispatch what can be dispatched; with ``write`` off, only report it."""
+    """Dispatch what can be dispatched; with ``write`` off, only report it.
+
+    ``time_left`` is the seconds before the run's deadline, or None when
+    there is none.
+    """
     result = DispatchResult()
     in_progress = next(
         (s for s in sections if s.name.lower() == in_progress_section().lower()),
@@ -346,6 +363,10 @@ def dispatch(
         result=result,
     ):
         repo = candidate.repo
+        left = time_left()
+        if left is not None and left < TIME_RESERVE_SECONDS:
+            result.skip(SKIP_OUT_OF_TIME)
+            continue
         if repo in busy:
             result.skip(SKIP_IN_FLIGHT)
             continue
