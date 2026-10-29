@@ -105,6 +105,7 @@ from mini_app_polis.api.contract import (
     GroomingJobRequest,
     GroomingRecord,
     GroomingRecordWrite,
+    GroomingReturnRate,
     GroomingTask,
 )
 from mini_app_polis.asana import AsanaSection, AsanaTaskRecord
@@ -163,6 +164,34 @@ OPEN_QUESTIONS = "its grooming questions are not answered yet"
 #: sweep that first finds it held and on no other.
 HELD = "held: groomed as it reads, and nobody is asked"
 
+#: The run report's sections: what the sweep moved or sent, what it found on
+#: the board, and what the agent dispatch did.
+MOVED = "Moved"
+BOARD = "Board"
+AGENT = "Agent"
+
+#: Each Board counter's words in the report. The counter names posted to
+#: the API are the keys; only these labels are what a reader sees.
+BOARD_LABELS: dict[str, str] = {
+    "tasks_checked": "tasks checked",
+    "not_ready": "not ready",
+    "changed": "changed since they were last judged",
+    "records_written": "grooming records written",
+    "waiting_for_grooming": "waiting to be sent for grooming",
+    "waiting_on_blockers": "waiting on blockers",
+    "waiting_on_owner": "waiting on the owner's answers",
+    "awaiting_grooming": "sent for grooming, not back yet",
+    "held_without_questions": "held without questions",
+    "sent_back_from_ready": "sent back from Ready",
+    "ready_not_moved": "ready, not moved (GROOM_AUTO_READY is off)",
+    "blocked_not_moved": "waiting on blockers, not moved (GROOM_AUTO_READY is off)",
+    "failing_in_ready_not_moved": "failing in Ready, not moved (GROOM_AUTO_READY is off)",
+}
+
+#: The window the return-from-Ready ratio is read over.
+RETURN_RATE_DAYS = 30
+RETURN_RATE = "returned_from_ready_30_days"
+
 #: A minted id, ``<PREFIX>-<n>``.
 _MINTED_ID = re.compile(r"([A-Z][A-Z0-9]*)-\d+")
 
@@ -202,6 +231,10 @@ class Records(Protocol):
 
     def fail_agent_run(self, payload: AgentRunFailure) -> AgentRun:
         """Mark a dispatched agent run failed."""
+        ...
+
+    def grooming_return_rate(self, days: int | None = None) -> GroomingReturnRate:
+        """How often a task moved to Ready came back out, over ``days``."""
         ...
 
 
@@ -694,43 +727,44 @@ def run_sweep(
         for record in result.writes:
             store.record_grooming(record)
 
-        report.count("tasks_checked", len(result.verdicts))
-        report.count("not_ready", len(result.verdicts) - len(result.ready))
-        report.count("changed", sum(v.changed for v in result.verdicts))
-        report.count("records_written", len(result.writes))
-        report.count("waiting_for_grooming", result.waiting)
-        report.count("waiting_on_blockers", result.blocked)
-        report.count("waiting_on_owner", result.awaiting_owner)
-        report.count("awaiting_grooming", result.awaiting_grooming)
-        report.count("held_without_questions", len(result.held))
+        def board_count(key: str, value: Any) -> None:
+            report.count(key, value, label=BOARD_LABELS[key], section=BOARD)
+
+        board_count("tasks_checked", len(result.verdicts))
+        board_count("not_ready", len(result.verdicts) - len(result.ready))
+        board_count("changed", sum(v.changed for v in result.verdicts))
+        board_count("records_written", len(result.writes))
+        board_count("waiting_for_grooming", result.waiting)
+        board_count("waiting_on_blockers", result.blocked)
+        board_count("waiting_on_owner", result.awaiting_owner)
+        board_count("awaiting_grooming", result.awaiting_grooming)
+        board_count("held_without_questions", len(result.held))
+        board_count("sent_back_from_ready", len(result.sent_back))
+        if not auto_ready():
+            board_count("ready_not_moved", len(result.ready))
+            board_count("blocked_not_moved", result.blocked_not_moved)
+            board_count("failing_in_ready_not_moved", len(result.failed_ready))
+        _report_return_rate(store, report)
         for task in result.newly_held:
             report.notice(
                 "task newly held with nobody asked",
                 f"[{task.name}]({board.url(task.gid)})",
             )
-        for task in result.sent:
-            report.updated(
-                "task sent for grooming", task.name, link=board.url(task.gid)
-            )
-        report.count("sent_back_from_ready", len(result.sent_back))
-        if not auto_ready():
-            report.count("ready_not_moved", len(result.ready))
-            report.count("blocked_not_moved", result.blocked_not_moved)
-            report.count("failing_in_ready_not_moved", len(result.failed_ready))
+
+        # One line per task moved or sent, saying where it went.
+        def moved(where: str, task: AsanaTaskRecord) -> None:
+            report.updated(MOVED, f"{where}: {task.name}", link=board.url(task.gid))
+
         for task in result.moved:
-            report.updated("task moved to Ready", task.name, link=board.url(task.gid))
+            moved(ready_section(), task)
         for task in result.moved_to_blocked:
-            report.updated("task moved to Blocked", task.name, link=board.url(task.gid))
-        for task in result.returned:
-            report.updated(
-                "task sent back from Ready", task.name, link=board.url(task.gid)
-            )
+            moved(blocked_section(), task)
         for task, column in result.sent_back:
-            report.updated(
-                f"task sent back from Ready to {column}",
-                task.name,
-                link=board.url(task.gid),
-            )
+            moved(f"back from Ready to {column}", task)
+        for task in result.returned:
+            moved("came back out of Ready", task)
+        for task in result.sent:
+            moved("sent for grooming", task)
 
         if (agent.enabled() or agent.dry_run()) and due("AGENT_TIMES"):
             _dispatch_agents(
@@ -740,6 +774,35 @@ def run_sweep(
                 report,
                 exclude={t.gid for t in result.failed_ready},
             )
+
+
+def return_rate_line(rate: GroomingReturnRate) -> str:
+    """``3 of 40 (8%)``: tasks back out of Ready of those moved there.
+
+    ``0 of 0`` when nothing moved to Ready in the window, which has no ratio.
+    """
+    line = f"{rate.returned} of {rate.moved_to_ready}"
+    return line if rate.ratio is None else f"{line} ({rate.ratio:.0%})"
+
+
+def _report_return_rate(store: Records, report: Any) -> None:
+    """The 30-day return-from-Ready ratio, on its Board line.
+
+    One read a sweep. A failed read leaves the line out and is noted; it
+    never fails the sweep.
+    """
+    try:
+        rate = store.grooming_return_rate(RETURN_RATE_DAYS)
+    except Exception as exc:  # noqa: BLE001 — the sweep's own work is done
+        log.warning("sweep: return-from-Ready ratio not read: %s", exc)
+        report.note("return-from-Ready ratio not read")
+        return
+    report.count(
+        RETURN_RATE,
+        return_rate_line(rate),
+        label=f"returned from Ready, {RETURN_RATE_DAYS} days: {{}}",
+        section=BOARD,
+    )
 
 
 def _dispatch_agents(
@@ -775,10 +838,22 @@ def _dispatch_agents(
         template_marker=DO_NOT_WORK,
         write=write,
     )
-    report.count("agent_spend_usd", f"{result.spend_usd:.4f}")
-    report.count("agent_dispatched", len(result.dispatched))
+    report.count(
+        "agent_spend_usd",
+        f"{result.spend_usd:.4f}",
+        label="${} spent this month",
+        section=AGENT,
+    )
+    report.count(
+        "agent_dispatched", len(result.dispatched), label="dispatched", section=AGENT
+    )
     for reason, n in sorted(result.skipped.items()):
-        report.count(f"agent_skipped_{reason}", n)
+        report.count(
+            f"agent_skipped_{reason}",
+            n,
+            label=f"skipped: {reason.replace('_', ' ')}",
+            section=AGENT,
+        )
     for candidate, run in result.dispatched:
         report.updated(
             f"agent dispatched to {candidate.repo} as run {run.id}",

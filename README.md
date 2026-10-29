@@ -130,6 +130,16 @@ to Ready that a person moves back, or that the sweep sends back from Ready,
 is counted on its record, and named in the run report: that count is how to
 tell whether ready meant ready.
 
+Each sweep's run report has three sections. **Moved** has one line per task
+moved or sent, saying where it went (`~ Ready: MINI-431 · …`). **Board**
+counts what the sweep found, one count a line: tasks checked, not ready,
+waiting on blockers, held without questions, and the rest, with the share
+of tasks moved to Ready over the last 30 days that came back out
+(`returned from Ready, 30 days: 3 of 40 (8%)`, from
+`GET /v1/tasks/groomings/return-rate`; when that read fails the line is
+left out and the report notes it). **Agent** has the dispatch's spend this
+month, what it dispatched, and what it skipped by reason, one a line.
+
 ## Who does a task
 
 A task's executor is its `Executor:` line, the last line of the template
