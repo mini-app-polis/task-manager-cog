@@ -1,3 +1,10 @@
+## [1.18.2](https://github.com/mini-app-polis/task-manager-cog/compare/v1.18.1...v1.18.2) (2026-10-29)
+
+
+### Bug Fixes
+
+* **dispatch:** start no agent task with under 30 s left before the run deadline ([da7c61d](https://github.com/mini-app-polis/task-manager-cog/commit/da7c61d6192fe039d4f611f70003e3b0433cb6a7))
+
 ## [1.18.1](https://github.com/mini-app-polis/task-manager-cog/compare/v1.18.0...v1.18.1) (2026-10-28)
 
 
