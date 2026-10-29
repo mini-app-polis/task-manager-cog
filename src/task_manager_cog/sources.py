@@ -3,11 +3,12 @@
 One prefix per source, and one writer per prefix. This cog is the only
 writer for every prefix listed here, and its queue delivers one job at a
 time, so minting "the highest id in use plus one" cannot hand out the same
-id twice. Ids written by hand (in the board's own UI) use a prefix that is
-deliberately absent from this table, so the two never meet.
+id twice.
 
 A source that already has an id of its own — an issue's ``repo#n`` — brings
-it, and nothing is minted. The request contract
+it, and nothing is minted. A task filed by hand (``manual``) takes the
+board's own ``MINI`` prefix, which this cog also mints when grooming a task
+that has no id; both run on the same one-at-a-time queue. The request contract
 (:data:`mini_app_polis.api.contract.GIVEN_ID_SOURCES`) says which sources must
 carry an id; this table says what to do with the rest. A test holds the two
 in step.
@@ -49,6 +50,10 @@ SOURCES: dict[str, Source] = {
     # template and tags the task for a person, so it is neither groomed nor
     # dispatched to an agent.
     "secret-rotation": Source("secret-rotation", prefix="ROT", swept=False),
+    # A task filed by hand from a working session. It is minted from the
+    # board's own prefix, as grooming mints a task with no id, and groomed
+    # and dispatched like any other.
+    "manual": Source("manual", prefix="MINI"),
 }
 
 #: Id prefixes whose tasks the sweep leaves alone.

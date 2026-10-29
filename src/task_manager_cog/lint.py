@@ -20,9 +20,9 @@ everything a task is missing.
 
 **Shapes.** With ``shapes`` on, a task must also be one of two shapes:
 
-- a *leaf*: Where names at most one repository, and the task carries at
-  most one executor tag. Only a task tagged for another executor (board or
-  console work) may name no repository.
+- a *leaf*: Where names at most one repository, and the task has one
+  executor (its ``Executor:`` line, or at most one executor tag). Only a
+  cowork or person task (board or console work) may name no repository.
 - a *compound* task: its Done when says it is done when its children are
   (``MINI-1, MINI-2 and MINI-3 are done``), and its Blocked by lists every
   one of them. It has no work of its own, so it may span repositories.
@@ -39,7 +39,15 @@ from typing import get_args
 from mini_app_polis.api.contract import GroomingExecutor
 
 from .compose import EMPTY_TITLE_FALLBACK, REVIEW_TAG, TEMPLATE_FIELDS
+from .executor import AGENT, executor_of_task
+from .executor import LABEL as EXECUTOR_LABEL
 from .ids import SEPARATOR
+
+#: The template fields a ready task must have. ``Executor`` is not among
+#: them yet: the sweep fills it in on every task first (executor.py).
+REQUIRED_FIELDS: tuple[str, ...] = tuple(
+    f for f in TEMPLATE_FIELDS if f != EXECUTOR_LABEL
+)
 
 #: Effort sizes. L is ready like the others: implementing it means creating
 #: its subtasks.
@@ -258,13 +266,19 @@ def children_of(done_when: str) -> list[str]:
 
 
 def _shape_problems(
-    *, done_when: str, where: str, blocked_ids: Collection[str], tags: Collection[str]
+    *,
+    done_when: str,
+    where: str,
+    blocked_ids: Collection[str],
+    tags: Collection[str],
+    executor_line: str | None,
 ) -> list[str]:
     """What keeps a task from being a leaf or a compound task."""
     problems: list[str] = []
     names = get_args(GroomingExecutor)
     executors = sorted({t.lower() for t in tags if t.lower() in names})
-    if len(executors) > 1:
+    if len(executors) > 1 and executor_line is None:
+        # With an Executor line the line decides, and the sweep fixes the tags.
         problems.append(f"tagged for more than one executor ({', '.join(executors)})")
 
     children = children_of(done_when)
@@ -347,7 +361,7 @@ def lint(
         problems.append(f"tagged {REVIEW_TAG}")
 
     parsed = parse(notes)
-    missing = [f for f in TEMPLATE_FIELDS if f not in parsed.fields]
+    missing = [f for f in REQUIRED_FIELDS if f not in parsed.fields]
     if missing:
         problems.append(f"template is missing {', '.join(missing)}")
     fields = parsed.fields
@@ -360,7 +374,7 @@ def lint(
 
     where = fields.get("Where", "")
     no_repository = not where or where.lower() in NONE_WORDS
-    if shapes and no_repository and executor_of(tags) is not None:
+    if shapes and no_repository and executor_of_task(notes, tags) != AGENT:
         # Board or console work: a leaf with no repository.
         where = ""
     elif not where:
@@ -407,6 +421,7 @@ def lint(
                 where=where,
                 blocked_ids=_TASK_ID.findall(blocked_by),
                 tags=tags,
+                executor_line=fields.get(EXECUTOR_LABEL),
             )
         )
 

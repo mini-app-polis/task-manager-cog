@@ -65,6 +65,8 @@ from mini_app_polis.pipeline_status import run_report
 from ._version import __version__
 from .board import Board
 from .compose import REVIEW_TAG, TEMPLATE_FIELDS
+from .executor import AGENT, EXECUTORS, line_value, tagged_executor
+from .executor import LABEL as EXECUTOR_LABEL
 from .ids import next_id, task_name
 from .lint import (
     ORIGINAL_MARKER,
@@ -140,6 +142,14 @@ def groomed_text(task: AsanaTaskRecord, proposal: GroomingProposal) -> tuple[str
         attr = _FIELDS_FROM_PROPOSAL.get(label)
         proposed = getattr(proposal, attr) if attr else None
         value = proposed if proposed else current.fields.get(label, "")
+        if label == EXECUTOR_LABEL:
+            # The task's own executor wins over a proposal's (as its tag
+            # did); a task with neither is the agent's.
+            value = (
+                line
+                if (line := line_value(task.notes)) in EXECUTORS
+                else tagged_executor(task.tag_names) or proposal.executor or AGENT
+            )
         first, *rest = _field_lines(value) if value else [""]
         block.append(f"{label}: {first}".rstrip())
         block.extend(rest)

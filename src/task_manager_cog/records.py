@@ -62,6 +62,7 @@ from mini_app_polis.api.contract import (
 )
 from mini_app_polis.asana import AsanaTaskRecord
 
+from .executor import AGENT, TAGGED, executor_of_task, without_line
 from .lint import task_id_of
 
 #: Starts the comment a grooming's questions are posted as.
@@ -104,12 +105,23 @@ def unanswered(comments: Sequence[str]) -> bool:
 
 
 def fingerprint(task: AsanaTaskRecord, replies: Sequence[str] = ()) -> str:
-    """sha256 of the task's name, body and tags, and any answers."""
+    """sha256 of the task's name, body and tags, and any answers.
+
+    Who works the task is counted once, the way a tag was before the
+    ``Executor:`` line existed: the line is left out of the body, and the
+    task's executor stands in for its executor tags. So the sweep writing
+    the line, or tagging a task to match it, changes no fingerprint, and a
+    task is not groomed again for it.
+    """
+    executor = executor_of_task(task.notes, task.tag_names)
+    tags = {t.lower() for t in task.tag_names if t.lower() not in TAGGED}
+    if executor != AGENT:
+        tags.add(executor)
     content = "\n\x1f".join(
         (
             task.name,
-            task.notes,
-            ",".join(sorted(t.lower() for t in task.tag_names)),
+            without_line(task.notes),
+            ",".join(sorted(tags)),
             *replies,
         )
     )

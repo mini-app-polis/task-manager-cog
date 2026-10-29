@@ -6,6 +6,7 @@ import html
 from dataclasses import dataclass, field
 
 import pytest
+from mini_app_polis import pipeline_status
 from mini_app_polis.api.contract import (
     AgentRun,
     AgentRunCreate,
@@ -15,6 +16,7 @@ from mini_app_polis.api.contract import (
     GroomingJobRequest,
     GroomingRecord,
     GroomingRecordWrite,
+    GroomingReturnRate,
 )
 from mini_app_polis.asana import AsanaSection, AsanaTaskRecord
 
@@ -103,6 +105,16 @@ class FakeBoard:
     def update(self, task_gid: str, *, name: str, html_notes: str) -> None:
         text = html_notes.removeprefix("<body>").removesuffix("</body>")
         self._replace(task_gid, name=name, notes=html.unescape(text))
+
+    def update_body(self, task_gid: str, html_notes: str) -> None:
+        text = html_notes.removeprefix("<body>").removesuffix("</body>")
+        self._replace(task_gid, notes=html.unescape(text), html_notes=html_notes)
+
+    def assign(self, task_gid: str) -> None:
+        self._replace(task_gid, assignee_gid="owner")
+
+    def unassign(self, task_gid: str) -> None:
+        self._replace(task_gid, assignee_gid=None)
 
     def tag(self, task_gid: str, tag_name: str) -> None:
         self.tagged.append((task_gid, tag_name))
@@ -283,6 +295,15 @@ class FakeRecords:
 
     def fail_agent_run(self, payload: AgentRunFailure) -> AgentRun:
         raise AssertionError("nothing fails here")
+
+    return_rate: GroomingReturnRate | None = None
+    return_rate_reads: list[int | None] = field(default_factory=list)
+
+    def grooming_return_rate(self, days: int | None = None) -> GroomingReturnRate:
+        self.return_rate_reads.append(days)
+        if self.return_rate is None:
+            raise RuntimeError("503 from the API")
+        return self.return_rate
 
 
 def test_run_sweep_moves_and_reports_in_production(
@@ -705,7 +726,7 @@ def test_run_sweep_names_each_task_moved_to_blocked(
         records_factory=lambda: FakeRecords(),
     )
     ((_, kwargs),) = _no_outbound_reports
-    assert "task moved to Blocked: [MINI-6 · Waits](https://board/6)" in kwargs["text"]
+    assert "Moved\n  ~ [Blocked: MINI-6 · Waits](https://board/6)" in kwargs["text"]
 
 
 def test_run_sweep_counts_tasks_it_would_move_to_blocked(
@@ -1278,7 +1299,7 @@ def test_the_run_report_counts_tasks_sent_back_from_ready(
     )
     ((_, kwargs),) = _no_outbound_reports
     assert kwargs["sent_back_from_ready"] == 1
-    assert "task sent back from Ready to Refining" in kwargs["text"]
+    assert "~ [back from Ready to Refining: MINI-1 · Vague]" in kwargs["text"]
     assert store.stored["1"].returned_count == 1
 
 
@@ -1339,14 +1360,9 @@ def test_a_task_held_with_nobody_asked_is_counted_and_named(
     assert [j.task.name for j in store.jobs] == ["MINI-8 · New"]
     ((args, kwargs),) = _no_outbound_reports
     assert kwargs["held_without_questions"] == 1
-    (line,) = [
-        line
-        for line in kwargs["text"].splitlines()
-        if line.startswith("task newly held with nobody asked")
-    ]
-    assert line == (
-        "task newly held with nobody asked: [MINI-2 · Held](https://board/2)"
-    )
+    assert (
+        "task newly held with nobody asked\n  [MINI-2 · Held](https://board/2)"
+    ) in kwargs["text"]
     # Named, but not a problem with the run.
     assert args[1] == "SUCCESS" and kwargs["notable"] is True
     assert sweep_mod.HELD in store.stored["2"].problems
@@ -1355,3 +1371,148 @@ def test_a_task_held_with_nobody_asked_is_counted_and_named(
     assert board.comments("2") == []
     assert board.get("2") == held
     assert store.stored["2"].groomed_fingerprint == fingerprint(held)
+
+
+def test_the_sweep_keeps_executors_in_step_before_it_judges_the_board(
+    production, monkeypatch: pytest.MonkeyPatch, _no_outbound_reports
+) -> None:
+    monkeypatch.setenv("GROOM_AUTO_READY", "true")
+    tagged = dataclasses.replace(
+        _task("2", "MINI-2 · Rotate", section="Blocked"),
+        tag_names=("person",),
+        html_notes=f"<body>{READY}</body>",
+    )
+    board = FakeBoard([tagged])
+    store = FakeRecords(stored={"2": _groomed(tagged)})
+
+    _sweep_sending(store, board, monkeypatch, "5")
+
+    task = board.get("2")
+    assert task is not None
+    assert "\nExecutor: person\n" in task.notes
+    assert task.assignee_gid == "owner"
+    assert store.jobs == []  # writing the line is not a change to groom
+    (args, kwargs), *_ = _no_outbound_reports
+    assert "executor kept in step" in kwargs["text"]
+    assert "Executor: person written, assigned to the owner" in kwargs["text"]
+
+
+# ── the run report's layout ──────────────────────────────────────────────
+
+
+def _rendered(kwargs: dict) -> str:
+    """The run report as it is posted: its text, then its counter sections."""
+    reserved = {
+        "text",
+        "repo",
+        "production_only",
+        "source",
+        "suggestion",
+        "notable",
+        "run_id",
+        "version",
+        "counter_labels",
+        "counter_sections",
+    }
+    extras = {k: v for k, v in kwargs.items() if k not in reserved}
+    return pipeline_status._merge_extras_into_text(
+        kwargs["text"], extras, kwargs["counter_labels"], kwargs["counter_sections"]
+    )
+
+
+def _rate(moved: int, returned: int) -> GroomingReturnRate:
+    now = dt.datetime.now(dt.UTC)
+    return GroomingReturnRate(
+        days=30,
+        since=now - dt.timedelta(days=30),
+        counting_since=now - dt.timedelta(days=30),
+        moved_to_ready=moved,
+        returned=returned,
+        ratio=returned / moved if moved else None,
+    )
+
+
+def test_a_report_with_moves_has_moved_board_and_no_glued_counters(
+    production, monkeypatch: pytest.MonkeyPatch, _no_outbound_reports
+) -> None:
+    monkeypatch.setenv("GROOM_AUTO_READY", "true")
+    board = FakeBoard(list(BOARD_TASKS))
+    store = FakeRecords(return_rate=_rate(40, 3))
+    run_sweep(
+        run_id="r-1",
+        board_factory=lambda: board,
+        repos_loader=lambda: REPOS,
+        records_factory=lambda: store,
+    )
+    ((_, kwargs),) = _no_outbound_reports
+    text = _rendered(kwargs)
+    assert "Moved\n  ~ [Ready: MINI-1 · Ready idea](https://board/1)" in text
+    board_section = text[text.index("\nBoard\n") :]
+    assert "  4 tasks checked\n" in board_section
+    assert "  returned from Ready, 30 days: 3 of 40 (8%)" in board_section
+    assert "=" not in text.replace("(version=", "")
+    for line in text.splitlines():
+        if "MINI-1 · Ready idea" in line:
+            assert "tasks checked" not in line
+    # The names posted to the API are as they were.
+    assert kwargs["tasks_checked"] == 4
+    assert store.return_rate_reads == [30]
+
+
+def test_a_report_without_moves_has_no_moved_section(
+    production, _no_outbound_reports
+) -> None:
+    board = FakeBoard(list(BOARD_TASKS))
+    run_sweep(
+        run_id="r-1",
+        board_factory=lambda: board,
+        repos_loader=lambda: REPOS,
+        records_factory=lambda: FakeRecords(return_rate=_rate(0, 0)),
+    )
+    ((_, kwargs),) = _no_outbound_reports
+    text = _rendered(kwargs)
+    assert "Moved" not in text
+    assert "Board\n  4 tasks checked" in text
+    assert "returned from Ready, 30 days: 0 of 0\n" in text + "\n"
+
+
+def test_a_failed_ratio_read_leaves_the_line_out_and_is_noted(
+    production, _no_outbound_reports
+) -> None:
+    board = FakeBoard(list(BOARD_TASKS))
+    store = FakeRecords()  # its read raises
+    run_sweep(
+        run_id="r-1",
+        board_factory=lambda: board,
+        repos_loader=lambda: REPOS,
+        records_factory=lambda: store,
+    )
+    ((_, kwargs),) = _no_outbound_reports
+    text = _rendered(kwargs)
+    assert "returned from Ready" not in text
+    assert "return-from-Ready ratio not read" in text
+    assert sweep_mod.RETURN_RATE not in kwargs
+
+
+def test_the_agent_section_lists_spend_and_skips_one_a_line(
+    production, monkeypatch: pytest.MonkeyPatch, _no_outbound_reports
+) -> None:
+    monkeypatch.setenv("AGENT_DISPATCH", "true")
+    monkeypatch.setenv("AGENT_DRY_RUN", "true")
+    board = FakeBoard(
+        [
+            _task("1", "MINI-1 · Ready", section="Ready"),
+            _task(
+                "2",
+                "MINI-2 · Medium",
+                notes=READY.replace("Effort: S", "Effort: M"),
+                section="Ready",
+            ),
+        ]
+    )
+    _sweep_dispatching(FakeRecords(return_rate=_rate(1, 0)), board, FakeStarter)
+    ((_, kwargs),) = _no_outbound_reports
+    text = _rendered(kwargs)
+    agent_section = text[text.index("\nAgent\n") :]
+    assert "  $0.0000 spent this month\n" in agent_section + "\n"
+    assert "  1 skipped: effort not s" in agent_section

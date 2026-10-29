@@ -65,6 +65,7 @@ from mini_app_polis.pipeline_status import RunReport
 
 from .board import Board
 from .compose import REVIEW_TAG, ComposedTask
+from .executor import AGENT, plain_line
 from .groom import MANUAL_PREFIX, groomed_html, groomed_text, questions_comment
 from .ids import next_id, task_name
 from .lint import NONE_WORDS, lint, only_blocked, parse, task_id_of, where_repos
@@ -159,6 +160,7 @@ def child_notes(
             f"Effort: {child.effort}",
             "PR:",
             f"Blocked by: {child_blocked_by(child, ids)}",
+            plain_line(child.executor or AGENT),
         ]
     )
     body = f"{child.body.strip()}\n\nPart of {parent_id} · {parent_title}."

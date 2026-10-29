@@ -24,11 +24,9 @@ from mini_app_polis.asana import (
 )
 
 from .compose import ComposedTask
+from .executor import OWNER, tagged_executor
 
 log = logger_mod.get_logger()
-
-#: Every task this cog creates is the operator's own work.
-ASSIGNEE = "me"
 
 TASK_URL_TEMPLATE = "https://app.asana.com/0/{project_gid}/{task_gid}"
 
@@ -88,14 +86,19 @@ class Board:
         return tuple(gids)
 
     def create(self, name: str, task: ComposedTask, *, external_id: str) -> str:
-        """Create the task and return its gid."""
+        """Create the task and return its gid.
+
+        A cowork or person task is assigned to the owner; an agent task to
+        no one (executor.py).
+        """
+        assignee = OWNER if tagged_executor(task.tag_names) is not None else None
         return self._client.create_task(
             AsanaTaskInput(
                 name=name,
                 html_notes=task.html_notes,
                 project_gid=self.project_gid,
                 section_gid=self.section_gid,
-                assignee=ASSIGNEE,
+                assignee=assignee,
                 due_on=task.due_on,
                 tag_gids=self.tag_gids(task.tag_names),
                 external_id=external_id,
@@ -121,6 +124,18 @@ class Board:
     def update(self, task_gid: str, *, name: str, html_notes: str) -> None:
         """Rewrite a task's name and body."""
         self._client.update_task(task_gid, name=name, html_notes=html_notes)
+
+    def update_body(self, task_gid: str, html_notes: str) -> None:
+        """Rewrite a task's body, leaving its name alone."""
+        self._client.update_task(task_gid, html_notes=html_notes)
+
+    def assign(self, task_gid: str) -> None:
+        """Assign a task to the owner."""
+        self._client.update_task(task_gid, assignee=OWNER)
+
+    def unassign(self, task_gid: str) -> None:
+        """Leave a task assigned to no one."""
+        self._client.update_task(task_gid, unassign=True)
 
     def tag(self, task_gid: str, tag_name: str) -> None:
         """Put a tag on a task."""
