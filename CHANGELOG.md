@@ -1,3 +1,19 @@
+# [1.19.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.18.2...v1.19.0) (2026-10-29)
+
+
+### Bug Fixes
+
+* **deps:** bump miniapppolis-common-utils to 6.34.0 ([f3b9cc0](https://github.com/mini-app-polis/task-manager-cog/commit/f3b9cc039ce20647a6a0b81ae63dda4b64b0435d))
+* **deps:** bump miniapppolis-common-utils to 6.35.0 ([e0bbde3](https://github.com/mini-app-polis/task-manager-cog/commit/e0bbde374eff3b64c3d842d4d0f33a7bedf1b929))
+* **deps:** bump miniapppolis-common-utils to 7.1.0 ([594028b](https://github.com/mini-app-polis/task-manager-cog/commit/594028b29a79e852882d4848e945336638638763))
+
+
+### Features
+
+* **executor:** an Executor line on every task, kept in step with its tag and assignment by the sweep ([7b8960d](https://github.com/mini-app-polis/task-manager-cog/commit/7b8960dfc138a5f7fdd315a6599fe5743b1d66f5))
+* **sources:** accept manual tasks filed by hand, on common-python-utils 7.x ([c8b8c00](https://github.com/mini-app-polis/task-manager-cog/commit/c8b8c00e6110dae8289540ae967da0d04a8256aa))
+* **sweep:** report in Moved, Board and Agent sections, with the 30-day return-from-Ready ratio ([76be57f](https://github.com/mini-app-polis/task-manager-cog/commit/76be57fdc79c7a84db2e50a78ddfd0ebf89ed219))
+
 ## [1.18.2](https://github.com/mini-app-polis/task-manager-cog/compare/v1.18.1...v1.18.2) (2026-10-29)
 
 
