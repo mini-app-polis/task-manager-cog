@@ -121,7 +121,9 @@ class FakeBoard:
         self.comments.append((task_gid, text))
 
 
-def _dispatch(tasks, *, store=None, starter=None, board=None, write=True):
+def _dispatch(
+    tasks, *, store=None, starter=None, board=None, write=True, time_left=None
+):
     store = store or FakeStore()
     starter = starter or FakeStarter()
     board = board or FakeBoard()
@@ -136,6 +138,7 @@ def _dispatch(tasks, *, store=None, starter=None, board=None, write=True):
         template_marker="do not work",
         write=write,
         now=lambda: NOW,
+        time_left=time_left or (lambda: None),
     )
     return result, store, starter, board
 
@@ -321,3 +324,22 @@ def test_an_unrelated_tag_does_not_stop_dispatch() -> None:
     tagged = dataclasses.replace(_task("1", "MINI-1 · Admin"), tag_names=("admin",))
     result, *_ = _dispatch([tagged])
     assert len(result.dispatched) == 1
+
+
+def test_a_task_is_not_started_without_time_left_for_it() -> None:
+    tasks = [
+        _task("1", "MINI-1 · First"),
+        _task("2", "MINI-2 · Curator", where="wiki-curator-cog"),
+    ]
+    left = iter([agent.TIME_RESERVE_SECONDS + 1, agent.TIME_RESERVE_SECONDS - 1])
+    result, store, starter, board = _dispatch(tasks, time_left=lambda: next(left))
+    assert [c.task.gid for c, _ in result.dispatched] == ["1"]
+    assert result.skipped == {agent.SKIP_OUT_OF_TIME: 1}
+    assert [r.task_gid for r in store.recorded] == ["1"]
+    assert [repo for repo, *_ in starter.started] == ["watcher-cog"]
+    assert board.moves == [("1", "s-progress")]
+
+
+def test_without_a_deadline_time_never_stops_dispatch() -> None:
+    result, *_ = _dispatch([_task("1", "MINI-1 · First")], time_left=lambda: None)
+    assert len(result.dispatched) == 1 and result.skipped == {}
