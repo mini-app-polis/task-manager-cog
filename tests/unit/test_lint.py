@@ -21,7 +21,7 @@ Where: api-kaianolevine-com (the notify route), task-manager-cog
 Constraints: None
 Effort: M
 PR:
-Blocked by: MINI-21
+Blocked by: TASK-21
 
 Run reports already carry their severity; this reads it.
 Links: https://example.test/run?id=1"""
@@ -29,7 +29,7 @@ Links: https://example.test/run?id=1"""
 
 def _lint(
     *,
-    name: str = "MINI-144 · Cog-run detector",
+    name: str = "TASK-144 · Cog-run detector",
     notes: str = READY_NOTES,
     tags: tuple[str, ...] = (),
     completed: dict[str, bool] | None = None,
@@ -39,7 +39,7 @@ def _lint(
         notes=notes,
         tags=tags,
         repos=REPOS,
-        completed_by_id={"MINI-21": True} if completed is None else completed,
+        completed_by_id={"TASK-21": True} if completed is None else completed,
     )
 
 
@@ -74,7 +74,7 @@ def test_a_label_the_template_lacks_is_body_and_the_fields_around_it_still_read(
 ):
     parsed = parse(
         "Done when: the drill exits 0\nWhere: db-ops\nWhy: never run by cron\n"
-        "Constraints: none on the 2nd\nBlocked by: time.\nFrom: MINI-64"
+        "Constraints: none on the 2nd\nBlocked by: time.\nFrom: TASK-64"
     )
     assert parsed.fields == {
         "Done when": "the drill exits 0",
@@ -82,7 +82,7 @@ def test_a_label_the_template_lacks_is_body_and_the_fields_around_it_still_read(
         "Constraints": "none on the 2nd",
         "Blocked by": "time.",
     }
-    assert parsed.body == "Why: never run by cron\nFrom: MINI-64"
+    assert parsed.body == "Why: never run by cron\nFrom: TASK-64"
 
 
 def test_a_continuation_line_is_not_mistaken_for_a_label() -> None:
@@ -106,10 +106,10 @@ def test_a_task_with_no_template_fails_every_field() -> None:
 @pytest.mark.parametrize(
     ("name", "expected"),
     [
-        ("MINI-12 · Do the thing", "MINI-12"),
+        ("TASK-12 · Do the thing", "TASK-12"),
         ("infra#4 · Fix it", "infra#4"),
         ("Do the thing", None),
-        ("MINI-12 - Do the thing", None),
+        ("TASK-12 - Do the thing", None),
     ],
 )
 def test_task_id_of(name: str, expected: str | None) -> None:
@@ -174,8 +174,8 @@ def test_pr_belongs_to_whoever_works_it() -> None:
 
 
 def test_blocked_by_an_open_task_is_not_ready() -> None:
-    problems = _lint(completed={"MINI-21": False})
-    assert problems == ["Blocked by MINI-21, which is not done"]
+    problems = _lint(completed={"TASK-21": False})
+    assert problems == ["Blocked by TASK-21, which is not done"]
 
 
 _TODAY = dt.date(2026, 10, 23)
@@ -183,11 +183,11 @@ _TODAY = dt.date(2026, 10, 23)
 
 def _lint_on(blocked_by: str, completed: dict[str, bool] | None = None) -> list[str]:
     return lint(
-        name="MINI-77 · Verify the first monthly db-drill run",
+        name="TASK-77 · Verify the first monthly db-drill run",
         notes=_with("Blocked by", blocked_by),
         tags=(),
         repos=REPOS,
-        completed_by_id={"MINI-21": True} if completed is None else completed,
+        completed_by_id={"TASK-21": True} if completed is None else completed,
         today=_TODAY,
     )
 
@@ -202,12 +202,12 @@ def test_a_date_that_has_come_no_longer_blocks(day: str) -> None:
 
 
 def test_a_date_beside_a_task_id_blocks_with_it() -> None:
-    assert _lint_on("MINI-21, 2026-11-02") == ["Blocked until 2026-11-02"]
-    assert _lint_on("MINI-21, 2026-11-02", completed={"MINI-21": False}) == [
-        "Blocked by MINI-21, which is not done",
+    assert _lint_on("TASK-21, 2026-11-02") == ["Blocked until 2026-11-02"]
+    assert _lint_on("TASK-21, 2026-11-02", completed={"TASK-21": False}) == [
+        "Blocked by TASK-21, which is not done",
         "Blocked until 2026-11-02",
     ]
-    assert _lint_on("MINI-21 and 2026-10-01") == []
+    assert _lint_on("TASK-21 and 2026-10-01") == []
 
 
 @pytest.mark.parametrize("day", ["2026-11-2", "2026-13-01", "2026-02-30", "11/02/2026"])
@@ -223,7 +223,7 @@ def test_blocked_by_naming_neither_a_task_nor_a_date_is_not_ready() -> None:
 def test_a_date_ahead_counts_as_waiting() -> None:
     assert only_blocked(["Blocked until 2026-11-02"])
     assert only_blocked(
-        ["Blocked by MINI-21, which is not done", "Blocked until 2026-11-02"]
+        ["Blocked by TASK-21, which is not done", "Blocked until 2026-11-02"]
     )
     assert not only_blocked(
         ["Blocked until 2026-11-02", "Effort is blank, not S, M or L"]
@@ -231,22 +231,22 @@ def test_a_date_ahead_counts_as_waiting() -> None:
 
 
 def test_only_blocked_is_true_only_when_every_problem_is_an_open_blocker() -> None:
-    assert only_blocked(["Blocked by MINI-21, which is not done"])
+    assert only_blocked(["Blocked by TASK-21, which is not done"])
     assert only_blocked(
         [
-            "Blocked by MINI-21, which is not done",
-            "Blocked by MINI-22, which is not done",
+            "Blocked by TASK-21, which is not done",
+            "Blocked by TASK-22, which is not done",
         ]
     )
     assert not only_blocked([])
-    assert not only_blocked(["Blocked by MINI-21, which is not on the board"])
+    assert not only_blocked(["Blocked by TASK-21, which is not on the board"])
     assert not only_blocked(
-        ["Blocked by MINI-21, which is not done", "Effort is blank, not S, M or L"]
+        ["Blocked by TASK-21, which is not done", "Effort is blank, not S, M or L"]
     )
 
 
 def test_blocked_by_an_unknown_task_is_not_ready() -> None:
-    assert "Blocked by MINI-21, which is not on the board" in _lint(completed={})
+    assert "Blocked by TASK-21, which is not on the board" in _lint(completed={})
 
 
 @pytest.mark.parametrize("value", ["", "None", "-", "\u2014"])
@@ -286,11 +286,11 @@ def _shaped(
     completed: dict[str, bool] | None = None,
 ) -> list[str]:
     return lint(
-        name="MINI-171 · Grooming splits tasks",
+        name="TASK-171 · Grooming splits tasks",
         notes=notes,
         tags=tags,
         repos=REPOS,
-        completed_by_id=completed or {"MINI-21": True, "MINI-1": True, "MINI-2": True},
+        completed_by_id=completed or {"TASK-21": True, "TASK-1": True, "TASK-2": True},
         shapes=True,
     )
 
@@ -338,8 +338,8 @@ def test_only_a_task_for_another_executor_may_name_no_repository(where: str) -> 
 def test_a_compound_task_lists_every_child_in_blocked_by() -> None:
     notes = _notes_with(
         **{
-            "Done when": "MINI-1, MINI-2 and MINI-21 are done. Between them: x.",
-            "Blocked by": "MINI-1, MINI-2, MINI-21",
+            "Done when": "TASK-1, TASK-2 and TASK-21 are done. Between them: x.",
+            "Blocked by": "TASK-1, TASK-2, TASK-21",
         }
     )
     assert _shaped(notes) == []  # spans two repositories: it has no work of its own
@@ -348,24 +348,24 @@ def test_a_compound_task_lists_every_child_in_blocked_by() -> None:
 def test_a_compound_task_missing_a_child_is_not_ready() -> None:
     notes = _notes_with(
         **{
-            "Done when": "MINI-1, MINI-2 and MINI-21 are done.",
-            "Blocked by": "MINI-1, MINI-21",
+            "Done when": "TASK-1, TASK-2 and TASK-21 are done.",
+            "Blocked by": "TASK-1, TASK-21",
         }
     )
-    assert _shaped(notes) == ["compound task's Blocked by does not list MINI-2"]
+    assert _shaped(notes) == ["compound task's Blocked by does not list TASK-2"]
 
 
 @pytest.mark.parametrize(
     ("done_when", "children"),
     [
         (
-            "MINI-183, MINI-184, MINI-185 and MINI-186 are done. Between them: …",
-            ["MINI-183", "MINI-184", "MINI-185", "MINI-186"],
+            "TASK-183, TASK-184, TASK-185 and TASK-186 are done. Between them: …",
+            ["TASK-183", "TASK-184", "TASK-185", "TASK-186"],
         ),
-        ("MINI-173 and MINI-174 are done.", ["MINI-173", "MINI-174"]),
+        ("TASK-173 and TASK-174 are done.", ["TASK-173", "TASK-174"]),
         ("infra#4 is done", ["infra#4"]),
-        ("The sweep is done when MINI-1 passes.", []),
-        ("A test passes once MINI-1 is done.", []),
+        ("The sweep is done when TASK-1 passes.", []),
+        ("A test passes once TASK-1 is done.", []),
         ("", []),
     ],
 )

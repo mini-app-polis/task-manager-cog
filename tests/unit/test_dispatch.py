@@ -50,7 +50,7 @@ def _run(run_id: str, repo: str, *, minutes_ago: int = 5, gid: str = "9") -> Age
     return AgentRun(
         id=run_id,
         task_gid=gid,
-        task_id="MINI-9",
+        task_id="TASK-9",
         repository=repo,
         model="claude-sonnet-5-5",
         status="dispatched",
@@ -144,14 +144,14 @@ def _dispatch(
 
 
 def test_a_small_ready_task_is_recorded_moved_then_started() -> None:
-    task = _task("1", "MINI-1 · Fix the watcher")
+    task = _task("1", "TASK-1 · Fix the watcher")
     result, store, starter, board = _dispatch([task])
 
     assert [c.task.gid for c, _ in result.dispatched] == ["1"]
     assert store.recorded == [
         AgentRunCreate(
             task_gid="1",
-            task_id="MINI-1",
+            task_id="TASK-1",
             repository="watcher-cog",
             model="claude-sonnet-5-5",
         )
@@ -160,8 +160,8 @@ def test_a_small_ready_task_is_recorded_moved_then_started() -> None:
     ((repo, ref, inputs),) = starter.started
     assert (repo, ref) == ("watcher-cog", "dev")
     assert inputs["run_id"] == RUN_IDS[1]
-    assert inputs["task_id"] == "MINI-1"
-    assert inputs["task"].startswith("MINI-1 · Fix the watcher\n\nDone when:")
+    assert inputs["task_id"] == "TASK-1"
+    assert inputs["task"].startswith("TASK-1 · Fix the watcher\n\nDone when:")
     assert inputs["budget_usd"] == "2.00"
     assert all(isinstance(v, str) for v in inputs.values())
 
@@ -169,14 +169,14 @@ def test_a_small_ready_task_is_recorded_moved_then_started() -> None:
 @pytest.mark.parametrize(
     ("task", "reason"),
     [
-        (_task("1", "MINI-1 · Bigger", effort="M"), agent.SKIP_NOT_SMALL),
-        (_task("1", "MINI-1 · Large", effort="L"), agent.SKIP_NOT_SMALL),
+        (_task("1", "TASK-1 · Bigger", effort="M"), agent.SKIP_NOT_SMALL),
+        (_task("1", "TASK-1 · Large", effort="L"), agent.SKIP_NOT_SMALL),
         (
-            _task("1", "MINI-1 · Two repos", where="watcher-cog, infra"),
+            _task("1", "TASK-1 · Two repos", where="watcher-cog, infra"),
             agent.SKIP_WHERE,
         ),
-        (_task("1", "MINI-1 · Nowhere", where=""), agent.SKIP_WHERE),
-        (_task("1", "MINI-1 · No caller", where="infra"), agent.SKIP_NO_CALLER),
+        (_task("1", "TASK-1 · Nowhere", where=""), agent.SKIP_WHERE),
+        (_task("1", "TASK-1 · No caller", where="infra"), agent.SKIP_NO_CALLER),
     ],
 )
 def test_a_task_the_agent_cannot_take_stays_in_ready(task, reason) -> None:
@@ -187,18 +187,18 @@ def test_a_task_the_agent_cannot_take_stays_in_ready(task, reason) -> None:
 
 
 def test_one_repository_named_twice_is_one_repository() -> None:
-    task = _task("1", "MINI-1 · Paths", where="watcher-cog/src, watcher-cog (tests)")
+    task = _task("1", "TASK-1 · Paths", where="watcher-cog/src, watcher-cog (tests)")
     result, *_ = _dispatch([task])
     assert len(result.dispatched) == 1
 
 
 def test_the_template_detected_problems_and_other_columns_are_never_taken() -> None:
     tasks = [
-        _task("1", "MINI-8 · TEMPLATE — do not work"),
+        _task("1", "TASK-8 · TEMPLATE — do not work"),
         _task("2", "CI-4 · watcher-cog: CI failing on dev"),
         _task("3", "RUN-2 · watcher-cog run failed"),
-        _task("4", "MINI-4 · Refining", section="Refining"),
-        _task("5", "MINI-5 · Already going", section="In progress"),
+        _task("4", "TASK-4 · Refining", section="Refining"),
+        _task("5", "TASK-5 · Already going", section="In progress"),
     ]
     result, store, *_ = _dispatch(tasks)
     assert result.dispatched == [] and result.skipped == {}
@@ -207,9 +207,9 @@ def test_the_template_detected_problems_and_other_columns_are_never_taken() -> N
 
 def test_one_run_per_repository_a_sweep_and_none_beside_one_in_flight() -> None:
     tasks = [
-        _task("1", "MINI-1 · First"),
-        _task("2", "MINI-2 · Second"),
-        _task("3", "MINI-3 · Curator", where="wiki-curator-cog"),
+        _task("1", "TASK-1 · First"),
+        _task("2", "TASK-2 · Second"),
+        _task("3", "TASK-3 · Curator", where="wiki-curator-cog"),
     ]
     store = FakeStore(in_flight=[_run(RUN_IDS[0], "wiki-curator-cog")])
     result, *_ = _dispatch(tasks, store=store)
@@ -219,7 +219,7 @@ def test_one_run_per_repository_a_sweep_and_none_beside_one_in_flight() -> None:
 
 def test_a_run_the_list_missed_is_a_busy_repository_not_a_failure() -> None:
     store = FakeStore(conflict={"watcher-cog"})
-    result, _, starter, board = _dispatch([_task("1", "MINI-1 · Raced")], store=store)
+    result, _, starter, board = _dispatch([_task("1", "TASK-1 · Raced")], store=store)
     assert result.skipped == {agent.SKIP_IN_FLIGHT: 1}
     assert board.moves == [] and starter.started == []
 
@@ -229,8 +229,8 @@ def test_the_monthly_cap_counts_runs_in_flight_at_the_task_cap(
 ) -> None:
     monkeypatch.setenv("AGENT_MONTHLY_CAP_USD", "20")
     tasks = [
-        _task("1", "MINI-1 · Watcher"),
-        _task("2", "MINI-2 · Curator", where="wiki-curator-cog"),
+        _task("1", "TASK-1 · Watcher"),
+        _task("2", "TASK-2 · Curator", where="wiki-curator-cog"),
     ]
     # 15.50 spent and one run in flight (2.00) leaves room for one more.
     store = FakeStore(spend=15.5, in_flight=[_run(RUN_IDS[0], "db-ops")])
@@ -245,7 +245,7 @@ def test_the_monthly_cap_counts_runs_in_flight_at_the_task_cap(
 
 
 def test_a_run_that_cannot_start_is_failed_and_left_in_progress() -> None:
-    task = _task("1", "MINI-1 · Fix the watcher")
+    task = _task("1", "TASK-1 · Fix the watcher")
     result, store, _, board = _dispatch([task], starter=FakeStarter(fail=True))
     assert result.dispatched == []
     assert [c.task.gid for c in result.not_started] == ["1"]
@@ -261,7 +261,7 @@ def test_a_run_that_cannot_start_is_failed_and_left_in_progress() -> None:
 def test_a_silent_run_past_the_timeout_is_failed_and_frees_its_repository() -> None:
     stale = _run(RUN_IDS[0], "watcher-cog", minutes_ago=120, gid="7")
     store = FakeStore(in_flight=[stale])
-    result, _, _, board = _dispatch([_task("1", "MINI-1 · Next")], store=store)
+    result, _, _, board = _dispatch([_task("1", "TASK-1 · Next")], store=store)
     assert result.stale == [stale]
     assert [f.run_id for f in store.failed] == [RUN_IDS[0]]
     assert board.comments[0][0] == "7"
@@ -272,7 +272,7 @@ def test_a_silent_run_past_the_timeout_is_failed_and_frees_its_repository() -> N
 def test_a_dry_run_writes_nothing_anywhere() -> None:
     stale = _run(RUN_IDS[0], "wiki-curator-cog", minutes_ago=120)
     store = FakeStore(in_flight=[stale])
-    tasks = [_task("1", "MINI-1 · Watcher"), _task("2", "MINI-2 · Big", effort="M")]
+    tasks = [_task("1", "TASK-1 · Watcher"), _task("2", "TASK-2 · Big", effort="M")]
     result, store, starter, board = _dispatch(tasks, store=store, write=False)
     assert [c.task.gid for c in result.would_dispatch] == ["1"]
     assert result.stale == [stale]
@@ -312,24 +312,24 @@ def test_a_board_without_the_in_progress_column_stops_dispatch() -> None:
 
 @pytest.mark.parametrize("tag", ["cowork", "Person"])
 def test_a_task_tagged_for_another_executor_is_never_dispatched(tag: str) -> None:
-    tagged = dataclasses.replace(_task("1", "MINI-1 · Console work"), tag_names=(tag,))
-    other = _task("2", "MINI-2 · Agent work", where="wiki-curator-cog")
+    tagged = dataclasses.replace(_task("1", "TASK-1 · Console work"), tag_names=(tag,))
+    other = _task("2", "TASK-2 · Agent work", where="wiki-curator-cog")
     result, store, starter, board = _dispatch([tagged, other])
-    assert [c.task.name for c, _ in result.dispatched] == ["MINI-2 · Agent work"]
+    assert [c.task.name for c, _ in result.dispatched] == ["TASK-2 · Agent work"]
     assert result.skipped == {f"executor_{tag.lower()}": 1}
     assert [r.task_gid for r in store.recorded] == ["2"]
 
 
 def test_an_unrelated_tag_does_not_stop_dispatch() -> None:
-    tagged = dataclasses.replace(_task("1", "MINI-1 · Admin"), tag_names=("admin",))
+    tagged = dataclasses.replace(_task("1", "TASK-1 · Admin"), tag_names=("admin",))
     result, *_ = _dispatch([tagged])
     assert len(result.dispatched) == 1
 
 
 def test_a_task_is_not_started_without_time_left_for_it() -> None:
     tasks = [
-        _task("1", "MINI-1 · First"),
-        _task("2", "MINI-2 · Curator", where="wiki-curator-cog"),
+        _task("1", "TASK-1 · First"),
+        _task("2", "TASK-2 · Curator", where="wiki-curator-cog"),
     ]
     left = iter([agent.TIME_RESERVE_SECONDS + 1, agent.TIME_RESERVE_SECONDS - 1])
     result, store, starter, board = _dispatch(tasks, time_left=lambda: next(left))
@@ -341,5 +341,5 @@ def test_a_task_is_not_started_without_time_left_for_it() -> None:
 
 
 def test_without_a_deadline_time_never_stops_dispatch() -> None:
-    result, *_ = _dispatch([_task("1", "MINI-1 · First")], time_left=lambda: None)
+    result, *_ = _dispatch([_task("1", "TASK-1 · First")], time_left=lambda: None)
     assert len(result.dispatched) == 1 and result.skipped == {}

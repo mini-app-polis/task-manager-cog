@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 from mini_app_polis.api.contract import GroomingChild, GroomingProposal
 
+from task_manager_cog.groom import MANUAL_PREFIX
 from task_manager_cog.lint import parse
 from task_manager_cog.records import QUESTIONS_PREFIX, fingerprint
 from task_manager_cog.split import DRY_RUN_MARKER, external_id, unblocked_waits
@@ -22,7 +23,7 @@ CHILDREN = [
     GroomingChild(
         title="infra: apply it",
         done_when="The plan is clean.",
-        where="infra (cogs.tf)",
+        where="infra (the cog definitions)",
         constraints="None",
         effort="M",
         executor="cowork",
@@ -84,25 +85,27 @@ def test_a_split_creates_its_children_and_rewrites_the_task(
     board, store = _board(), FakeRecords()
     _apply_split(_split(), board, store)
 
-    # The task had no id: it takes MINI-1, its children the next two.
+    # The task had no id: it takes the first manual id, its children the next two.
     assert [name for name, _ in board.created] == [
-        "MINI-2 · common-python-utils: the shared contract",
-        "MINI-3 · infra: apply it",
+        f"{MANUAL_PREFIX}-2 · common-python-utils: the shared contract",
+        f"{MANUAL_PREFIX}-3 · infra: apply it",
     ]
     first, second = (board.get(f"9{i}") for i in (1, 2))
     assert first is not None and second is not None
     assert parse(first.notes).fields["Blocked by"] == "None"
-    assert parse(second.notes).fields["Blocked by"] == "MINI-2, 2026-11-02"
+    assert parse(second.notes).fields["Blocked by"] == f"{MANUAL_PREFIX}-2, 2026-11-02"
     assert parse(second.notes).fields["Effort"] == "M"
     assert second.tag_names == ("cowork",)
-    assert "Part of MINI-1 · Ship the contract and apply it." in second.notes
+    assert (
+        f"Part of {MANUAL_PREFIX}-1 · Ship the contract and apply it." in second.notes
+    )
 
     parent = board.get("7")
     assert parent is not None
-    assert parent.name == "MINI-1 · Ship the contract and apply it"
+    assert parent.name == f"{MANUAL_PREFIX}-1 · Ship the contract and apply it"
     fields = parse(parent.notes).fields
-    assert fields["Done when"] == "MINI-2 and MINI-3 are done."
-    assert fields["Blocked by"] == "MINI-2, MINI-3"
+    assert fields["Done when"] == f"{MANUAL_PREFIX}-2 and {MANUAL_PREFIX}-3 are done."
+    assert fields["Blocked by"] == f"{MANUAL_PREFIX}-2, {MANUAL_PREFIX}-3"
     assert fields["Where"] == "common-python-utils, infra"
     assert fields["Constraints"] == "A compound task: no work of its own."
     assert fields["Effort"] == "M"
@@ -125,8 +128,8 @@ def test_with_task_shapes_on_the_split_passes_as_leaves_and_a_compound(
     _apply_split(_split(), board, store)
     assert store.stored["91"].problems == []
     assert store.stored["7"].problems == [
-        "Blocked by MINI-2, which is not done",
-        "Blocked by MINI-3, which is not done",
+        f"Blocked by {MANUAL_PREFIX}-2, which is not done",
+        f"Blocked by {MANUAL_PREFIX}-3, which is not done",
     ]
 
 
@@ -153,14 +156,14 @@ def test_a_dry_run_split_posts_a_run_report(
     production, monkeypatch: pytest.MonkeyPatch, _no_outbound_reports
 ) -> None:
     monkeypatch.delenv("GROOM_SPLIT_DRY_RUN", raising=False)
-    named = _task("7", "MINI-140 · Look into the runners", notes=VAGUE.notes)
+    named = _task("7", "TASK-140 · Look into the runners", notes=VAGUE.notes)
     board = FakeBoard([named], sections_=[*SECTIONS])
     _apply_split(_split(fingerprint=fingerprint(named)), board, FakeRecords())
 
     ((args, kwargs),) = _no_outbound_reports
     assert args[:2] == ("apply-grooming", "SUCCESS")
     assert kwargs["notable"] is True
-    assert "split proposed (dry run)\n  ~ [MINI-140 children=2]" in kwargs["text"]
+    assert "split proposed (dry run)\n  ~ [TASK-140 children=2]" in kwargs["text"]
     assert kwargs["cost_usd"] == "0.0900"
     assert kwargs["children_proposed"] == 2
 
@@ -210,18 +213,25 @@ def test_a_split_cut_short_finishes_without_duplicates(
     # The first child was created before a failure; the redelivery finds it.
     board, store = _board(), FakeRecords()
     proposal = _split()
-    earlier = _task("90", "MINI-5 · common-python-utils: the shared contract")
+    earlier = _task(
+        "90", f"{MANUAL_PREFIX}-5 · common-python-utils: the shared contract"
+    )
     board.records.append(earlier)
     board.by_external_id[external_id("7", proposal.fingerprint, 0)] = "90"
 
     _apply_split(proposal, board, store)
-    assert [name for name, _ in board.created] == ["MINI-7 · infra: apply it"]
+    assert [name for name, _ in board.created] == [
+        f"{MANUAL_PREFIX}-7 · infra: apply it"
+    ]
     second = board.get("91")
     assert second is not None
-    assert parse(second.notes).fields["Blocked by"].startswith("MINI-5, ")
+    assert parse(second.notes).fields["Blocked by"].startswith(f"{MANUAL_PREFIX}-5, ")
     parent = board.get("7")
     assert parent is not None
-    assert parse(parent.notes).fields["Done when"] == "MINI-5 and MINI-7 are done."
+    assert (
+        parse(parent.notes).fields["Done when"]
+        == f"{MANUAL_PREFIX}-5 and {MANUAL_PREFIX}-7 are done."
+    )
 
 
 def test_a_reported_split_waits_on_its_owner_and_an_answer_sends_it_again(
@@ -249,8 +259,8 @@ def test_a_reported_split_waits_on_its_owner_and_an_answer_sends_it_again(
     monkeypatch.setenv("GROOM_SPLIT_DRY_RUN", "false")
     _apply_split(_split(fingerprint=store.jobs[1].task.fingerprint), board, store)
     assert [name for name, _ in board.created] == [
-        "MINI-2 · common-python-utils: the shared contract",
-        "MINI-3 · infra: apply it",
+        f"{MANUAL_PREFIX}-2 · common-python-utils: the shared contract",
+        f"{MANUAL_PREFIX}-3 · infra: apply it",
     ]
     assert store.stored["7"].outcome != "questions"
     _sweep_sending(store, board, monkeypatch, "5")
@@ -306,7 +316,7 @@ def test_a_child_that_says_it_waits_and_names_the_sibling_is_applied(
     assert len(board.created) == 3
     third = board.get("93")
     assert third is not None
-    assert parse(third.notes).fields["Blocked by"] == "MINI-2"
+    assert parse(third.notes).fields["Blocked by"] == f"{MANUAL_PREFIX}-2"
 
 
 @pytest.mark.parametrize(
@@ -330,7 +340,7 @@ def test_other_ways_of_saying_it_waits_are_caught(said: str, phrase: str) -> Non
 def test_a_blocked_by_of_none_is_no_blocker() -> None:
     child = WAITS_UNSAID.model_copy(update={"blocked_by": "None"})
     assert unblocked_waits(_split(children=[child]))
-    named = WAITS_UNSAID.model_copy(update={"blocked_by": "MINI-4"})
+    named = WAITS_UNSAID.model_copy(update={"blocked_by": "TASK-4"})
     assert unblocked_waits(_split(children=[named])) == []
 
 

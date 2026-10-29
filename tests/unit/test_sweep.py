@@ -163,18 +163,18 @@ class FakeBoard:
 
 
 BOARD_TASKS = [
-    _task("1", "MINI-1 · Ready idea"),
-    _task("2", "MINI-2 · Vague idea", notes="look into this"),
-    _task("3", "MINI-3 · Ready but in progress", section="In progress"),
-    _task("4", "MINI-4 · Done already", completed=True),
-    _task("5", "MINI-5 · TEMPLATE — do not work"),
+    _task("1", "TASK-1 · Ready idea"),
+    _task("2", "TASK-2 · Vague idea", notes="look into this"),
+    _task("3", "TASK-3 · Ready but in progress", section="In progress"),
+    _task("4", "TASK-4 · Done already", completed=True),
+    _task("5", "TASK-5 · TEMPLATE — do not work"),
     _task(
         "6",
-        "MINI-6 · Waits on MINI-7",
-        notes=READY.replace("Blocked by:", "Blocked by: MINI-7"),
+        "TASK-6 · Waits on TASK-7",
+        notes=READY.replace("Blocked by:", "Blocked by: TASK-7"),
         section="Blocked",
     ),
-    _task("7", "MINI-7 · Open blocker", section="Refining", notes="later"),
+    _task("7", "TASK-7 · Open blocker", section="Refining", notes="later"),
     _task("8", "CI-8 · infra: CI failing on dev"),
     _task("9", "API-9 · API: GET /v1/x answering 500", notes="look into this"),
     _task("10", "ROT-10 · Rotate BREVO_API_KEY in prd", notes="look into this"),
@@ -185,14 +185,14 @@ def test_assess_checks_open_tasks_in_the_swept_columns_only() -> None:
     verdicts = assess(BOARD_TASKS, swept=("ideas", "Refining", "Blocked"), repos=REPOS)
     by_name = {v.task.name: v for v in verdicts}
     assert set(by_name) == {
-        "MINI-1 · Ready idea",
-        "MINI-2 · Vague idea",
-        "MINI-6 · Waits on MINI-7",
-        "MINI-7 · Open blocker",
+        "TASK-1 · Ready idea",
+        "TASK-2 · Vague idea",
+        "TASK-6 · Waits on TASK-7",
+        "TASK-7 · Open blocker",
     }
-    assert by_name["MINI-1 · Ready idea"].ready
-    assert by_name["MINI-6 · Waits on MINI-7"].problems == (
-        "Blocked by MINI-7, which is not done",
+    assert by_name["TASK-1 · Ready idea"].ready
+    assert by_name["TASK-6 · Waits on TASK-7"].problems == (
+        "Blocked by TASK-7, which is not done",
     )
 
 
@@ -200,10 +200,10 @@ def test_a_blocker_that_is_done_no_longer_blocks() -> None:
     tasks = [
         _task(
             "6",
-            "MINI-6 · Waits",
-            notes=READY.replace("Blocked by:", "Blocked by: MINI-4"),
+            "TASK-6 · Waits",
+            notes=READY.replace("Blocked by:", "Blocked by: TASK-4"),
         ),
-        _task("4", "MINI-4 · Done", completed=True),
+        _task("4", "TASK-4 · Done", completed=True),
     ]
     (verdict,) = assess(tasks, swept=("Ideas",), repos=REPOS)
     assert verdict.ready
@@ -213,14 +213,14 @@ def test_sweep_moves_ready_tasks_when_told_to() -> None:
     board = FakeBoard(list(BOARD_TASKS))
     result = sweep(board, repos=REPOS, move=True)
     assert board.moves == [("1", "s-ready")]
-    assert [t.name for t in result.moved] == ["MINI-1 · Ready idea"]
+    assert [t.name for t in result.moved] == ["TASK-1 · Ready idea"]
 
 
 def test_sweep_only_reports_when_moving_is_off() -> None:
     board = FakeBoard(list(BOARD_TASKS))
     result = sweep(board, repos=REPOS, move=False)
     assert board.moves == []
-    assert [v.task.name for v in result.ready] == ["MINI-1 · Ready idea"]
+    assert [v.task.name for v in result.ready] == ["TASK-1 · Ready idea"]
 
 
 def test_a_board_without_the_ready_column_stops_the_sweep(
@@ -320,7 +320,7 @@ def test_run_sweep_moves_and_reports_in_production(
     )
     assert board.moves == [("1", "s-ready")]
     ((args, kwargs),) = _no_outbound_reports
-    assert "MINI-1 · Ready idea" in kwargs["text"]
+    assert "TASK-1 · Ready idea" in kwargs["text"]
     assert kwargs["tasks_checked"] == 4
     assert kwargs["records_written"] == 4
     moved = store.stored["1"]
@@ -347,7 +347,7 @@ def test_a_quiet_board_writes_no_records(production, _no_outbound_reports) -> No
 
 
 def test_an_edited_task_is_changed_and_its_record_rewritten() -> None:
-    task = _task("2", "MINI-2 · Vague idea", notes="look into this")
+    task = _task("2", "TASK-2 · Vague idea", notes="look into this")
     first = sweep(FakeBoard([task]), repos=REPOS, move=False)
     stored = GroomingRecord(
         **first.writes[0].model_dump(), updated_at=dt.datetime.now(dt.UTC)
@@ -357,17 +357,17 @@ def test_an_edited_task_is_changed_and_its_record_rewritten() -> None:
     assert not same.verdicts[0].changed
     assert same.writes == []
 
-    edited = _task("2", "MINI-2 · Vague idea", notes="look into this, today")
+    edited = _task("2", "TASK-2 · Vague idea", notes="look into this, today")
     after = sweep(FakeBoard([edited]), repos=REPOS, move=False, records={"2": stored})
     assert after.verdicts[0].changed
     assert after.writes[0].fingerprint == fingerprint(edited)
 
 
 def test_a_task_sent_back_from_ready_is_counted_once() -> None:
-    task = _task("12", "MINI-2 · Vague idea", notes="look into this")
+    task = _task("12", "TASK-2 · Vague idea", notes="look into this")
     moved = GroomingRecord(
         task_gid="12",
-        task_id="MINI-2",
+        task_id="TASK-2",
         fingerprint=fingerprint(task),
         outcome="ready",
         moved_to_ready_at=dt.datetime(2026, 10, 21, tzinfo=dt.UTC),
@@ -393,7 +393,7 @@ def test_a_task_sent_back_from_ready_is_counted_once() -> None:
 
 
 def test_a_question_waits_until_the_task_changes() -> None:
-    task = _task("12", "MINI-2 · Vague idea", notes="look into this")
+    task = _task("12", "TASK-2 · Vague idea", notes="look into this")
     first = sweep(FakeBoard([task]), repos=REPOS, move=False)
     written = first.writes[0]
     asked = GroomingRecord(
@@ -408,7 +408,7 @@ def test_a_question_waits_until_the_task_changes() -> None:
     assert unchanged.writes == []
 
     # Still waiting after an edit: questions are out until a grooming answers.
-    edited = _task("12", "MINI-2 · Vague idea", notes="look into this: edited")
+    edited = _task("12", "TASK-2 · Vague idea", notes="look into this: edited")
     after = sweep(FakeBoard([edited]), repos=REPOS, move=False, records={"12": asked})
     assert after.writes[0].outcome == "questions"
 
@@ -417,7 +417,7 @@ def test_a_task_with_open_questions_is_not_moved_even_when_it_lints_clean() -> N
     task = BOARD_TASKS[0]  # passes the linter
     asked = GroomingRecord(
         task_gid=task.gid,
-        task_id="MINI-1",
+        task_id="TASK-1",
         fingerprint=fingerprint(task),
         groomed_fingerprint=fingerprint(task),
         outcome="questions",
@@ -434,7 +434,7 @@ def test_a_task_with_open_questions_is_not_moved_even_when_it_lints_clean() -> N
 
 def test_a_task_with_open_questions_in_its_body_is_not_moved_to_ready() -> None:
     task = _task(
-        "1", "MINI-1 · Undecided", notes=f"{READY}\n\nOpen decisions:\n- A or B"
+        "1", "TASK-1 · Undecided", notes=f"{READY}\n\nOpen decisions:\n- A or B"
     )
     board = FakeBoard([task])
     result = sweep(board, repos=REPOS, move=True)
@@ -443,7 +443,7 @@ def test_a_task_with_open_questions_in_its_body_is_not_moved_to_ready() -> None:
         "body lists open questions (Open decisions)",
     )
 
-    settled = _task("1", "MINI-1 · Undecided", notes=f"{READY}\n\nOpen decisions:")
+    settled = _task("1", "TASK-1 · Undecided", notes=f"{READY}\n\nOpen decisions:")
     board = FakeBoard([settled])
     sweep(board, repos=REPOS, move=True)
     assert board.moves == [("1", "s-ready")]
@@ -487,8 +487,8 @@ def test_main_logs_every_verdict(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(sweep_mod, "log", lines)
     assert sweep_mod.main([]) == 0
     out = "\n".join(lines.lines)
-    assert "READY  [Ideas] MINI-1 · Ready idea" in out
-    assert "- Blocked by MINI-7, which is not done" in out
+    assert "READY  [Ideas] TASK-1 · Ready idea" in out
+    assert "- Blocked by TASK-7, which is not done" in out
     assert "1 of 4 tasks ready" in out
     assert board.moves == []
 
@@ -561,19 +561,19 @@ def test_tasks_not_ready_are_sent_once_up_to_the_limit(
     store = FakeRecords()
     board = FakeBoard(list(BOARD_TASKS))
     _sweep_sending(store, board, monkeypatch, "1")
-    assert [j.task.name for j in store.jobs] == ["MINI-2 · Vague idea"]
+    assert [j.task.name for j in store.jobs] == ["TASK-2 · Vague idea"]
     job = store.jobs[0]
     assert job.task.problems
-    assert "MINI-2 · Vague idea" not in job.board
-    assert "MINI-1 · Ready idea" in job.board
+    assert "TASK-2 · Vague idea" not in job.board
+    assert "TASK-1 · Ready idea" in job.board
     assert store.stored["2"].groomed_fingerprint == fingerprint(BOARD_TASKS[1])
 
-    # The next sweep sends the next one, and never the first again. MINI-6
+    # The next sweep sends the next one, and never the first again. TASK-6
     # only waits on its blocker, so it is never sent.
     _sweep_sending(store, board, monkeypatch, "1")
     assert [j.task.name for j in store.jobs] == [
-        "MINI-2 · Vague idea",
-        "MINI-7 · Open blocker",
+        "TASK-2 · Vague idea",
+        "TASK-7 · Open blocker",
     ]
     _sweep_sending(store, board, monkeypatch, "5")
     _sweep_sending(store, board, monkeypatch, "5")
@@ -583,10 +583,10 @@ def test_tasks_not_ready_are_sent_once_up_to_the_limit(
 def test_a_task_only_waiting_on_a_blocker_is_never_sent() -> None:
     waiting = _task(
         "6",
-        "MINI-6 · Waits on MINI-7",
-        notes=READY.replace("Blocked by:", "Blocked by: MINI-7"),
+        "TASK-6 · Waits on TASK-7",
+        notes=READY.replace("Blocked by:", "Blocked by: TASK-7"),
     )
-    blocker = _task("7", "MINI-7 · Open blocker", section="In progress")
+    blocker = _task("7", "TASK-7 · Open blocker", section="In progress")
     sent: list[GroomingJobRequest] = []
     result = sweep(
         FakeBoard([waiting, blocker]),
@@ -604,9 +604,9 @@ def test_a_task_only_waiting_on_a_blocker_is_never_sent() -> None:
 # ── moving a task that waits on blockers to Blocked ─────────────────────
 
 
-WAITS_ON_OPEN_TASK = READY.replace("Blocked by:", "Blocked by: MINI-7")
+WAITS_ON_OPEN_TASK = READY.replace("Blocked by:", "Blocked by: TASK-7")
 WAITS_ON_A_DATE = READY.replace("Blocked by:", "Blocked by: 2999-01-01")
-OPEN_BLOCKER = _task("7", "MINI-7 · Open blocker", section="In progress")
+OPEN_BLOCKER = _task("7", "TASK-7 · Open blocker", section="In progress")
 
 
 @pytest.mark.parametrize(
@@ -616,7 +616,7 @@ OPEN_BLOCKER = _task("7", "MINI-7 · Open blocker", section="In progress")
 def test_a_task_only_waiting_on_blockers_moves_to_blocked(
     notes: str, section: str
 ) -> None:
-    task = _task("6", "MINI-6 · Waits", notes=notes, section=section)
+    task = _task("6", "TASK-6 · Waits", notes=notes, section=section)
     board = FakeBoard([task, OPEN_BLOCKER])
     sent: list[GroomingJobRequest] = []
     result = sweep(
@@ -636,7 +636,7 @@ def test_a_task_only_waiting_on_blockers_moves_to_blocked(
 
 
 def test_with_moving_off_a_waiting_task_is_only_counted() -> None:
-    task = _task("6", "MINI-6 · Waits", notes=WAITS_ON_OPEN_TASK, section="Refining")
+    task = _task("6", "TASK-6 · Waits", notes=WAITS_ON_OPEN_TASK, section="Refining")
     board = FakeBoard([task, OPEN_BLOCKER])
     result = sweep(board, repos=REPOS, move=False)
     assert board.moves == []
@@ -645,7 +645,7 @@ def test_with_moving_off_a_waiting_task_is_only_counted() -> None:
 
 
 def test_a_task_already_in_blocked_stays_until_its_blockers_are_done() -> None:
-    task = _task("6", "MINI-6 · Waits", notes=WAITS_ON_OPEN_TASK, section="Blocked")
+    task = _task("6", "TASK-6 · Waits", notes=WAITS_ON_OPEN_TASK, section="Blocked")
     board = FakeBoard([task, OPEN_BLOCKER])
     result = sweep(board, repos=REPOS, move=True)
     assert board.moves == []
@@ -661,7 +661,7 @@ def test_a_task_already_in_blocked_stays_until_its_blockers_are_done() -> None:
 def test_a_blocked_task_with_another_problem_stays_where_it_is() -> None:
     task = _task(
         "6",
-        "MINI-6 · Waits",
+        "TASK-6 · Waits",
         notes=WAITS_ON_OPEN_TASK.replace("Done when: the plan is clean", "Done when:"),
         section="Refining",
     )
@@ -676,7 +676,7 @@ def test_a_blocked_task_with_another_problem_stays_where_it_is() -> None:
     )
     assert board.moves == []
     assert result.moved_to_blocked == []
-    assert [j.task.name for j in sent] == ["MINI-6 · Waits"]
+    assert [j.task.name for j in sent] == ["TASK-6 · Waits"]
 
 
 @pytest.mark.parametrize(
@@ -687,8 +687,8 @@ def test_a_blocked_task_with_another_problem_stays_where_it_is() -> None:
         ("CONF-6 · a conformance finding", "Ideas"),
         ("API-6 · API: GET /v1/x answering 500", "Ideas"),
         ("ROT-6 · Rotate BREVO_API_KEY in prd", "Ideas"),
-        ("MINI-6 · TEMPLATE — do not work", "Ideas"),
-        ("MINI-6 · Being worked", "In progress"),
+        ("TASK-6 · TEMPLATE — do not work", "Ideas"),
+        ("TASK-6 · Being worked", "In progress"),
     ],
 )
 def test_unswept_tasks_are_never_moved_to_blocked(name: str, section: str) -> None:
@@ -705,7 +705,7 @@ def test_the_blocked_column_comes_from_a_setting(
     assert sweep_mod.blocked_section() == "Blocked"
     monkeypatch.setenv("BLOCKED_SECTION", "Waiting")
     assert sweep_mod.blocked_section() == "Waiting"
-    task = _task("6", "MINI-6 · Waits", notes=WAITS_ON_OPEN_TASK)
+    task = _task("6", "TASK-6 · Waits", notes=WAITS_ON_OPEN_TASK)
     board = FakeBoard(
         [task, OPEN_BLOCKER], sections_=[*SECTIONS, AsanaSection("s-wait", "Waiting")]
     )
@@ -717,7 +717,7 @@ def test_run_sweep_names_each_task_moved_to_blocked(
     production, monkeypatch: pytest.MonkeyPatch, _no_outbound_reports
 ) -> None:
     monkeypatch.setenv("GROOM_AUTO_READY", "true")
-    task = _task("6", "MINI-6 · Waits", notes=WAITS_ON_OPEN_TASK, section="Refining")
+    task = _task("6", "TASK-6 · Waits", notes=WAITS_ON_OPEN_TASK, section="Refining")
     board = FakeBoard([task, OPEN_BLOCKER])
     run_sweep(
         run_id="r",
@@ -726,13 +726,13 @@ def test_run_sweep_names_each_task_moved_to_blocked(
         records_factory=lambda: FakeRecords(),
     )
     ((_, kwargs),) = _no_outbound_reports
-    assert "Moved\n  ~ [Blocked: MINI-6 · Waits](https://board/6)" in kwargs["text"]
+    assert "Moved\n  ~ [Blocked: TASK-6 · Waits](https://board/6)" in kwargs["text"]
 
 
 def test_run_sweep_counts_tasks_it_would_move_to_blocked(
     production, _no_outbound_reports
 ) -> None:
-    task = _task("6", "MINI-6 · Waits", notes=WAITS_ON_OPEN_TASK, section="Refining")
+    task = _task("6", "TASK-6 · Waits", notes=WAITS_ON_OPEN_TASK, section="Refining")
     board = FakeBoard([task, OPEN_BLOCKER])
     run_sweep(
         run_id="r",
@@ -748,12 +748,12 @@ def test_run_sweep_counts_tasks_it_would_move_to_blocked(
 def test_a_blocked_task_with_another_problem_is_still_sent() -> None:
     task = _task(
         "6",
-        "MINI-6 · Waits on MINI-7",
-        notes=READY.replace("Blocked by:", "Blocked by: MINI-7").replace(
+        "TASK-6 · Waits on TASK-7",
+        notes=READY.replace("Blocked by:", "Blocked by: TASK-7").replace(
             "Effort: S", "Effort:"
         ),
     )
-    blocker = _task("7", "MINI-7 · Open blocker", section="In progress")
+    blocker = _task("7", "TASK-7 · Open blocker", section="In progress")
     sent: list[GroomingJobRequest] = []
     result = sweep(
         FakeBoard([task, blocker]),
@@ -762,7 +762,7 @@ def test_a_blocked_task_with_another_problem_is_still_sent() -> None:
         send=lambda job: sent.append(job) or True,
         limit=5,
     )
-    assert [j.task.name for j in sent] == ["MINI-6 · Waits on MINI-7"]
+    assert [j.task.name for j in sent] == ["TASK-6 · Waits on TASK-7"]
     assert result.blocked == 0
 
 
@@ -783,7 +783,7 @@ def _send_from(
 def test_a_task_waiting_on_a_date_ahead_is_never_sent() -> None:
     waiting = _task(
         "6",
-        "MINI-6 · Waits on a date",
+        "TASK-6 · Waits on a date",
         notes=READY.replace("Blocked by:", "Blocked by: 2999-01-01"),
         section="Blocked",
     )
@@ -797,37 +797,37 @@ def test_a_task_waiting_on_a_date_ahead_is_never_sent() -> None:
 def test_a_task_whose_date_has_come_moves_to_ready() -> None:
     waiting = _task(
         "6",
-        "MINI-6 · Waited on a date",
+        "TASK-6 · Waited on a date",
         notes=READY.replace("Blocked by:", "Blocked by: 2000-01-01"),
         section="Blocked",
     )
     sent, result = _send_from([waiting])
     assert sent == []
-    assert [t.name for t in result.moved] == ["MINI-6 · Waited on a date"]
+    assert [t.name for t in result.moved] == ["TASK-6 · Waited on a date"]
 
 
 def test_a_task_with_a_malformed_date_is_sent_for_grooming() -> None:
     task = _task(
         "6",
-        "MINI-6 · Waits on a bad date",
+        "TASK-6 · Waits on a bad date",
         notes=READY.replace("Blocked by:", "Blocked by: 2026-11-2"),
         section="Blocked",
     )
     sent, result = _send_from([task])
-    assert [j.task.name for j in sent] == ["MINI-6 · Waits on a bad date"]
+    assert [j.task.name for j in sent] == ["TASK-6 · Waits on a bad date"]
     assert result.blocked == 0
 
 
 def test_a_blocked_task_moves_to_ready_once_its_blocker_is_done() -> None:
     waiting = _task(
         "6",
-        "MINI-6 · Waits on MINI-7",
-        notes=READY.replace("Blocked by:", "Blocked by: MINI-7"),
+        "TASK-6 · Waits on TASK-7",
+        notes=READY.replace("Blocked by:", "Blocked by: TASK-7"),
     )
-    blocker = _task("7", "MINI-7 · Blocker", section="In progress", completed=True)
+    blocker = _task("7", "TASK-7 · Blocker", section="In progress", completed=True)
     board = FakeBoard([waiting, blocker])
     result = sweep(board, repos=REPOS, move=True)
-    assert [t.name for t in result.moved] == ["MINI-6 · Waits on MINI-7"]
+    assert [t.name for t in result.moved] == ["TASK-6 · Waits on TASK-7"]
 
 
 def test_a_refused_job_is_sent_again_next_sweep(
@@ -849,7 +849,7 @@ def test_an_answer_sends_a_task_with_questions_again(
     store = FakeRecords()
     store.stored["2"] = GroomingRecord(
         task_gid="2",
-        task_id="MINI-2",
+        task_id="TASK-2",
         fingerprint=fingerprint(task),
         groomed_fingerprint=fingerprint(task),
         outcome="questions",
@@ -875,31 +875,31 @@ def test_an_answer_sends_a_task_with_questions_again(
 def test_a_job_lists_the_done_tasks_its_task_mentions() -> None:
     task = _task(
         "20",
-        "MINI-20 · Epic",
-        notes="Delivered by MINI-21 and MINI-22. Related: MINI-30.",
+        "TASK-20 · Epic",
+        notes="Delivered by TASK-21 and TASK-22. Related: TASK-30.",
     )
     verdict = sweep_mod.Verdict(task=task, problems=("Effort is blank",))
     done = {
-        "MINI-21": "MINI-21 · First part",
-        "MINI-23": "MINI-23 · Unrelated and done",
+        "TASK-21": "TASK-21 · First part",
+        "TASK-23": "TASK-23 · Unrelated and done",
     }
     job = sweep_mod.grooming_job(
-        verdict, ["MINI-20 · Epic", "MINI-22 · Second part", "MINI-30 · Other"], done
+        verdict, ["TASK-20 · Epic", "TASK-22 · Second part", "TASK-30 · Other"], done
     )
     assert job.board == [
-        "MINI-21 · First part (done)",
-        "MINI-22 · Second part",
-        "MINI-30 · Other",
+        "TASK-21 · First part (done)",
+        "TASK-22 · Second part",
+        "TASK-30 · Other",
     ]
 
 
 def test_an_answer_that_names_a_done_task_lists_it() -> None:
-    task = _task("20", "MINI-20 · Epic", notes="vague")
+    task = _task("20", "TASK-20 · Epic", notes="vague")
     verdict = sweep_mod.Verdict(
-        task=task, problems=("x",), replies=("MINI-21 is finished.",)
+        task=task, problems=("x",), replies=("TASK-21 is finished.",)
     )
-    job = sweep_mod.grooming_job(verdict, [], {"MINI-21": "MINI-21 · First part"})
-    assert job.board == ["MINI-21 · First part (done)"]
+    job = sweep_mod.grooming_job(verdict, [], {"TASK-21": "TASK-21 · First part"})
+    assert job.board == ["TASK-21 · First part (done)"]
 
 
 # ── agent dispatch at the end of the sweep ────────────────────────────────
@@ -930,7 +930,7 @@ def test_dispatch_is_off_unless_set(production, _no_outbound_reports) -> None:
     def never():
         raise AssertionError("dispatch is off")
 
-    board = FakeBoard([_task("1", "MINI-1 · Ready", section="Ready")])
+    board = FakeBoard([_task("1", "TASK-1 · Ready", section="Ready")])
     _sweep_dispatching(FakeRecords(), board, never)
 
 
@@ -940,13 +940,13 @@ def test_a_ready_task_is_dispatched_after_grooming(
     monkeypatch.setenv("AGENT_DISPATCH", "true")
     monkeypatch.setenv("GROOM_AUTO_READY", "true")
     # In Ideas and ready: the sweep moves it to Ready, then dispatches it.
-    board = FakeBoard([_task("1", "MINI-1 · Ready idea")])
+    board = FakeBoard([_task("1", "TASK-1 · Ready idea")])
     board.sections_.append(AsanaSection("s-review", "Review"))
     store, starter = FakeRecords(), FakeStarter()
     _sweep_dispatching(store, board, lambda: starter)
     assert board.moves == [("1", "s-ready"), ("1", "s-progress")]
     assert starter.started == ["infra"]
-    assert [r.task_id for r in store.agent_runs] == ["MINI-1"]
+    assert [r.task_id for r in store.agent_runs] == ["TASK-1"]
     ((_, kwargs),) = _no_outbound_reports
     assert kwargs["agent_dispatched"] == 1
 
@@ -956,7 +956,7 @@ def test_a_dry_run_dispatches_nothing(
 ) -> None:
     monkeypatch.setenv("AGENT_DISPATCH", "true")
     monkeypatch.setenv("AGENT_DRY_RUN", "true")
-    board = FakeBoard([_task("1", "MINI-1 · Ready", section="Ready")])
+    board = FakeBoard([_task("1", "TASK-1 · Ready", section="Ready")])
     store, starter = FakeRecords(), FakeStarter()
     _sweep_dispatching(store, board, lambda: starter)
     assert board.moves == [] and starter.started == [] and store.agent_runs == []
@@ -972,7 +972,7 @@ def test_dispatch_without_the_app_is_reported_not_raised(
     def unconfigured():
         raise RuntimeError("AGENT_APP_CLIENT_ID not set")
 
-    board = FakeBoard([_task("1", "MINI-1 · Ready", section="Ready")])
+    board = FakeBoard([_task("1", "TASK-1 · Ready", section="Ready")])
     _sweep_dispatching(FakeRecords(), board, unconfigured)
     ((_, kwargs),) = _no_outbound_reports
     assert "agent dispatch not configured" in kwargs["text"]
@@ -980,19 +980,19 @@ def test_dispatch_without_the_app_is_reported_not_raised(
 
 @pytest.mark.parametrize("tag", ["cowork", "person"])
 def test_a_tagged_task_is_held_to_ready_like_any_other(tag: str) -> None:
-    ready = dataclasses.replace(_task("1", "MINI-1 · Console work"), tag_names=(tag,))
+    ready = dataclasses.replace(_task("1", "TASK-1 · Console work"), tag_names=(tag,))
     vague = dataclasses.replace(
-        _task("2", "MINI-2 · Vague", notes="look into this"), tag_names=(tag,)
+        _task("2", "TASK-2 · Vague", notes="look into this"), tag_names=(tag,)
     )
     board = FakeBoard([ready, vague])
     result = sweep(board, repos=REPOS, move=True)
-    assert [t.name for t in result.moved] == ["MINI-1 · Console work"]
+    assert [t.name for t in result.moved] == ["TASK-1 · Console work"]
 
 
 def test_task_shapes_are_off_unless_set(monkeypatch: pytest.MonkeyPatch) -> None:
     two = _task(
         "1",
-        "MINI-1 · Two repos",
+        "TASK-1 · Two repos",
         notes=READY.replace("Where: infra", "Where: infra, other"),
     )
     monkeypatch.delenv("GROOM_TASK_SHAPES", raising=False)
@@ -1040,8 +1040,8 @@ def test_comments_without_questions_do_not_hold_a_task() -> None:
 def test_comments_are_read_only_for_tasks_that_would_be_ready() -> None:
     board = CountingBoard(list(BOARD_TASKS))
     sweep(board, repos=REPOS, move=False)
-    # MINI-1 is the only swept task the linter passes; MINI-2, MINI-6 and
-    # MINI-7 fail it, and the rest are not swept.
+    # TASK-1 is the only swept task the linter passes; TASK-2, TASK-6 and
+    # TASK-7 fail it, and the rest are not swept.
     assert board.read == ["1"]
 
 
@@ -1090,7 +1090,7 @@ def _stored(write: GroomingRecordWrite) -> GroomingRecord:
 
 
 def test_a_passing_ready_task_is_left_alone() -> None:
-    task = _task("1", "MINI-1 · Ready", section="Ready")
+    task = _task("1", "TASK-1 · Ready", section="Ready")
     board = FakeBoard([task])
     result = sweep(board, repos=REPOS, move=True, records={"1": _moved_record(task)})
     assert result.verdicts[0].ready
@@ -1101,8 +1101,8 @@ def test_a_passing_ready_task_is_left_alone() -> None:
 
 
 def test_a_failing_ready_task_goes_back_to_refining_and_is_counted() -> None:
-    passed = _task("1", "MINI-1 · Edited", section="Ready")
-    task = _task("1", "MINI-1 · Edited", notes="look into this", section="Ready")
+    passed = _task("1", "TASK-1 · Edited", section="Ready")
+    task = _task("1", "TASK-1 · Edited", notes="look into this", section="Ready")
     board = FakeBoard([task])
     sent: list[GroomingJobRequest] = []
 
@@ -1156,8 +1156,8 @@ def test_a_failing_ready_task_goes_back_to_refining_and_is_counted() -> None:
 
 
 def test_a_task_the_budget_stopped_is_sent_again_once_a_sweep() -> None:
-    task = _task("2", "MINI-2 · Vague idea", notes="look into this")
-    other = _task("3", "MINI-3 · Another vague idea", notes="look into this")
+    task = _task("2", "TASK-2 · Vague idea", notes="look into this")
+    other = _task("3", "TASK-3 · Another vague idea", notes="look into this")
     sent: list[GroomingJobRequest] = []
 
     def send(job: GroomingJobRequest) -> bool:
@@ -1169,8 +1169,8 @@ def test_a_task_the_budget_stopped_is_sent_again_once_a_sweep() -> None:
     records = {w.task_gid: _stored(w) for w in first.writes}
     assert len(sent) == 2
 
-    # The budget stopped MINI-2's run: it alone is sent again, once, and its
-    # record is left as it is. MINI-3, sent and unchanged, is not.
+    # The budget stopped TASK-2's run: it alone is sent again, once, and its
+    # record is left as it is. TASK-3, sent and unchanged, is not.
     records["2"] = records["2"].model_copy(
         update={"budget_spent_fingerprint": fingerprint(task)}
     )
@@ -1188,7 +1188,7 @@ def test_a_task_the_budget_stopped_is_sent_again_once_a_sweep() -> None:
 
 
 def test_a_grooming_that_never_comes_back_is_sent_again_then_held() -> None:
-    task = _task("2", "MINI-2 · Vague idea", notes="look into this")
+    task = _task("2", "TASK-2 · Vague idea", notes="look into this")
     sent: list[GroomingJobRequest] = []
 
     def send(job: GroomingJobRequest) -> bool:
@@ -1231,11 +1231,11 @@ def test_a_grooming_that_never_comes_back_is_sent_again_then_held() -> None:
 def test_a_ready_task_waiting_on_a_blocker_goes_to_blocked() -> None:
     task = _task(
         "6",
-        "MINI-6 · Waits on MINI-7",
-        notes=READY.replace("Blocked by:", "Blocked by: MINI-7"),
+        "TASK-6 · Waits on TASK-7",
+        notes=READY.replace("Blocked by:", "Blocked by: TASK-7"),
         section="Ready",
     )
-    blocker = _task("7", "MINI-7 · Open blocker", section="Refining", notes="later")
+    blocker = _task("7", "TASK-7 · Open blocker", section="Refining", notes="later")
     board = FakeBoard([task, blocker])
     result = sweep(board, repos=REPOS, move=True)
     assert ("6", "s-blocked") in board.moves
@@ -1246,7 +1246,7 @@ def test_a_ready_task_waiting_on_a_blocker_goes_to_blocked() -> None:
 
 
 def test_an_unchanged_failed_task_put_back_in_ready_gets_no_second_comment() -> None:
-    task = _task("1", "MINI-1 · Vague", notes="look into this", section="Ready")
+    task = _task("1", "TASK-1 · Vague", notes="look into this", section="Ready")
     board = FakeBoard([task])
     first = sweep(board, repos=REPOS, move=True)
     # A person puts it back in Ready without changing it.
@@ -1260,7 +1260,7 @@ def test_an_unchanged_failed_task_put_back_in_ready_gets_no_second_comment() -> 
 
 
 def test_a_failing_ready_task_is_only_reported_when_moving_is_off() -> None:
-    task = _task("1", "MINI-1 · Vague", notes="look into this", section="Ready")
+    task = _task("1", "TASK-1 · Vague", notes="look into this", section="Ready")
     board = FakeBoard([task])
     result = sweep(board, repos=REPOS, move=False)
     assert [t.gid for t in result.failed_ready] == ["1"]
@@ -1274,7 +1274,7 @@ def test_a_task_failing_in_ready_is_never_dispatched(
     monkeypatch.setenv("AGENT_DISPATCH", "true")
     # Moving off, so it stays in Ready: dispatch still leaves it.
     board = FakeBoard(
-        [_task("1", "MINI-1 · Vague", notes="look into this", section="Ready")]
+        [_task("1", "TASK-1 · Vague", notes="look into this", section="Ready")]
     )
     store, starter = FakeRecords(), FakeStarter()
     _sweep_dispatching(store, board, lambda: starter)
@@ -1288,7 +1288,7 @@ def test_the_run_report_counts_tasks_sent_back_from_ready(
 ) -> None:
     monkeypatch.setenv("GROOM_AUTO_READY", "true")
     board = FakeBoard(
-        [_task("1", "MINI-1 · Vague", notes="look into this", section="Ready")]
+        [_task("1", "TASK-1 · Vague", notes="look into this", section="Ready")]
     )
     store = FakeRecords()
     run_sweep(
@@ -1299,7 +1299,7 @@ def test_the_run_report_counts_tasks_sent_back_from_ready(
     )
     ((_, kwargs),) = _no_outbound_reports
     assert kwargs["sent_back_from_ready"] == 1
-    assert "~ [back from Ready to Refining: MINI-1 · Vague]" in kwargs["text"]
+    assert "~ [back from Ready to Refining: TASK-1 · Vague]" in kwargs["text"]
     assert store.stored["1"].returned_count == 1
 
 
@@ -1322,7 +1322,7 @@ def _groomed(task: AsanaTaskRecord, outcome: str = "not_ready") -> GroomingRecor
 def test_a_task_still_held_is_counted_but_not_named_again(
     production, monkeypatch: pytest.MonkeyPatch, _no_outbound_reports
 ) -> None:
-    held = _task("2", "MINI-2 · Held", notes="look into this", section="Refining")
+    held = _task("2", "TASK-2 · Held", notes="look into this", section="Refining")
     board = FakeBoard([held])
     store = FakeRecords(stored={"2": _groomed(held)})
     _sweep_sending(store, board, monkeypatch, "5")
@@ -1332,7 +1332,7 @@ def test_a_task_still_held_is_counted_but_not_named_again(
     assert "task newly held" in first[1]["text"]
     args, kwargs = second
     assert kwargs["held_without_questions"] == 1
-    assert "MINI-2" not in kwargs["text"]
+    assert "TASK-2" not in kwargs["text"]
     assert args[1] == "SUCCESS" and kwargs["notable"] is False
     assert len(store.written) == 1
 
@@ -1340,12 +1340,12 @@ def test_a_task_still_held_is_counted_but_not_named_again(
 def test_a_task_held_with_nobody_asked_is_counted_and_named(
     production, monkeypatch: pytest.MonkeyPatch, _no_outbound_reports
 ) -> None:
-    held = _task("2", "MINI-2 · Held", notes="look into this", section="Refining")
-    asked = _task("3", "MINI-3 · Asked", notes="look into this")
-    waits = _task("6", "MINI-6 · Waits", notes=WAITS_ON_OPEN_TASK, section="Blocked")
-    new = _task("8", "MINI-8 · New", notes="look into this")
+    held = _task("2", "TASK-2 · Held", notes="look into this", section="Refining")
+    asked = _task("3", "TASK-3 · Asked", notes="look into this")
+    waits = _task("6", "TASK-6 · Waits", notes=WAITS_ON_OPEN_TASK, section="Blocked")
+    new = _task("8", "TASK-8 · New", notes="look into this")
     unswept = _task("9", "CI-9 · infra: CI failing", notes="look into this")
-    template = _task("5", "MINI-5 · TEMPLATE — do not work", notes="x")
+    template = _task("5", "TASK-5 · TEMPLATE — do not work", notes="x")
     board = FakeBoard([held, asked, waits, OPEN_BLOCKER, new, unswept, template])
     store = FakeRecords(
         stored={
@@ -1357,11 +1357,11 @@ def test_a_task_held_with_nobody_asked_is_counted_and_named(
     )
     _sweep_sending(store, board, monkeypatch, "5")
 
-    assert [j.task.name for j in store.jobs] == ["MINI-8 · New"]
+    assert [j.task.name for j in store.jobs] == ["TASK-8 · New"]
     ((args, kwargs),) = _no_outbound_reports
     assert kwargs["held_without_questions"] == 1
     assert (
-        "task newly held with nobody asked\n  [MINI-2 · Held](https://board/2)"
+        "task newly held with nobody asked\n  [TASK-2 · Held](https://board/2)"
     ) in kwargs["text"]
     # Named, but not a problem with the run.
     assert args[1] == "SUCCESS" and kwargs["notable"] is True
@@ -1378,7 +1378,7 @@ def test_the_sweep_keeps_executors_in_step_before_it_judges_the_board(
 ) -> None:
     monkeypatch.setenv("GROOM_AUTO_READY", "true")
     tagged = dataclasses.replace(
-        _task("2", "MINI-2 · Rotate", section="Blocked"),
+        _task("2", "TASK-2 · Rotate", section="Blocked"),
         tag_names=("person",),
         html_notes=f"<body>{READY}</body>",
     )
@@ -1446,13 +1446,13 @@ def test_a_report_with_moves_has_moved_board_and_no_glued_counters(
     )
     ((_, kwargs),) = _no_outbound_reports
     text = _rendered(kwargs)
-    assert "Moved\n  ~ [Ready: MINI-1 · Ready idea](https://board/1)" in text
+    assert "Moved\n  ~ [Ready: TASK-1 · Ready idea](https://board/1)" in text
     board_section = text[text.index("\nBoard\n") :]
     assert "  4 tasks checked\n" in board_section
     assert "  returned from Ready, 30 days: 3 of 40 (8%)" in board_section
     assert "=" not in text.replace("(version=", "")
     for line in text.splitlines():
-        if "MINI-1 · Ready idea" in line:
+        if "TASK-1 · Ready idea" in line:
             assert "tasks checked" not in line
     # The names posted to the API are as they were.
     assert kwargs["tasks_checked"] == 4
@@ -1501,10 +1501,10 @@ def test_the_agent_section_lists_spend_and_skips_one_a_line(
     monkeypatch.setenv("AGENT_DRY_RUN", "true")
     board = FakeBoard(
         [
-            _task("1", "MINI-1 · Ready", section="Ready"),
+            _task("1", "TASK-1 · Ready", section="Ready"),
             _task(
                 "2",
-                "MINI-2 · Medium",
+                "TASK-2 · Medium",
                 notes=READY.replace("Effort: S", "Effort: M"),
                 section="Ready",
             ),

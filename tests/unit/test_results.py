@@ -35,7 +35,7 @@ def _run(status: str = "succeeded", **changes) -> AgentRun:
     data = {
         "id": RUN_ID,
         "task_gid": "1",
-        "task_id": "MINI-1",
+        "task_id": "TASK-1",
         "repository": "watcher-cog",
         "model": "claude-sonnet-5-5",
         "status": status,
@@ -88,7 +88,7 @@ def _board(section: str = "s-progress", *, completed: bool = False) -> FakeBoard
     return FakeBoard(
         AsanaTaskRecord(
             gid="1",
-            name="MINI-1 · Fix the watcher",
+            name="TASK-1 · Fix the watcher",
             notes=NOTES,
             completed=completed,
             section_gid=section,
@@ -219,7 +219,7 @@ def _records(task: AsanaTaskRecord | None) -> FakeRecords:
     store.record_grooming(
         GroomingRecordWrite(
             task_gid=task.gid,
-            task_id="MINI-1",
+            task_id="TASK-1",
             fingerprint=fingerprint(task),
             outcome="ready",
             moved_to_ready_at=MOVED_TO_READY,

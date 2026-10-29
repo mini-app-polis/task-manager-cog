@@ -120,10 +120,12 @@ class Change:
 
     @property
     def wrote_line(self) -> bool:
+        """Whether the change writes the ``Executor:`` line into the body."""
         return self.body is not None
 
     @property
     def any(self) -> bool:
+        """Whether the change does anything to the task at all."""
         return bool(
             self.wrote_line
             or self.tagged
@@ -174,11 +176,25 @@ def plan(task: AsanaTaskRecord) -> Change:
 class ExecutorBoard(Protocol):
     """The board methods keeping executors in step needs (a Board)."""
 
-    def update_body(self, task_gid: str, html_notes: str) -> None: ...
-    def tag(self, task_gid: str, tag_name: str) -> None: ...
-    def untag(self, task_gid: str, tag_name: str) -> None: ...
-    def assign(self, task_gid: str) -> None: ...
-    def unassign(self, task_gid: str) -> None: ...
+    def update_body(self, task_gid: str, html_notes: str) -> None:
+        """Rewrite a task's body, leaving its name alone."""
+        ...
+
+    def tag(self, task_gid: str, tag_name: str) -> None:
+        """Put a tag on a task."""
+        ...
+
+    def untag(self, task_gid: str, tag_name: str) -> None:
+        """Take a tag off a task."""
+        ...
+
+    def assign(self, task_gid: str) -> None:
+        """Assign a task to the owner."""
+        ...
+
+    def unassign(self, task_gid: str) -> None:
+        """Leave a task assigned to no one."""
+        ...
 
 
 def apply(board: ExecutorBoard, change: Change) -> None:

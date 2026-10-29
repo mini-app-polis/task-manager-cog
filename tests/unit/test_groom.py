@@ -7,6 +7,7 @@ import pytest
 from mini_app_polis.api.contract import GroomingProposal, GroomingRecord
 
 from task_manager_cog.groom import (
+    MANUAL_PREFIX,
     NOT_READY_PREFIX,
     ORIGINAL_MARKER,
     apply_proposal,
@@ -76,13 +77,13 @@ def test_the_text_fills_the_template_and_keeps_the_original_below() -> None:
 
 def test_a_second_grooming_keeps_the_first_original() -> None:
     block, body = groomed_text(VAGUE, _proposal())
-    once = _task("7", "MINI-9 · Pin", notes=f"{block}\n\n{body}")
+    once = _task("7", "TASK-9 · Pin", notes=f"{block}\n\n{body}")
     _, again = groomed_text(once, _proposal(once, body="Second reading."))
     assert again == f"Second reading.\n\n{ORIGINAL_MARKER}\nubuntu-latest is moving"
 
 
 def test_what_the_proposal_leaves_out_keeps_the_tasks_own_value() -> None:
-    task = _task("7", "MINI-9 · Pin")  # the ready template, from test_sweep
+    task = _task("7", "TASK-9 · Pin")  # the ready template, from test_sweep
     block, body = groomed_text(
         task, _proposal(task, where=None, effort=None, body=None)
     )
@@ -95,13 +96,13 @@ def test_a_ready_proposal_lands_in_ready_with_an_id(
     production, monkeypatch: pytest.MonkeyPatch, _no_outbound_reports
 ) -> None:
     monkeypatch.setenv("GROOM_AUTO_READY", "true")
-    board = FakeBoard([VAGUE, _task("1", "MINI-41 · Other")])
+    board = FakeBoard([VAGUE, _task("1", f"{MANUAL_PREFIX}-41 · Other")])
     store = FakeRecords()
     _apply(_proposal(), board, store)
 
     task = board.get("7")
     assert task is not None
-    assert task.name == "MINI-42 · Pin runners to ubuntu-24.04"
+    assert task.name == f"{MANUAL_PREFIX}-42 · Pin runners to ubuntu-24.04"
     assert task.section_name == "Ready"
     record = store.stored["7"]
     assert record.outcome == "ready"

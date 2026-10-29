@@ -13,7 +13,7 @@ of the task as it was sent. If the task has changed since, the proposal is
 not applied: the next sweep sees the change and sends the task again.
 
 **What changes.** The name becomes ``<id> · <title>``; a task without an id
-takes the next ``MINI-`` id. The template block is filled from the
+takes the next :data:`MANUAL_PREFIX` id. The template block is filled from the
 proposal, keeping the task's own value for any part the proposal left out,
 and its PR line. The proposal's body follows, and then the task's original
 text under :data:`ORIGINAL_MARKER`, added the first time only, so a task

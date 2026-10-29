@@ -8,6 +8,7 @@ import pytest
 
 from task_manager_cog import worker
 from task_manager_cog.compose import ComposedTask
+from task_manager_cog.sources import SOURCES
 
 
 @dataclass
@@ -139,7 +140,7 @@ def test_a_sweep_message_runs_the_sweep(monkeypatch: pytest.MonkeyPatch) -> None
 
 
 def test_a_minted_source_gets_the_next_id(production: None) -> None:
-    board = FakeBoard(existing_names=["VN-3 · old", "MINI-90 · manual"])
+    board = FakeBoard(existing_names=["VN-3 · old", "TASK-90 · manual"])
     _run(_body(), board)
     name, task, external_id = board.created[0]
     assert name == "VN-4 · Call the venue"
@@ -148,7 +149,7 @@ def test_a_minted_source_gets_the_next_id(production: None) -> None:
 
 
 def test_a_due_secret_rotation_gets_the_next_rot_id(production: None) -> None:
-    board = FakeBoard(existing_names=["ROT-2 · old", "MINI-90 · manual"])
+    board = FakeBoard(existing_names=["ROT-2 · old", "TASK-90 · manual"])
     _run(
         _body(
             source="secret-rotation",
@@ -163,10 +164,14 @@ def test_a_due_secret_rotation_gets_the_next_rot_id(production: None) -> None:
     assert external_id == "secret-rotation.prd.BREVO_API_KEY.2026-10"
 
 
+#: The id prefix the manual source mints.
+MANUAL = SOURCES["manual"].prefix
+
+
 def test_a_task_filed_by_hand_gets_the_next_mini_id_in_the_template(
     production: None,
 ) -> None:
-    board = FakeBoard(existing_names=["MINI-489 · old", "VN-9 · voice"])
+    board = FakeBoard(existing_names=[f"{MANUAL}-489 · old", "VN-9 · voice"])
     body = _body(
         source="manual",
         external_id="manual.split-the-vault",
@@ -185,7 +190,7 @@ def test_a_task_filed_by_hand_gets_the_next_mini_id_in_the_template(
 
     assert len(board.created) == 1
     name, task, external_id = board.created[0]
-    assert name == "MINI-490 · Split the vault"
+    assert name == f"{MANUAL}-490 · Split the vault"
     assert external_id == "manual.split-the-vault"
     assert task.tag_names == ("cowork",)
     assert "Done when: two projects exist\nWhere: infra" in task.html_notes
@@ -333,7 +338,7 @@ def _agent_result(**changes: Any) -> str:
     payload: dict[str, Any] = {
         "id": "0b6f7f5e-3c1a-4c8e-9a51-6f0c2f3d4e5a",
         "task_gid": "1",
-        "task_id": "MINI-1",
+        "task_id": "TASK-1",
         "repository": "watcher-cog",
         "model": "claude-sonnet-5-5",
         "status": "failed",

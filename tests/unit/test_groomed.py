@@ -10,9 +10,9 @@ from task_manager_cog.sweep import assess, sweep
 
 from .test_sweep import REPOS, FakeBoard, FakeRecords, _task
 
-READY_TASK = _task("1", "MINI-1 · Ready by hand", section="Refining")
-VAGUE_TASK = _task("2", "MINI-2 · Still vague", notes="look into this")
-DONE_TASK = _task("3", "MINI-3 · Finished", completed=True)
+READY_TASK = _task("1", "TASK-1 · Ready by hand", section="Refining")
+VAGUE_TASK = _task("2", "TASK-2 · Still vague", notes="look into this")
+DONE_TASK = _task("3", "TASK-3 · Finished", completed=True)
 
 
 def _record(store: FakeRecords, gids: list[str], *, write: bool = True) -> list[str]:
@@ -51,7 +51,7 @@ def test_open_questions_are_cleared_and_the_count_kept() -> None:
     store = FakeRecords()
     store.stored["1"] = GroomingRecord(
         task_gid="1",
-        task_id="MINI-1",
+        task_id="TASK-1",
         fingerprint="a" * 64,
         outcome="questions",
         returned_count=2,
@@ -62,7 +62,7 @@ def test_open_questions_are_cleared_and_the_count_kept() -> None:
     record = store.stored["1"]
     assert record.outcome == "ready"
     assert record.returned_count == 2
-    # The sweep no longer holds it for questions, and moves it to Ready.
+    # The sweep does not hold it for questions now, and moves it to Ready.
     (verdict,) = assess(
         [READY_TASK], swept=("Refining",), repos=REPOS, records=store.stored
     )

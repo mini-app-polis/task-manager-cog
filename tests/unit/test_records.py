@@ -23,7 +23,7 @@ NOW = dt.datetime(2026, 10, 21, 20, tzinfo=dt.UTC)
 def _task(**overrides) -> AsanaTaskRecord:
     base = {
         "gid": "42",
-        "name": "MINI-9 · Discord commands",
+        "name": "TASK-9 · Discord commands",
         "notes": "Done when:",
         "completed": False,
         "section_gid": "s1",
@@ -37,7 +37,7 @@ def _task(**overrides) -> AsanaTaskRecord:
 def _stored(task: AsanaTaskRecord, **overrides) -> GroomingRecord:
     base = {
         "task_gid": task.gid,
-        "task_id": "MINI-9",
+        "task_id": "TASK-9",
         "fingerprint": fingerprint(task),
         "outcome": "not_ready",
         "problems": ["Effort is blank, not S, M or L"],
@@ -53,7 +53,7 @@ def test_the_fingerprint_follows_content_not_column_or_tag_order() -> None:
         _task(section_name="Blocked", section_gid="s3", tag_names=("a", "B"))
     )
     assert fingerprint(task) != fingerprint(_task(notes="Done when: shipped"))
-    assert fingerprint(task) != fingerprint(_task(name="MINI-9 · Discord"))
+    assert fingerprint(task) != fingerprint(_task(name="TASK-9 · Discord"))
     assert fingerprint(task) != fingerprint(_task(tag_names=("a",)))
 
 
@@ -67,7 +67,7 @@ def test_a_task_with_no_record_is_changed() -> None:
 def test_a_first_record_carries_the_verdict() -> None:
     record = next_record(_task(), ("Done when is blank",), None, moved_at=None)
     assert record is not None
-    assert record.task_id == "MINI-9"
+    assert record.task_id == "TASK-9"
     assert record.outcome == "not_ready"
     assert record.problems == ["Done when is blank"]
     assert record.returned_count == 0
