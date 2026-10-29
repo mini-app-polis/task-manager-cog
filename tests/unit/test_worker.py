@@ -163,6 +163,36 @@ def test_a_due_secret_rotation_gets_the_next_rot_id(production: None) -> None:
     assert external_id == "secret-rotation.prd.BREVO_API_KEY.2026-10"
 
 
+def test_a_task_filed_by_hand_gets_the_next_mini_id_in_the_template(
+    production: None,
+) -> None:
+    board = FakeBoard(existing_names=["MINI-489 · old", "VN-9 · voice"])
+    body = _body(
+        source="manual",
+        external_id="manual.split-the-vault",
+        draft={
+            "title": "Split the vault",
+            "where": "infra",
+            "done_when": "two projects exist",
+            "constraints": "None",
+            "effort": "M",
+            "body": "Why it matters.",
+            "labels": ["cowork"],
+        },
+    )
+    _run(body, board)
+    _run(body, board)  # filed again: nothing new
+
+    assert len(board.created) == 1
+    name, task, external_id = board.created[0]
+    assert name == "MINI-490 · Split the vault"
+    assert external_id == "manual.split-the-vault"
+    assert task.tag_names == ("cowork",)
+    assert "Done when: two projects exist\nWhere: infra" in task.html_notes
+    assert "Effort: M" in task.html_notes
+    assert "\nExecutor: cowork" in task.html_notes
+
+
 def test_a_given_id_source_keeps_its_id_and_mints_nothing(production: None) -> None:
     board = FakeBoard(existing_names=["VN-3 · old"])
     _run(

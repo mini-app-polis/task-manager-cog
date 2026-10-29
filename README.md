@@ -366,6 +366,12 @@ is refused.
 |----------------|---------------------|-------------|
 | `voicenote`    | `VN-<n>`            | yes         |
 | `github-issue` | `<repo>#<n>`        | no          |
+| `manual`       | `MINI-<n>`          | yes         |
+
+A `manual` task is one filed by hand from a working session, through
+common-python-utils' `file-task` command as the `claude-session` machine.
+Its key is `manual.<key>`, so filing it again creates nothing new, and who
+works it comes from the draft's labels into its `Executor:` line.
 
 `src/task_manager_cog/sources.py` is the table; the request contract in
 common-python-utils (`mini_app_polis.api.contract.TaskCreateRequest`) is the

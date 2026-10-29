@@ -715,7 +715,9 @@ def test_run_sweep_names_each_task_moved_to_blocked(
         records_factory=lambda: FakeRecords(),
     )
     ((_, kwargs),) = _no_outbound_reports
-    assert "task moved to Blocked: [MINI-6 · Waits](https://board/6)" in kwargs["text"]
+    assert (
+        "task moved to Blocked\n  ~ [MINI-6 · Waits](https://board/6)" in kwargs["text"]
+    )
 
 
 def test_run_sweep_counts_tasks_it_would_move_to_blocked(
@@ -1349,14 +1351,9 @@ def test_a_task_held_with_nobody_asked_is_counted_and_named(
     assert [j.task.name for j in store.jobs] == ["MINI-8 · New"]
     ((args, kwargs),) = _no_outbound_reports
     assert kwargs["held_without_questions"] == 1
-    (line,) = [
-        line
-        for line in kwargs["text"].splitlines()
-        if line.startswith("task newly held with nobody asked")
-    ]
-    assert line == (
-        "task newly held with nobody asked: [MINI-2 · Held](https://board/2)"
-    )
+    assert (
+        "task newly held with nobody asked\n  [MINI-2 · Held](https://board/2)"
+    ) in kwargs["text"]
     # Named, but not a problem with the run.
     assert args[1] == "SUCCESS" and kwargs["notable"] is True
     assert sweep_mod.HELD in store.stored["2"].problems

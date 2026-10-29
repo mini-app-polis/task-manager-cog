@@ -160,7 +160,7 @@ def test_a_dry_run_split_posts_a_run_report(
     ((args, kwargs),) = _no_outbound_reports
     assert args[:2] == ("apply-grooming", "SUCCESS")
     assert kwargs["notable"] is True
-    assert "split proposed (dry run): [MINI-140 children=2]" in kwargs["text"]
+    assert "split proposed (dry run)\n  ~ [MINI-140 children=2]" in kwargs["text"]
     assert kwargs["cost_usd"] == "0.0900"
     assert kwargs["children_proposed"] == 2
 
