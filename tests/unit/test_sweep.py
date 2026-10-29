@@ -104,6 +104,16 @@ class FakeBoard:
         text = html_notes.removeprefix("<body>").removesuffix("</body>")
         self._replace(task_gid, name=name, notes=html.unescape(text))
 
+    def update_body(self, task_gid: str, html_notes: str) -> None:
+        text = html_notes.removeprefix("<body>").removesuffix("</body>")
+        self._replace(task_gid, notes=html.unescape(text), html_notes=html_notes)
+
+    def assign(self, task_gid: str) -> None:
+        self._replace(task_gid, assignee_gid="owner")
+
+    def unassign(self, task_gid: str) -> None:
+        self._replace(task_gid, assignee_gid=None)
+
     def tag(self, task_gid: str, tag_name: str) -> None:
         self.tagged.append((task_gid, tag_name))
         task = self.get(task_gid)
@@ -1355,3 +1365,27 @@ def test_a_task_held_with_nobody_asked_is_counted_and_named(
     assert board.comments("2") == []
     assert board.get("2") == held
     assert store.stored["2"].groomed_fingerprint == fingerprint(held)
+
+
+def test_the_sweep_keeps_executors_in_step_before_it_judges_the_board(
+    production, monkeypatch: pytest.MonkeyPatch, _no_outbound_reports
+) -> None:
+    monkeypatch.setenv("GROOM_AUTO_READY", "true")
+    tagged = dataclasses.replace(
+        _task("2", "MINI-2 · Rotate", section="Blocked"),
+        tag_names=("person",),
+        html_notes=f"<body>{READY}</body>",
+    )
+    board = FakeBoard([tagged])
+    store = FakeRecords(stored={"2": _groomed(tagged)})
+
+    _sweep_sending(store, board, monkeypatch, "5")
+
+    task = board.get("2")
+    assert task is not None
+    assert "\nExecutor: person\n" in task.notes
+    assert task.assignee_gid == "owner"
+    assert store.jobs == []  # writing the line is not a change to groom
+    (args, kwargs), *_ = _no_outbound_reports
+    assert "executor kept in step" in kwargs["text"]
+    assert "Executor: person written, assigned to the owner" in kwargs["text"]

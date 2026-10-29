@@ -1,7 +1,7 @@
 """Turning a source's draft into the task's title, body and tags.
 
 What happens here is the same for every source, which is why it happens in
-one place: the board's six-line template block heads every task, so a
+one place: the board's template block heads every task, so a
 groomer fills the blanks in place whatever the task came from.
 
 Everything the draft carries is escaped on the way in. Asana's
@@ -18,11 +18,15 @@ from datetime import date
 from mini_app_polis.api.contract import TaskDraft
 from mini_app_polis.asana import escape_rich_text, link, rich_text_body
 
+from .executor import AGENT, tagged_executor
+
 #: The board's template, in order. A source fills the fields it knows:
 #: ``Where`` usually, and ``Done when``, ``Constraints`` and ``Effort`` when
 #: it detected the problem itself. The rest are emitted blank, because a
 #: blank line is a prompt to fill it and a missing one is a card that does
 #: not match the board. ``PR`` and ``Blocked by`` are never a source's.
+#: ``Executor`` says who works the task (executor.py); a source sets it
+#: through its labels.
 TEMPLATE_FIELDS: tuple[str, ...] = (
     "Done when",
     "Where",
@@ -30,6 +34,7 @@ TEMPLATE_FIELDS: tuple[str, ...] = (
     "Effort",
     "PR",
     "Blocked by",
+    "Executor",
 )
 
 #: Applied when the draft asks for review, or has no title to go by.
@@ -61,12 +66,13 @@ def _one_line(value: str | None) -> str | None:
     return text or None
 
 
-def _template_block(draft: TaskDraft) -> str:
+def _template_block(draft: TaskDraft, executor: str) -> str:
     values = {
         "Done when": _one_line(draft.done_when),
         "Where": _one_line(draft.where),
         "Constraints": _one_line(draft.constraints),
         "Effort": draft.effort,
+        "Executor": executor,
     }
     lines = []
     for label in TEMPLATE_FIELDS:
@@ -85,16 +91,6 @@ def compose(draft: TaskDraft) -> ComposedTask:
     title = draft.title.strip()
     needs_review = draft.needs_review or not title
 
-    parts = [_template_block(draft)]
-    if draft.body and draft.body.strip():
-        parts.append(escape_rich_text(draft.body.strip()))
-    for section in draft.sections:
-        parts.append(_section(section.label, escape_rich_text(section.text)))
-    if draft.links:
-        parts.append(
-            _section("Links", "\n".join(link(x.url, x.text) for x in draft.links))
-        )
-
     if needs_review:
         tags: tuple[str, ...] = (REVIEW_TAG,)
     else:
@@ -103,6 +99,16 @@ def compose(draft: TaskDraft) -> ComposedTask:
         for label in draft.labels:
             seen.setdefault(label.strip().lower(), None)
         tags = tuple(seen)
+
+    parts = [_template_block(draft, tagged_executor(draft.labels) or AGENT)]
+    if draft.body and draft.body.strip():
+        parts.append(escape_rich_text(draft.body.strip()))
+    for section in draft.sections:
+        parts.append(_section(section.label, escape_rich_text(section.text)))
+    if draft.links:
+        parts.append(
+            _section("Links", "\n".join(link(x.url, x.text) for x in draft.links))
+        )
 
     return ComposedTask(
         title=title or EMPTY_TITLE_FALLBACK,

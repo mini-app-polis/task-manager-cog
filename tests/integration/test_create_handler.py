@@ -47,9 +47,12 @@ def test_a_job_puts_one_composed_task_on_the_board(
     # a prefix this cog does not own.
     assert created["name"] == "VN-4 · Call the venue"
     assert created["external"] == {"gid": "voicenote.file-1"}
-    assert created["assignee"] == "me"
+    # No executor label: the agent's until grooming says otherwise, and so
+    # assigned to no one (executor.py).
+    assert "assignee" not in created
     # The board's template heads the body, so a groomer fills it in place.
     assert created["html_notes"].startswith("<body>Done when:\nWhere:\n")
+    assert "\nExecutor: agent" in created["html_notes"]
     # Placed in the inbox column by the create itself, not by a second call.
     gid = next(g for g, t in asana.tasks.items() if t["name"] == created["name"])
     assert asana.section_of(gid) == INBOX_SECTION

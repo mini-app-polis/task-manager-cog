@@ -112,6 +112,7 @@ from mini_app_polis.environment import Effect, effect_enabled
 from mini_app_polis.pipeline_status import run_report
 
 from . import dispatch as agent
+from . import executor
 from ._version import __version__
 from .board import Board
 from .github import AgentApp
@@ -662,6 +663,16 @@ def run_sweep(
         board = (board_factory or Board.from_env)()
         store = records_factory()
         records = {r.task_gid: r for r in store.list_groomings()}
+
+        # Executor lines, tags and assignments first, so what follows reads
+        # the board as it will stay. With moving off, only reported.
+        stepped = executor.keep_in_step(board, board.tasks(), write=auto_ready())
+        for change in stepped:
+            report.updated(
+                "executor kept in step" if auto_ready() else "executor out of step",
+                f"{change.task.name}: {change.describe()}",
+                link=board.url(change.task.gid),
+            )
 
         def send(job: GroomingJobRequest) -> bool:
             try:

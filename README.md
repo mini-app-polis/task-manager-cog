@@ -89,9 +89,10 @@ linter (`lint.py`) checks what can be checked without a model:
 | Effort | `S`, `M` or `L`. An `L` task is ready: its implementation creates its subtasks. |
 | PR | Blank. It belongs to whoever works the task. |
 | Blocked by | Blank, `None`, or only tasks that are done and dates (`YYYY-MM-DD`, a UTC day) that have come. A task can wait on a date alone, beside task ids, or both. Before the date it is not ready (`Blocked until <date>`) and is not sent for grooming; it moves to Ready on the first sweep on or after it. A date written any other way is a problem of its own. |
+| Executor | Not checked yet: the sweep writes the line on every task first (see Who does a task). |
 | Tags | No `review` tag. |
 | Body | Says why, and links what is needed. No open-questions section (a line starting with one of `OPEN_SECTION_HEADS` in `lint.py`, such as `Open questions:`) lists anything: empty or remove it once it is decided. The author's original text, from the `Before grooming:` line on, is not checked. |
-| Shape | With `GROOM_TASK_SHAPES=true`: a **leaf** (Where names at most one repository, and at most one executor tag; only a `cowork` or `person` task may name none) or a **compound** task (Done when opens with its children's ids, "… are done", and Blocked by lists every one of them). Off until splitting is in place, so the existing board is not judged against it first. |
+| Shape | With `GROOM_TASK_SHAPES=true`: a **leaf** (Where names at most one repository, and one executor: its `Executor:` line, or at most one executor tag; only a `cowork` or `person` task may name none) or a **compound** task (Done when opens with its children's ids, "… are done", and Blocked by lists every one of them). Off until splitting is in place, so the existing board is not judged against it first. |
 | Grooming questions | None unanswered. A task whose last grooming asked questions waits until a grooming answers them, even if its template is complete. A task that passes everything else is also held while its last `Grooming questions:` comment or reported split, from anyone, has no comment after it; it waits for its owner and is not sent for grooming (`waiting_on_owner` in the run report). Comments are read only for such a task. |
 
 A task whose only problems are blockers (a task in Blocked by that is not
@@ -131,21 +132,41 @@ tell whether ready meant ready.
 
 ## Who does a task
 
-A task's executor is a tag on it, named in the shared contract
-(`mini_app_polis.api.contract.GroomingExecutor`):
+A task's executor is its `Executor:` line, the last line of the template
+block, after `Blocked by` (`executor.py`). The values are `agent` and the
+shared contract's executors (`mini_app_polis.api.contract.GroomingExecutor`):
 
-| Tag | Executor |
-|---|---|
-| none | the agent: a headless run with only the task and the repositories it names |
-| `cowork` | a working session with Kaiano: his repositories, the board, Railway, his machine, his decisions |
-| `person` | Kaiano alone: consoles behind his login, accounts, physical checks |
+| Executor | Who | Tag | Assigned |
+|---|---|---|---|
+| `agent` | a headless run with only the task and the repositories it names | none | no one |
+| `cowork` | a working session with Kaiano: his repositories, the board, Railway, his machine, his decisions | `cowork` | Kaiano |
+| `person` | Kaiano alone: consoles behind his login, accounts, physical checks | `person` | Kaiano |
 
-A tag never blocks: a tagged task is held to the definition of ready like
-any other and moves to Ready when it passes. Dispatch takes only untagged
-tasks, and counts each tagged task it passes over in the run report
-(`agent_skipped_executor_cowork`, `agent_skipped_executor_person`). The
-groomer proposes an executor for an untagged task the agent cannot do, and
-grooming applies it as a tag; a tag a task already has is never replaced.
+The line is the source of truth, because anyone who writes a task's body
+can set it: a working session, the groomer, a source. The tag and the
+assignment follow from it, and this cog is their only writer. Every sweep,
+before it judges the board, brings up to `STEP_LIMIT` open tasks into step:
+
+- a task with no line gets one, written from its tag (no tag is `agent`),
+  into its rich body so its formatting survives;
+- the executor tag is added or removed to match the line;
+- a `cowork` or `person` task is assigned to Kaiano, an `agent` task to no
+  one.
+
+Each change is named in the run report (`executor kept in step`; with
+`GROOM_AUTO_READY` off, `executor out of step`, and nothing is written).
+None of it counts as a change to the task: the grooming fingerprint leaves
+the line out and counts the executor once, so a task is not groomed again
+for it. A line that names no executor is left for the writer to fix.
+
+An executor never blocks: a cowork or person task is held to the definition
+of ready like any other and moves to Ready when it passes. Dispatch takes
+only `agent` tasks, and counts each other task it passes over in the run
+report (`agent_skipped_executor_cowork`, `agent_skipped_executor_person`).
+The groomer proposes an executor for a task the agent cannot do, and
+grooming writes it into the line; an executor a task already has is never
+replaced. A task this cog creates gets its line from its source's labels,
+and is assigned only when it is a cowork or person task.
 
 ## Grooming
 
@@ -184,7 +205,8 @@ it was made for:
   proposal's body follows, then the task's original text under
   `Before grooming:`, added the first time only.
 - The `review` tag comes off.
-- A proposed executor goes on as a tag, unless the task already has one.
+- A proposed executor goes into the `Executor:` line (and on as a tag),
+  unless the task already has one.
 - With questions, they are posted as one comment starting
   `Grooming questions:` and the task moves to Refining. **Answer in a
   comment:** the answers become part of the task's content, so the next
@@ -269,7 +291,8 @@ After grooming, the sweep takes Ready tasks in board order that:
 
 - are not the template task nor a detected problem (`CI-`, `RUN-`, `CONF-`,
   `API-`);
-- have no executor tag (`cowork`, `person`);
+- are `agent` tasks (their `Executor:` line, or with no line, no executor
+  tag);
 - are Effort `S`: larger tasks are left for a person;
 - name exactly one repository in Where, and that repository has the agent
   caller (`AGENT_WORKFLOW`) with the agent GitHub App installed. The
