@@ -7,8 +7,9 @@ truth because anyone who can write a task's body can set it: a working
 session, the groomer, a source filing a task. Tags and assignments are
 derived from it, and this cog is the only thing that writes them:
 
-- a cowork or person task carries that tag and is assigned to the owner;
-- an agent task carries neither executor tag and is assigned to no one.
+- a cowork or person task carries that tag; an agent task carries neither;
+- every task is assigned to the owner, whoever does the work: the owner
+  owns every task on the board.
 
 A task written before the line existed has none. Its executor is what its
 tag says (no tag is the agent), and the sweep writes that into the body, so
@@ -116,7 +117,6 @@ class Change:
     tagged: list[str] = field(default_factory=list)
     untagged: list[str] = field(default_factory=list)
     assigned: bool = False
-    unassigned: bool = False
 
     @property
     def wrote_line(self) -> bool:
@@ -126,13 +126,7 @@ class Change:
     @property
     def any(self) -> bool:
         """Whether the change does anything to the task at all."""
-        return bool(
-            self.wrote_line
-            or self.tagged
-            or self.untagged
-            or self.assigned
-            or self.unassigned
-        )
+        return bool(self.wrote_line or self.tagged or self.untagged or self.assigned)
 
     def describe(self) -> str:
         """One line naming what changed, for the run report."""
@@ -143,8 +137,6 @@ class Change:
         parts.extend(f"untagged {t}" for t in self.untagged)
         if self.assigned:
             parts.append("assigned to the owner")
-        if self.unassigned:
-            parts.append("unassigned")
         return ", ".join(parts)
 
 
@@ -166,10 +158,8 @@ def plan(task: AsanaTaskRecord) -> Change:
             change.tagged.append(tag)
         elif tag != executor and tag in have:
             change.untagged.append(tag)
-    if executor in TAGGED and task.assignee_gid is None:
+    if task.assignee_gid is None:
         change.assigned = True
-    elif executor == AGENT and task.assignee_gid is not None:
-        change.unassigned = True
     return change
 
 
@@ -192,10 +182,6 @@ class ExecutorBoard(Protocol):
         """Assign a task to the owner."""
         ...
 
-    def unassign(self, task_gid: str) -> None:
-        """Leave a task assigned to no one."""
-        ...
-
 
 def apply(board: ExecutorBoard, change: Change) -> None:
     """Make the board match ``change``."""
@@ -208,8 +194,6 @@ def apply(board: ExecutorBoard, change: Change) -> None:
         board.untag(task.gid, tag)
     if change.assigned:
         board.assign(task.gid)
-    if change.unassigned:
-        board.unassign(task.gid)
 
 
 #: The most tasks one sweep brings into step. The first sweep after the line

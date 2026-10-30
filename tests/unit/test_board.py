@@ -44,7 +44,7 @@ def test_from_env_reads_the_section_as_optional(
     assert (board.project_gid, board.section_gid) == ("proj", None)
 
 
-def test_create_places_and_tags_best_effort_and_leaves_an_agent_task_unassigned() -> (
+def test_create_places_and_tags_best_effort_and_assigns_an_agent_task_to_the_owner() -> (
     None
 ):
     client = FakeClient(failing_tags=("broken",))
@@ -59,7 +59,7 @@ def test_create_places_and_tags_best_effort_and_leaves_an_agent_task_unassigned(
     sent = client.created[0]
     assert sent.name == "VN-2 · t"
     assert sent.section_gid == "col"
-    assert sent.assignee is None
+    assert sent.assignee == "me"
     assert sent.tag_gids == ("tag-venue",)
     assert sent.external_id == "voicenote.f"
     assert sent.due_on == date(2026, 10, 20)
@@ -86,11 +86,9 @@ def test_body_and_assignment_updates_go_through_the_client() -> None:
     board = Board(UpdateClient(), project_gid="p", section_gid=None)  # type: ignore[arg-type]
     board.update_body("t1", "<body>y</body>")
     board.assign("t1")
-    board.unassign("t1")
     assert calls == [
         ("t1", {"html_notes": "<body>y</body>"}),
         ("t1", {"assignee": "me"}),
-        ("t1", {"unassign": True}),
     ]
 
 

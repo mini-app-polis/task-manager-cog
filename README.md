@@ -148,7 +148,7 @@ shared contract's executors (`mini_app_polis.api.contract.GroomingExecutor`):
 
 | Executor | Who | Tag | Assigned |
 |---|---|---|---|
-| `agent` | a headless run with only the task and the repositories it names | none | no one |
+| `agent` | a headless run with only the task and the repositories it names | none | Kaiano |
 | `cowork` | a working session with Kaiano: his repositories, the board, Railway, his machine, his decisions | `cowork` | Kaiano |
 | `person` | Kaiano alone: consoles behind his login, accounts, physical checks | `person` | Kaiano |
 
@@ -160,8 +160,8 @@ before it judges the board, brings up to `STEP_LIMIT` open tasks into step:
 - a task with no line gets one, written from its tag (no tag is `agent`),
   into its rich body so its formatting survives;
 - the executor tag is added or removed to match the line;
-- a `cowork` or `person` task is assigned to Kaiano, an `agent` task to no
-  one.
+- every task is assigned to Kaiano, whoever does the work: he owns every
+  task on the board.
 
 Each change is named in the run report (`executor kept in step`; with
 `GROOM_AUTO_READY` off, `executor out of step`, and nothing is written).
@@ -176,7 +176,7 @@ report (`agent_skipped_executor_cowork`, `agent_skipped_executor_person`).
 The groomer proposes an executor for a task the agent cannot do, and
 grooming writes it into the line; an executor a task already has is never
 replaced. A task this cog creates gets its line from its source's labels,
-and is assigned only when it is a cowork or person task.
+and is assigned to Kaiano whatever its executor.
 
 ## Grooming
 

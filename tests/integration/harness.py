@@ -224,6 +224,7 @@ class FakeAsana:
         return [
             (r"/tasks/external:(?P<external_id>.+)", "GET external", self._find),
             (r"/tasks/(?P<task>\d+)", "GET task", self._get_task),
+            (r"/tasks/(?P<task>\d+)", "PUT task", self._update_task),
             (r"/projects/(?P<project>\d+)/tasks", "GET tasks", self._list_tasks),
             (r"/projects/(?P<project>\d+)/sections", "GET sections", self._sections),
             (r"/tags", "GET tags", self._list_tags),
@@ -243,6 +244,16 @@ class FakeAsana:
     def _get_task(self, request: httpx.Request, task: str) -> httpx.Response:
         if task not in self.tasks:
             return _asana_error(404, "Unknown object")
+        return _data(self._record(self.tasks[task]))
+
+    def _update_task(self, request: httpx.Request, task: str) -> httpx.Response:
+        if task not in self.tasks:
+            return _asana_error(404, "Unknown object")
+        data = json.loads(request.content)["data"]
+        if "assignee" in data:
+            self.tasks[task]["assignee"] = data["assignee"]
+        if "html_notes" in data:
+            self.tasks[task]["notes"] = data["html_notes"]
         return _data(self._record(self.tasks[task]))
 
     def _list_tasks(self, request: httpx.Request, project: str) -> httpx.Response:
@@ -328,6 +339,7 @@ class FakeAsana:
                 }
             ],
             "tags": [{"gid": t, "name": by_gid.get(t, t)} for t in task["tag_gids"]],
+            "assignee": {"gid": task["assignee"]} if task.get("assignee") else None,
         }
 
     def _gid(self) -> str:
