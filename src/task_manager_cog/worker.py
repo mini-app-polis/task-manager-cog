@@ -128,15 +128,10 @@ class SweepJob:
 def _sweep_job(message: TaskSweepMessage) -> SweepJob:
     """The sweep a ``task.sweep`` message asks for.
 
-    The flags are read with ``getattr`` because a shared contract without
-    them on ``TaskSweepPayload`` drops them when it parses the message, which
-    leaves a scheduled sweep: never an error.
+    A message with no payload parses to one with both flags false: the
+    scheduled sweep.
     """
-    payload = message.payload
-    return SweepJob(
-        groom=bool(getattr(payload, "groom", False)),
-        agents=bool(getattr(payload, "agents", False)),
-    )
+    return SweepJob(groom=message.payload.groom, agents=message.payload.agents)
 
 
 def parse_message(

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -153,11 +152,7 @@ def test_a_sweep_with_an_empty_payload_is_a_scheduled_sweep() -> None:
 def test_a_flagged_sweep_carries_its_flags_to_the_sweep(
     monkeypatch: pytest.MonkeyPatch, groom: bool, agents: bool
 ) -> None:
-    message = TaskSweepMessage.model_construct(
-        type="task.sweep",
-        version=1,
-        payload=SimpleNamespace(groom=groom, agents=agents),
-    )
+    message = TaskSweepMessage(payload=TaskSweepPayload(groom=groom, agents=agents))
     job = worker._sweep_job(message)
     assert job == worker.SweepJob(groom=groom, agents=agents)
 
@@ -172,10 +167,6 @@ def test_a_flagged_sweep_carries_its_flags_to_the_sweep(
     assert runs == [(groom, agents)]
 
 
-@pytest.mark.skipif(
-    "groom" not in TaskSweepPayload.model_fields,
-    reason="the shared contract's TaskSweepPayload has no flags",
-)
 def test_a_flagged_sweep_message_parses_to_its_flags() -> None:
     body = json.dumps({"type": "task.sweep", "version": 1, "payload": {"groom": True}})
     assert worker.parse_message(body) == worker.SweepJob(groom=True, agents=False)
