@@ -1,3 +1,17 @@
+# [1.23.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.22.0...v1.23.0) (2026-10-30)
+
+
+### Bug Fixes
+
+* **deps:** bump miniapppolis-common-utils to 7.6.0 ([eb75635](https://github.com/mini-app-polis/task-manager-cog/commit/eb75635d53b02226290620738bf119af6daa75c3))
+* **review:** count a Handed off: comment posted just before a task moved to Review ([d66be8e](https://github.com/mini-app-polis/task-manager-cog/commit/d66be8e24cd6ca79a55bc43cafe4ad432ab026ff))
+
+
+### Features
+
+* **sweep:** honour groom/agents flags on an on-demand task.sweep and say so in the run report ([9acaeb0](https://github.com/mini-app-polis/task-manager-cog/commit/9acaeb0e2476db21a4402c1ef040b0a3bf28b1c8))
+* **sweep:** honour groom/agents flags on an on-demand task.sweep and say so in the run report ([4698072](https://github.com/mini-app-polis/task-manager-cog/commit/4698072dec4ceedfd3588963ebc1e12db39ea9b4))
+
 # [1.22.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.21.1...v1.22.0) (2026-10-30)
 
 
