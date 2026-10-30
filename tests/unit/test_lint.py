@@ -22,6 +22,7 @@ Constraints: None
 Effort: M
 PR:
 Blocked by: TASK-21
+Executor: agent
 
 Run reports already carry their severity; this reads it.
 Links: https://example.test/run?id=1"""
@@ -277,6 +278,23 @@ def test_an_executor_tag_never_makes_a_task_less_ready() -> None:
     assert _lint(tags=("person",)) == []
 
 
+def test_a_task_with_no_executor_line_is_not_ready() -> None:
+    notes = READY_NOTES.replace("Executor: agent\n", "")
+    assert _lint(notes=notes) == ["template is missing Executor"]
+    assert _lint(notes=notes, tags=("cowork",)) == ["template is missing Executor"]
+
+
+@pytest.mark.parametrize("value", ["robot", "agent, person", ""])
+def test_an_executor_line_naming_no_executor_is_not_ready(value: str) -> None:
+    problems = _lint(notes=_with("Executor", value))
+    assert problems == [f"Executor is {value or 'blank'}, not agent, cowork or person"]
+
+
+@pytest.mark.parametrize("value", ["agent", "cowork", "person", "Cowork"])
+def test_each_executor_line_is_ready(value: str) -> None:
+    assert _lint(notes=_with("Executor", value)) == []
+
+
 # ── Shapes: a leaf or a compound task ─────────────────────────────────────
 
 
@@ -320,19 +338,16 @@ def test_two_repositories_are_not_a_leaf() -> None:
     assert _lint() == []
 
 
-def test_two_executor_tags_are_not_a_leaf() -> None:
+def test_the_executor_line_decides_not_the_tags() -> None:
     notes = _notes_with(Where="infra")
-    assert _shaped(notes, tags=("cowork", "Person")) == [
-        "tagged for more than one executor (cowork, person)"
-    ]
-    assert _shaped(notes, tags=("cowork", "admin")) == []
+    assert _shaped(notes, tags=("cowork", "Person")) == []
 
 
 @pytest.mark.parametrize("where", ["", "None"])
 def test_only_a_task_for_another_executor_may_name_no_repository(where: str) -> None:
-    notes = _notes_with(Where=where)
-    assert _shaped(notes, tags=("cowork",)) == []
-    assert _shaped(notes) != []
+    notes = _notes_with(Where=where, Executor="cowork")
+    assert _shaped(notes) == []
+    assert _shaped(_notes_with(Where=where)) != []
 
 
 def test_a_compound_task_lists_every_child_in_blocked_by() -> None:
