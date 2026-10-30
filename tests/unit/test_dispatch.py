@@ -15,6 +15,7 @@ from mini_app_polis.api.contract import (
 from mini_app_polis.asana import AsanaSection, AsanaTaskRecord
 
 from task_manager_cog import dispatch as agent
+from task_manager_cog.executor import TAGGED
 
 NOW = dt.datetime(2026, 10, 23, 3, 0, tzinfo=dt.UTC)
 
@@ -343,3 +344,18 @@ def test_a_task_is_not_started_without_time_left_for_it() -> None:
 def test_without_a_deadline_time_never_stops_dispatch() -> None:
     result, *_ = _dispatch([_task("1", "TASK-1 · First")], time_left=lambda: None)
     assert len(result.dispatched) == 1 and result.skipped == {}
+
+
+def test_every_skip_reason_has_a_plain_label() -> None:
+    reasons = [
+        value
+        for name, value in vars(agent).items()
+        if name.startswith("SKIP_")
+        and isinstance(value, str)
+        and name != "SKIP_EXECUTOR"
+    ]
+    reasons += [f"{agent.SKIP_EXECUTOR}{tag}" for tag in TAGGED]
+    assert reasons
+    for reason in reasons:
+        label = agent.skip_label(reason)
+        assert reason in agent.SKIP_LABELS and "_" not in label, reason

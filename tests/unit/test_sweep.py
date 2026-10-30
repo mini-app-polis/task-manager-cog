@@ -1518,4 +1518,4 @@ def test_the_agent_section_lists_spend_and_skips_one_a_line(
     text = _rendered(kwargs)
     agent_section = text[text.index("\nAgent\n") :]
     assert "  $0.0000 spent this month\n" in agent_section + "\n"
-    assert "  1 skipped: effort not s" in agent_section
+    assert "  1 skipped: effort larger than S" in agent_section
