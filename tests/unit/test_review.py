@@ -123,6 +123,29 @@ def test_a_comment_from_before_review_is_not_a_handoff() -> None:
     assert [t.gid for t in result.missing_handoff] == ["1"]
 
 
+def test_a_handoff_posted_just_before_the_move_counts() -> None:
+    board = FakeAsanaBoard(
+        [_task()], {"1": [_comment("Handed off: PR 4", 2.1), _entered(2)]}
+    )
+    result = review(board, now=NOW)
+    assert result.missing_handoff == []
+
+
+def test_a_handoff_followed_by_another_note_before_the_move_does_not_count() -> None:
+    board = FakeAsanaBoard(
+        [_task()],
+        {
+            "1": [
+                _comment("Handed off: PR 4", 3),
+                _comment("one more thing", 2.5),
+                _entered(2),
+            ]
+        },
+    )
+    result = review(board, now=NOW)
+    assert [t.gid for t in result.missing_handoff] == ["1"]
+
+
 def test_a_task_without_landed_is_unverified_after_24_hours() -> None:
     board = FakeAsanaBoard(
         [_task()], {"1": [_entered(25), _comment("Handed off: PR 4", 24.5)]}
