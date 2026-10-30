@@ -2,7 +2,8 @@
 
 A task moved to Review carries a ``Handed off:`` comment. Whoever confirms
 the work landed (green CI on dev) posts a comment starting ``Landed:``, and
-the sweep marks the task complete. It stays in Review: the sweep never moves
+the sweep marks the task complete; for a task whose PR line names a pull
+request, the sweep posts it itself (landed.py). It stays in Review: the sweep never moves
 a task out of Review and never marks one incomplete. Only comments and the
 column are read; nothing here calls GitHub or a model.
 
@@ -94,7 +95,7 @@ def task_label(task: AsanaTaskRecord) -> str:
     return task.name if task_id_of(task.name) else f"{task.gid} · {task.name}"
 
 
-def _entered(
+def entered_review(
     task: AsanaTaskRecord, stories: Collection[AsanaStory], review_gid: str
 ) -> dt.datetime | None:
     """When the task last moved into Review, or was created when it never did."""
@@ -129,7 +130,7 @@ def review(
         if task.completed or task.section_gid != section.gid:
             continue
         stories = board.stories(task.gid)
-        entered = _entered(task, stories, section.gid)
+        entered = entered_review(task, stories, section.gid)
         comments = [
             s
             for s in stories

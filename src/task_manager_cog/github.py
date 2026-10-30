@@ -1,4 +1,4 @@
-"""Starting an agent run: the agent GitHub App, and only what dispatch needs.
+"""The agent GitHub App: starting an agent run, and reading what it landed.
 
 The agent's workflow is a caller in each repository the agent may change
 (``.github/workflows/<AGENT_WORKFLOW>``), so a repository without one is not
@@ -7,6 +7,10 @@ repository has the caller, and to start it. Each request uses a token
 minted for that one repository with only Actions access, so this cog can
 start a workflow and nothing else; pushing and opening the pull request
 happen in the workflow, with a token of the workflow's own.
+
+The Review pass (landed.py) reads a merged pull request and the workflow
+runs for its merge commit through the same App, with a token minted for the
+one repository with only read access to pull requests and Actions.
 
   AGENT_APP_CLIENT_ID    the agent App's client ID
   AGENT_APP_PRIVATE_KEY  its private key, PEM
@@ -61,6 +65,40 @@ class Workflow(BaseModel):
     """A repository's workflow, as far as it is read."""
 
     state: str = Field(description="active, or why the workflow is disabled.")
+
+
+class PullRequest(BaseModel):
+    """A pull request, as far as the Review pass reads it."""
+
+    html_url: str = Field(description="The pull request's page.")
+    merged: bool = Field(default=False, description="Whether it was merged.")
+    merge_commit_sha: str | None = Field(
+        default=None, description="The commit its merge made on the base branch."
+    )
+
+
+class WorkflowRun(BaseModel):
+    """One workflow run, as far as the Review pass reads it."""
+
+    id: int = Field(description="The run's id.")
+    name: str | None = Field(default=None, description="The workflow's name.")
+    status: str | None = Field(
+        default=None, description="queued, in_progress, completed, and so on."
+    )
+    conclusion: str | None = Field(
+        default=None, description="success, failure, cancelled, and so on."
+    )
+    html_url: str = Field(description="The run's page.")
+
+
+class WorkflowRuns(BaseModel):
+    """A page of workflow runs."""
+
+    workflow_runs: list[WorkflowRun] = Field(default_factory=list)
+
+
+#: The token the Review pass reads with: nothing it can change.
+READ_PERMISSIONS: dict[str, str] = {"pull_requests": "read", "actions": "read"}
 
 
 _M = TypeVar("_M", bound=BaseModel)
@@ -176,9 +214,11 @@ class AgentApp:
         except (ValueError, ValidationError) as exc:
             raise GitHubError(f"{what}: unexpected answer: {exc}") from exc
 
-    def _token(self, repo: str) -> str | None:
-        """A token for ``repo`` with Actions access only, or None when the
-        App is not installed there."""
+    def _token(
+        self, repo: str, permissions: dict[str, str] | None = None
+    ) -> str | None:
+        """A token for ``repo`` with only ``permissions`` (by default, Actions
+        write), or None when the App is not installed there."""
         jwt = app_jwt(self._client_id, self._private_key)
         found = self._request("GET", f"/repos/{org()}/{repo}/installation", token=jwt)
         if found.status_code == 404:
@@ -190,7 +230,10 @@ class AgentApp:
             "POST",
             f"/app/installations/{installation}/access_tokens",
             token=jwt,
-            body={"repositories": [repo], "permissions": {"actions": "write"}},
+            body={
+                "repositories": [repo],
+                "permissions": permissions or {"actions": "write"},
+            },
         )
         if minted.status_code != 201:
             raise GitHubError(f"token for {repo}: {minted.status_code}")
@@ -225,3 +268,36 @@ class AgentApp:
             raise GitHubError(
                 f"dispatch in {repo}: {started.status_code} {started.text[:200]}"
             )
+
+    def pull_request(self, repo: str, number: int) -> PullRequest | None:
+        """Pull request ``number`` in ``repo``, read-only; None when the App is
+        not installed there or the pull request is not found."""
+        token = self._token(repo, READ_PERMISSIONS)
+        if token is None:
+            return None
+        found = self._request(
+            "GET", f"/repos/{org()}/{repo}/pulls/{number}", token=token
+        )
+        if found.status_code == 404:
+            return None
+        if found.status_code != 200:
+            raise GitHubError(f"pull request {repo}#{number}: {found.status_code}")
+        return self._read(PullRequest, found, f"pull request {repo}#{number}")
+
+    def workflow_runs(
+        self, repo: str, *, head_sha: str, branch: str
+    ) -> list[WorkflowRun] | None:
+        """The workflow runs on ``branch`` for commit ``head_sha``, newest
+        first, read-only; None when the App is not installed there."""
+        token = self._token(repo, READ_PERMISSIONS)
+        if token is None:
+            return None
+        found = self._request(
+            "GET",
+            f"/repos/{org()}/{repo}/actions/runs"
+            f"?head_sha={head_sha}&branch={branch}&per_page=100",
+            token=token,
+        )
+        if found.status_code != 200:
+            raise GitHubError(f"workflow runs in {repo}: {found.status_code}")
+        return self._read(WorkflowRuns, found, f"workflow runs in {repo}").workflow_runs
