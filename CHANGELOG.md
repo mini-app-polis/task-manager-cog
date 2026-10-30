@@ -1,3 +1,10 @@
+# [1.24.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.23.0...v1.24.0) (2026-10-30)
+
+
+### Features
+
+* **sweep:** add a sweep-now workflow to ask for a sweep of the board from the Actions tab ([0ddde6d](https://github.com/mini-app-polis/task-manager-cog/commit/0ddde6d25d5d85aac226c8d7d34f07c70a59cec5))
+
 # [1.23.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.22.0...v1.23.0) (2026-10-30)
 
 
