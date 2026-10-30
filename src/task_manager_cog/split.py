@@ -1,6 +1,6 @@
 """Applying a split: a groomer's proposal that divides its task into children.
 
-A task that is neither a leaf (one repository, one executor) nor a compound
+A task that is neither a leaf (one executor; one repository for the agent) nor a compound
 task comes back from grooming with children. Each child is created on the
 board as a leaf, in the template, with its own :data:`MANUAL_PREFIX` id and executor
 tag; a child that waits on an earlier one names it in Blocked by. The task

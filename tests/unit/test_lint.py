@@ -338,6 +338,15 @@ def test_two_repositories_are_not_a_leaf() -> None:
     assert _lint() == []
 
 
+@pytest.mark.parametrize("executor", ["cowork", "person"])
+def test_a_task_for_another_executor_may_name_several_repositories(
+    executor: str,
+) -> None:
+    assert _shaped(_notes_with(Executor=executor)) == []
+    unknown = _notes_with(Where="task-manager-cog, nowhere-cog", Executor=executor)
+    assert _shaped(unknown) == ["Where names no repository called nowhere-cog"]
+
+
 def test_the_executor_line_decides_not_the_tags() -> None:
     notes = _notes_with(Where="infra")
     assert _shaped(notes, tags=("cowork", "Person")) == []

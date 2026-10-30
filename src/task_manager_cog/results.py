@@ -199,7 +199,7 @@ def apply_result(
             report.note("task was moved out of In progress; left where it is", label)
         elif succeeded:
             report.updated(
-                "draft PR opened; task in Review", task.name, link=board.url(task.gid)
+                "draft PR opened; task in Review", task.name, link=run.pr_url
             )
         else:
             report.issue(f"agent run {run.status}", label, detail=run.reason or "")

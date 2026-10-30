@@ -862,7 +862,7 @@ def _dispatch_agents(
         report.count(
             f"agent_skipped_{reason}",
             n,
-            label=f"skipped: {reason.replace('_', ' ')}",
+            label=f"skipped: {agent.skip_label(reason)}",
             section=AGENT,
         )
     for candidate, run in result.dispatched:

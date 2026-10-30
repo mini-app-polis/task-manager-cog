@@ -72,7 +72,7 @@ from mini_app_polis.api.contract import (
 from mini_app_polis.asana import AsanaSection, AsanaTaskRecord
 from mini_app_polis.deadline import remaining_seconds
 
-from .executor import AGENT, executor_of_task
+from .executor import AGENT, TAGGED, executor_of_task
 from .lint import parse, task_id_of, where_repos
 
 log = logger_mod.get_logger()
@@ -104,6 +104,23 @@ SKIP_TOO_LONG = "task_too_long"
 SKIP_OUT_OF_TIME = "out_of_time"
 #: Followed by the tag: ``executor_cowork``, ``executor_person``.
 SKIP_EXECUTOR = "executor_"
+
+#: Each skip reason in plain words, as the run report shows it.
+SKIP_LABELS: dict[str, str] = {
+    SKIP_NOT_SMALL: "effort larger than S",
+    SKIP_WHERE: "Where does not name exactly one repository",
+    SKIP_IN_FLIGHT: "repository already has a run in progress",
+    SKIP_NO_CALLER: "repository has no agent caller or App installed",
+    SKIP_MONTHLY_CAP: "monthly spend limit reached",
+    SKIP_TOO_LONG: "task too long to send to the agent",
+    SKIP_OUT_OF_TIME: "out of time this run",
+    **{f"{SKIP_EXECUTOR}{tag}": f"a {tag} task" for tag in TAGGED},
+}
+
+
+def skip_label(reason: str) -> str:
+    """How the run report words a skip reason."""
+    return SKIP_LABELS.get(reason, reason.replace("_", " "))
 
 
 class AgentRuns(Protocol):
