@@ -36,6 +36,7 @@ Constraints: None
 Effort: S
 PR:
 Blocked by:
+Executor: agent
 
 Because the plan drifted."""
 
@@ -1377,10 +1378,12 @@ def test_the_sweep_keeps_executors_in_step_before_it_judges_the_board(
     production, monkeypatch: pytest.MonkeyPatch, _no_outbound_reports
 ) -> None:
     monkeypatch.setenv("GROOM_AUTO_READY", "true")
+    no_line = READY.replace("Executor: agent\n", "")
     tagged = dataclasses.replace(
         _task("2", "TASK-2 · Rotate", section="Blocked", assignee=None),
+        notes=no_line,
         tag_names=("person",),
-        html_notes=f"<body>{READY}</body>",
+        html_notes=f"<body>{no_line}</body>",
     )
     board = FakeBoard([tagged])
     store = FakeRecords(stored={"2": _groomed(tagged)})

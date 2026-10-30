@@ -21,7 +21,7 @@ everything a task is missing.
 **Shapes.** With ``shapes`` on, a task must also be one of two shapes:
 
 - a *leaf*: Where names at most one repository, and the task has one
-  executor (its ``Executor:`` line, or at most one executor tag). Only a
+  executor (its ``Executor:`` line). Only a
   cowork or person task (board or console work) may name no repository.
 - a *compound* task: its Done when says it is done when its children are
   (``TASK-1, TASK-2 and TASK-3 are done``), and its Blocked by lists every
@@ -39,15 +39,12 @@ from typing import get_args
 from mini_app_polis.api.contract import GroomingExecutor
 
 from .compose import EMPTY_TITLE_FALLBACK, REVIEW_TAG, TEMPLATE_FIELDS
-from .executor import AGENT, executor_of_task
+from .executor import AGENT, EXECUTORS, executor_of_task
 from .executor import LABEL as EXECUTOR_LABEL
 from .ids import SEPARATOR
 
-#: The template fields a ready task must have. ``Executor`` is not among
-#: them yet: the sweep fills it in on every task first (executor.py).
-REQUIRED_FIELDS: tuple[str, ...] = tuple(
-    f for f in TEMPLATE_FIELDS if f != EXECUTOR_LABEL
-)
+#: The template fields a ready task must have.
+REQUIRED_FIELDS: tuple[str, ...] = tuple(TEMPLATE_FIELDS)
 
 #: Effort sizes. L is ready like the others: implementing it means creating
 #: its subtasks.
@@ -270,17 +267,9 @@ def _shape_problems(
     done_when: str,
     where: str,
     blocked_ids: Collection[str],
-    tags: Collection[str],
-    executor_line: str | None,
 ) -> list[str]:
     """What keeps a task from being a leaf or a compound task."""
     problems: list[str] = []
-    names = get_args(GroomingExecutor)
-    executors = sorted({t.lower() for t in tags if t.lower() in names})
-    if len(executors) > 1 and executor_line is None:
-        # With an Executor line the line decides, and the sweep fixes the tags.
-        problems.append(f"tagged for more than one executor ({', '.join(executors)})")
-
     children = children_of(done_when)
     if children:
         for child in children:
@@ -391,6 +380,13 @@ def lint(
     if effort.upper() not in EFFORTS:
         problems.append(f"Effort is {effort or 'blank'}, not S, M or L")
 
+    executor_line = fields.get(EXECUTOR_LABEL)
+    if executor_line is not None and executor_line.lower() not in EXECUTORS:
+        problems.append(
+            f"Executor is {executor_line or 'blank'}, "
+            f"not {', '.join(EXECUTORS[:-1])} or {EXECUTORS[-1]}"
+        )
+
     if fields.get("PR", ""):
         problems.append("PR is filled in before the work started")
 
@@ -420,8 +416,6 @@ def lint(
                 done_when=done_when,
                 where=where,
                 blocked_ids=_TASK_ID.findall(blocked_by),
-                tags=tags,
-                executor_line=fields.get(EXECUTOR_LABEL),
             )
         )
 
