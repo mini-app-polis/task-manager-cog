@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from mini_app_polis.api.contract import TaskSweepMessage, TaskSweepPayload
 
 from task_manager_cog import worker
 from task_manager_cog.compose import ComposedTask
@@ -126,14 +128,57 @@ def test_a_malformed_proposal_is_refused() -> None:
 
 
 def test_a_sweep_message_runs_the_sweep(monkeypatch: pytest.MonkeyPatch) -> None:
-    runs: list[str] = []
+    runs: list[tuple[str, bool, bool]] = []
     monkeypatch.setattr(
-        worker, "run_sweep", lambda *, run_id, board_factory: runs.append(run_id)
+        worker,
+        "run_sweep",
+        lambda *, run_id, board_factory, groom, agents: runs.append(
+            (run_id, groom, agents)
+        ),
     )
     worker.process_message(
         json.dumps({"type": "task.sweep", "version": 1}), run_id="m-9"
     )
-    assert runs == ["m-9"]
+    assert runs == [("m-9", False, False)]
+
+
+def test_a_sweep_with_an_empty_payload_is_a_scheduled_sweep() -> None:
+    body = json.dumps({"type": "task.sweep", "version": 1, "payload": {}})
+    assert worker.parse_message(body) == worker.SweepJob()
+
+
+@pytest.mark.parametrize(
+    ("groom", "agents"), [(True, False), (False, True), (True, True)]
+)
+def test_a_flagged_sweep_carries_its_flags_to_the_sweep(
+    monkeypatch: pytest.MonkeyPatch, groom: bool, agents: bool
+) -> None:
+    message = TaskSweepMessage.model_construct(
+        type="task.sweep",
+        version=1,
+        payload=SimpleNamespace(groom=groom, agents=agents),
+    )
+    job = worker._sweep_job(message)
+    assert job == worker.SweepJob(groom=groom, agents=agents)
+
+    runs: list[tuple[bool, bool]] = []
+    monkeypatch.setattr(worker, "parse_message", lambda body: job)
+    monkeypatch.setattr(
+        worker,
+        "run_sweep",
+        lambda *, run_id, board_factory, groom, agents: runs.append((groom, agents)),
+    )
+    worker.process_message("{}", run_id="m-10")
+    assert runs == [(groom, agents)]
+
+
+@pytest.mark.skipif(
+    "groom" not in TaskSweepPayload.model_fields,
+    reason="the shared contract's TaskSweepPayload has no flags",
+)
+def test_a_flagged_sweep_message_parses_to_its_flags() -> None:
+    body = json.dumps({"type": "task.sweep", "version": 1, "payload": {"groom": True}})
+    assert worker.parse_message(body) == worker.SweepJob(groom=True, agents=False)
 
 
 # --- creating ----------------------------------------------------------------
