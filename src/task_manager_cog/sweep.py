@@ -82,6 +82,13 @@ After grooming, the sweep dispatches an agent for each Ready task it can
 take, when ``AGENT_DISPATCH`` or ``AGENT_DRY_RUN`` is on (dispatch.py), and
 only in the sweeps for ``AGENT_TIMES`` when that is set.
 
+A sweep asked for on demand (``POST /v1/tasks/sweeps``) may carry ``groom``,
+which makes it the sweep for ``GROOM_TIMES``, and ``agents``, which makes it
+the one for ``AGENT_TIMES``, whatever the time. Nothing else changes:
+``GROOM_DISPATCH``, ``GROOM_DISPATCH_LIMIT``, ``AGENT_DISPATCH``,
+``AGENT_DRY_RUN`` and the agent's caps apply as they do to any sweep. Its
+run report says it was requested on demand, and for which.
+
 Run it locally, read-only, to see every task's verdict:
 
     doppler run --config prd -- uv run python -m task_manager_cog.sweep
@@ -173,6 +180,10 @@ HELD = "held: groomed as it reads, and nobody is asked"
 MOVED = "Moved"
 BOARD = "Board"
 AGENT = "Agent"
+
+#: The notice a sweep asked for on demand opens with, naming what it was
+#: asked to do whatever the time (``groom``, ``agents``).
+ON_DEMAND = "sweep requested on demand"
 
 #: Each Board counter's words in the report. The counter names posted to
 #: the API are the keys; only these labels are what a reader sees.
@@ -375,14 +386,16 @@ def due(name: str, now: dt.datetime | None = None) -> bool:
     return False
 
 
-def dispatch_limit(now: dt.datetime | None = None) -> int:
+def dispatch_limit(now: dt.datetime | None = None, *, on_demand: bool = False) -> int:
     """How many tasks a sweep may send for grooming.
 
     0 when sending is off, or when the sweep is not one for ``GROOM_TIMES``.
+    ``on_demand`` makes it one whatever the time; sending must still be on,
+    and the limit is the same.
     """
     if (os.environ.get("GROOM_DISPATCH") or "").strip().lower() != "true":
         return 0
-    if not due("GROOM_TIMES", now):
+    if not on_demand and not due("GROOM_TIMES", now):
         return 0
     raw = (os.environ.get("GROOM_DISPATCH_LIMIT") or "").strip()
     return max(0, int(raw)) if raw else DEFAULT_DISPATCH_LIMIT
@@ -691,9 +704,19 @@ def run_sweep(
     records_factory: Callable[[], Records] = _api,
     starter_factory: Callable[[], agent.Starter] = AgentApp.from_env,
     reader_factory: Callable[[], landed.Reader] = AgentApp.from_env,
+    groom: bool = False,
+    agents: bool = False,
 ) -> None:
-    """One scheduled sweep, with its run report. Raises to be redelivered."""
+    """One sweep, with its run report. Raises to be redelivered.
+
+    ``groom`` and ``agents`` are a sweep asked for on demand: it counts as
+    the sweep for ``GROOM_TIMES``, or for ``AGENT_TIMES``, whatever the
+    time. Every switch and cap still applies.
+    """
     with run_report(FLOW_NAME, repo=REPO, run_id=run_id, version=__version__) as report:
+        if groom or agents:
+            parts = [name for name, on in (("groom", groom), ("agents", agents)) if on]
+            report.notice(ON_DEMAND, ", ".join(parts))
         if not effect_enabled(Effect.ASANA):
             # One board, and no development copy of it.
             log.info("sweep: board writes are off here; nothing swept")
@@ -729,7 +752,7 @@ def run_sweep(
             move=auto_ready(),
             records=records,
             send=send,
-            limit=dispatch_limit(),
+            limit=dispatch_limit(on_demand=groom),
         )
         for record in result.writes:
             store.record_grooming(record)
@@ -781,7 +804,7 @@ def run_sweep(
         for task in result.sent:
             moved("sent for grooming", task)
 
-        if (agent.enabled() or agent.dry_run()) and due("AGENT_TIMES"):
+        if (agent.enabled() or agent.dry_run()) and (agents or due("AGENT_TIMES")):
             _dispatch_agents(
                 board,
                 store,

@@ -19,6 +19,13 @@ same queue every half hour (sweep.py):
 
     {"type": "task.sweep", "version": 1}
 
+The API sends the same message when a sweep is asked for on demand
+(``POST /v1/tasks/sweeps``), with a payload when it was asked to groom or
+dispatch agents whatever the time of day:
+
+    {"type": "task.sweep", "version": 1,
+     "payload": {"groom": true, "agents": false}}
+
 On the queue rather than invoking the function directly, so a sweep never
 runs beside a job that is creating a task.
 
@@ -107,7 +114,24 @@ init_sentry(REPO)
 
 @dataclass(frozen=True)
 class SweepJob:
-    """A scheduled sweep of the board. It carries nothing."""
+    """A sweep of the board.
+
+    A scheduled sweep carries no flags. One asked for on demand through the
+    API may set ``groom``, to count as the sweep for ``GROOM_TIMES``, and
+    ``agents``, to count as the one for ``AGENT_TIMES`` (sweep.py).
+    """
+
+    groom: bool = False
+    agents: bool = False
+
+
+def _sweep_job(message: TaskSweepMessage) -> SweepJob:
+    """The sweep a ``task.sweep`` message asks for.
+
+    A message with no payload parses to one with both flags false: the
+    scheduled sweep.
+    """
+    return SweepJob(groom=message.payload.groom, agents=message.payload.agents)
 
 
 def parse_message(
@@ -123,7 +147,7 @@ def parse_message(
         TaskUpdateMessage,
     )
     if isinstance(message, TaskSweepMessage):
-        return SweepJob()
+        return _sweep_job(message)
     if isinstance(message, TaskCreateMessage):
         if message.payload.source not in SOURCES:
             raise UnprocessableMessage(
@@ -182,8 +206,18 @@ def process_message(
     """Handle one message. Raises if it must be redelivered."""
     request = parse_message(body)
     if isinstance(request, SweepJob):
-        log.info("worker: run %s sweep", run_id)
-        run_sweep(run_id=run_id, board_factory=board_factory)
+        log.info(
+            "worker: run %s sweep (groom=%s, agents=%s)",
+            run_id,
+            request.groom,
+            request.agents,
+        )
+        run_sweep(
+            run_id=run_id,
+            board_factory=board_factory,
+            groom=request.groom,
+            agents=request.agents,
+        )
         return
     if isinstance(request, GroomingProposal):
         log.info("worker: run %s applies grooming of %s", run_id, request.task_gid)

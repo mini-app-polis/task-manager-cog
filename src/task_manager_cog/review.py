@@ -13,7 +13,8 @@ it has none. For each incomplete task in Review:
 - its latest comment starts with ``Landed:``: marked complete;
 - a comment after its ``Landed:`` comment: left open;
 - no comment since it entered Review: listed as missing a handoff, on the
-  first sweep that sees it;
+  first sweep that sees it, unless its last comment before the move starts
+  with ``Handed off:`` (a handoff is often posted just before the move);
 - no ``Landed:`` comment more than ``REVIEW_UNVERIFIED_HOURS`` (default 24)
   after it entered Review: listed as unverified.
 
@@ -42,6 +43,8 @@ DEFAULT_UNVERIFIED_HOURS = 24.0
 
 #: Starts the comment that says the work landed.
 LANDED_PREFIX = "Landed:"
+#: Starts the comment that hands the work off as it moves to Review.
+HANDED_OFF_PREFIX = "Handed off:"
 
 COMMENT = "comment_added"
 SECTION_CHANGED = "section_changed"
@@ -109,6 +112,24 @@ def entered_review(
     return max(moves) if moves else task.created_at
 
 
+def _handed_off_before(
+    stories: Collection[AsanaStory], entered: dt.datetime | None
+) -> bool:
+    """Whether the last comment before the task entered Review is its handoff."""
+    before = [
+        s
+        for s in stories
+        if s.kind == COMMENT
+        and s.text is not None
+        and entered is not None
+        and s.created_at is not None
+        and s.created_at < entered
+    ]
+    return bool(before) and (before[-1].text or "").lstrip().startswith(
+        HANDED_OFF_PREFIX
+    )
+
+
 def review(
     board: ReviewBoard, *, now: dt.datetime | None = None
 ) -> ReviewResult | None:
@@ -138,7 +159,7 @@ def review(
             and s.text is not None
             and (entered is None or s.created_at is None or s.created_at >= entered)
         ]
-        if not comments:
+        if not comments and not _handed_off_before(stories, entered):
             result.missing_handoff.append(task)
         landed = [
             i

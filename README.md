@@ -272,6 +272,42 @@ default UTC), only the sweep starting within half an hour after one of them
 sends any; the others still lint and move tasks. `AGENT_TIMES` does the same
 for agent dispatch.
 
+### Sweeping on demand
+
+A sweep can be asked for now, rather than at the next half hour, through
+api-kaianolevine-com's `POST /v1/tasks/sweeps` (scope
+`tasks.sweeps.create`). It puts the same `task.sweep` message on this cog's
+queue, so it runs in line with every other job. Its optional body says what
+the sweep should do whatever the time of day:
+
+- no body, or `{}`: the sweep the schedule sends; it grooms and dispatches
+  only at `GROOM_TIMES` and `AGENT_TIMES`;
+- `{"groom": true}`: it counts as the sweep for `GROOM_TIMES`;
+- `{"agents": true}`: it counts as the sweep for `AGENT_TIMES`;
+- both, for both.
+
+A flag stands in for the clock and nothing else: `GROOM_DISPATCH`,
+`GROOM_DISPATCH_LIMIT`, the groomer's monthly cap, `AGENT_DISPATCH`,
+`AGENT_DRY_RUN`, `AGENT_TASK_CAP_USD` and `AGENT_MONTHLY_CAP_USD` all apply
+as they do to a scheduled sweep. Its run report opens with `sweep requested
+on demand` and names the parts asked for.
+
+Two ways to ask:
+
+- From a working session, with common-python-utils' `request-sweep`, as the
+  `claude-session` machine:
+
+  ```bash
+  doppler run --project owner-session --config prd -- uv run request-sweep --groom --agents
+  ```
+
+- From GitHub: the **sweep-now** workflow (Actions → sweep-now → Run
+  workflow), with a `groom` and an `agents` checkbox. It calls the
+  production API with the `TASK_MANAGER_SWEEP_API_KEY` repository secret,
+  the `task-manager-sweep` machine in api-kaianolevine-com's identity
+  registry, which may ask for a sweep and, like every fleet machine, post a
+  notification, and nothing else.
+
 A grooming run the spent budget stopped is reported by the groomer, and the
 task's record comes back with that content's fingerprint
 (`budget_spent_fingerprint`). While it equals the task's content, the task
