@@ -74,8 +74,9 @@ swept. Nor are tasks from a source the sources table marks unswept: the
 problems the fleet detected (``CI-``, ``RUN-``, ``CONF-``, ``API-``) wait
 for a person.
 
-Every sweep also reads the Review column and marks complete each task whose
-latest comment starts with ``Landed:`` (review.py).
+Every sweep also reads the Review column: it posts ``Landed:`` on each task
+whose pull request is merged with CI on dev green (landed.py), then marks
+complete each task whose latest comment starts with ``Landed:`` (review.py).
 
 After grooming, the sweep dispatches an agent for each Ready task it can
 take, when ``AGENT_DISPATCH`` or ``AGENT_DRY_RUN`` is on (dispatch.py), and
@@ -116,7 +117,7 @@ from mini_app_polis.environment import Effect, effect_enabled
 from mini_app_polis.pipeline_status import run_report
 
 from . import dispatch as agent
-from . import executor, review
+from . import executor, landed, review
 from ._version import __version__
 from .board import Board
 from .github import AgentApp
@@ -189,6 +190,7 @@ BOARD_LABELS: dict[str, str] = {
     "ready_not_moved": "ready, not moved (GROOM_AUTO_READY is off)",
     "blocked_not_moved": "waiting on blockers, not moved (GROOM_AUTO_READY is off)",
     "failing_in_ready_not_moved": "failing in Ready, not moved (GROOM_AUTO_READY is off)",
+    "review_landed": "Review tasks given Landed:, merged with CI on dev green",
     "review_closed": "Review tasks closed, work landed",
 }
 
@@ -688,6 +690,7 @@ def run_sweep(
     repos_loader: Callable[[], Collection[str]] = load_repos,
     records_factory: Callable[[], Records] = _api,
     starter_factory: Callable[[], agent.Starter] = AgentApp.from_env,
+    reader_factory: Callable[[], landed.Reader] = AgentApp.from_env,
 ) -> None:
     """One scheduled sweep, with its run report. Raises to be redelivered."""
     with run_report(FLOW_NAME, repo=REPO, run_id=run_id, version=__version__) as report:
@@ -749,6 +752,7 @@ def run_sweep(
             board_count("blocked_not_moved", result.blocked_not_moved)
             board_count("failing_in_ready_not_moved", len(result.failed_ready))
         _report_return_rate(store, report)
+        _report_landings(board, reader_factory, report)
         reviewed = review.review(board)
         if reviewed is not None:
             board_count("review_closed", len(reviewed.closed))
@@ -814,6 +818,46 @@ def _report_return_rate(store: Records, report: Any) -> None:
         label=f"returned from Ready, {RETURN_RATE_DAYS} days: {{}}",
         section=BOARD,
     )
+
+
+def _report_landings(
+    board: Board, reader_factory: Callable[[], landed.Reader], report: Any
+) -> None:
+    """Post ``Landed:`` on the Review tasks whose pull request landed, and
+    name the merged ones whose CI on dev failed or could not be confirmed.
+
+    GitHub not configured is an issue; it never fails the sweep.
+    """
+    try:
+        result = landed.land(board, reader_factory)
+    except Exception as exc:  # noqa: BLE001 — the sweep's own work is done
+        log.warning("sweep: landings not checked: %s", exc)
+        report.issue("landings not checked", detail=str(exc))
+        return
+    if result is None:
+        return
+    report.count(
+        "review_landed",
+        len(result.landed),
+        label=BOARD_LABELS["review_landed"],
+        section=BOARD,
+    )
+    for task in result.landed:
+        report.updated("Landed: posted", task.name, link=board.url(task.gid))
+    for task, ref, run_url in result.failed:
+        report.issue(
+            "merged, CI on dev failed",
+            f"{review.task_label(task)} ({ref.label})",
+            detail=run_url,
+        )
+    for task, ref, why in result.unverified:
+        report.issue(
+            "merged, landing unverified",
+            f"{review.task_label(task)} ({ref.label})",
+            detail=why,
+        )
+    for task, error in result.errors:
+        report.issue("landing not checked", review.task_label(task), detail=error)
 
 
 def _dispatch_agents(

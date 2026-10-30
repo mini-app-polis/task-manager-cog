@@ -169,8 +169,9 @@ Review holds work handed off and work done. The board process
   comment is one (Agent dispatch).
 - **Landed.** A task is closed by a comment starting `Landed:` that names
   the repo, branch, commit and CI result, posted by whoever confirms green
-  CI on dev: an agent run, a Claude session or Kaiano. The sweep marks it
-  complete. A later comment reopens it: the sweep closes a task only while
+  CI on dev: the sweep itself for a task whose `PR:` line names a pull
+  request (agent PRs among them), or a Claude session or Kaiano. The sweep
+  marks it complete. A later comment reopens it: the sweep closes a task only while
   `Landed:` is its latest comment, and never reopens one it has closed, so
   a closed task is reopened by hand.
 - **Closing out Review.** A session closing out Review checks each
@@ -182,8 +183,31 @@ Review holds work handed off and work done. The board process
 - **Matching.** Work is matched to a task by its Where and Done when, not
   by task ids in commit messages.
 
-Each sweep reads the incomplete tasks in Review (`REVIEW_SECTION`), from
-their comments and column changes only (no GitHub, no model):
+Each sweep first posts `Landed:` for pull requests that landed
+(`landed.py`). For each incomplete task in Review whose `PR:` line names a
+pull request in the organisation
+(`https://github.com/mini-app-polis/<repo>/pull/<n>`), it reads the pull
+request through GitHub's REST API, as the agent App with a token minted for
+that one repository with only read access to pull requests and Actions:
+
+- Merged, and the latest run of the CI workflow (`LANDED_CI_WORKFLOW`,
+  default `CI`) on dev for the merge commit succeeded: a comment starting
+  `Landed:` naming the repo, the branch, the merge commit and the run.
+  Counted in the run report (`Review tasks given Landed:`), and closed by
+  the rule below in the same sweep.
+- Merged, and that run failed: no comment; named in the run report
+  (`merged, CI on dev failed`).
+- Merged, and that run still going: nothing until a later sweep.
+- Merged, and no such run, a run that ended otherwise (cancelled), or a
+  pull request the App cannot read (not installed there): no comment; named
+  in the run report (`merged, landing unverified`).
+- Not merged: nothing. No PR line: never read or touched.
+
+A task with a `Landed:` comment since it entered Review gets no second one,
+whether it is closed or a later comment reopened it. No model is called.
+
+Then it reads the incomplete tasks in Review (`REVIEW_SECTION`) from their
+comments and column changes only:
 
 - Latest comment starts with `Landed:`: marked complete, and left in Review.
   Counted in the run report (`Review tasks closed, work landed`).
@@ -384,7 +408,8 @@ run that succeeded puts its pull request on the task's PR line, moves the
 task to Review, and posts its `Handed off:` comment; one that needs
 grooming goes back to Refining (below). **Applying a result never marks a
 task done:** a person reviews and merges the draft, and the task closes
-when a `Landed:` comment confirms green CI on dev (Review).
+when a `Landed:` comment, which the sweep posts once the pull request is
+merged and CI on dev is green, confirms it (Review).
 
 The trigger is the sweep, not Asana webhooks. Asana delivers webhook
 events at most once and recommends polling as a fallback, and this cog has

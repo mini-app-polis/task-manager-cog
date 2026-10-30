@@ -165,3 +165,70 @@ def test_an_unexpected_answer_raises() -> None:
     )
     with pytest.raises(github.GitHubError, match="unexpected answer"):
         _app().has_caller(REPO)
+
+
+@respx.mock
+def test_a_pull_request_is_read_with_a_read_only_token() -> None:
+    minted = _installed(respx.mock)
+    respx.get(f"{API}/repos/mini-app-polis/{REPO}/pulls/7").respond(
+        200,
+        json={
+            "html_url": "https://github.com/mini-app-polis/x/pull/7",
+            "merged": True,
+            "merge_commit_sha": "abc",
+        },
+    )
+    pr = _app().pull_request(REPO, 7)
+    assert pr is not None and pr.merged and pr.merge_commit_sha == "abc"
+    asked = json.loads(minted.calls.last.request.content)
+    assert asked == {
+        "repositories": [REPO],
+        "permissions": {"pull_requests": "read", "actions": "read"},
+    }
+
+
+@respx.mock
+def test_a_pull_request_not_found_or_without_the_app_is_none() -> None:
+    respx.get(f"{API}/repos/mini-app-polis/infra/installation").respond(404)
+    assert _app().pull_request("infra", 7) is None
+    assert _app().workflow_runs("infra", head_sha="abc", branch="dev") is None
+
+    _installed(respx.mock)
+    respx.get(f"{API}/repos/mini-app-polis/{REPO}/pulls/7").respond(404)
+    assert _app().pull_request(REPO, 7) is None
+
+
+@respx.mock
+def test_a_refused_pull_request_read_raises() -> None:
+    _installed(respx.mock)
+    respx.get(f"{API}/repos/mini-app-polis/{REPO}/pulls/7").respond(403)
+    with pytest.raises(github.GitHubError, match="403"):
+        _app().pull_request(REPO, 7)
+
+
+@respx.mock
+def test_the_runs_for_a_commit_on_a_branch_are_read() -> None:
+    _installed(respx.mock)
+    listed = respx.get(f"{API}/repos/mini-app-polis/{REPO}/actions/runs").respond(
+        200,
+        json={
+            "total_count": 1,
+            "workflow_runs": [
+                {
+                    "id": 5,
+                    "name": "CI",
+                    "status": "completed",
+                    "conclusion": "success",
+                    "html_url": "https://github.com/x/runs/5",
+                }
+            ],
+        },
+    )
+    (run,) = _app().workflow_runs(REPO, head_sha="abc", branch="dev") or []
+    assert run.name == "CI" and run.conclusion == "success"
+    params = listed.calls.last.request.url.params
+    assert params["head_sha"] == "abc" and params["branch"] == "dev"
+
+    listed.respond(500)
+    with pytest.raises(github.GitHubError, match="500"):
+        _app().workflow_runs(REPO, head_sha="abc", branch="dev")
