@@ -120,8 +120,12 @@ def test_a_success_fills_the_pr_line_and_moves_to_review(
     assert parsed.fields["Where"] == "watcher-cog"
     assert parsed.body == "Because the watcher drifted."
     (comment,) = board.comments_
-    assert comment.startswith(f"Agent run {RUN_ID} opened a draft pull request")
-    assert "$0.84" in comment and "mark this task done" in comment
+    assert comment.startswith(
+        f"Handed off: Agent run {RUN_ID} opened a draft pull request into dev in "
+        f"watcher-cog: {PR}"
+    )
+    assert "not merged yet" in comment
+    assert "$0.84" in comment and '"Landed:"' in comment
     assert board.task.completed is False
     ((_, kwargs),) = _no_outbound_reports
     assert kwargs["cost_usd"] == "0.8400"
