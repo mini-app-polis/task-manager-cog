@@ -20,9 +20,9 @@ everything a task is missing.
 
 **Shapes.** With ``shapes`` on, a task must also be one of two shapes:
 
-- a *leaf*: Where names at most one repository, and the task has one
-  executor (its ``Executor:`` line). Only a
-  cowork or person task (board or console work) may name no repository.
+- a *leaf*: the task has one executor (its ``Executor:`` line), and an
+  agent task's Where names at most one repository. Only a cowork or
+  person task may name several, or (board or console work) none.
 - a *compound* task: its Done when says it is done when its children are
   (``TASK-1, TASK-2 and TASK-3 are done``), and its Blocked by lists every
   one of them. It has no work of its own, so it may span repositories.
@@ -267,8 +267,13 @@ def _shape_problems(
     done_when: str,
     where: str,
     blocked_ids: Collection[str],
+    agent: bool,
 ) -> list[str]:
-    """What keeps a task from being a leaf or a compound task."""
+    """What keeps a task from being a leaf or a compound task.
+
+    Only an agent task is held to one repository; a task for another
+    executor may name several.
+    """
     problems: list[str] = []
     children = children_of(done_when)
     if children:
@@ -278,7 +283,7 @@ def _shape_problems(
         return problems
 
     repos = list(dict.fromkeys(where_repos(where))) if where else []
-    if len(repos) > 1:
+    if agent and len(repos) > 1:
         problems.append(
             f"Where names more than one repository ({', '.join(repos)}): a leaf "
             "task names one, so this is a compound task over one task each"
@@ -416,6 +421,7 @@ def lint(
                 done_when=done_when,
                 where=where,
                 blocked_ids=_TASK_ID.findall(blocked_by),
+                agent=executor_of_task(notes, tags) == AGENT,
             )
         )
 
