@@ -94,7 +94,9 @@ class WorkflowRun(BaseModel):
 class WorkflowRuns(BaseModel):
     """A page of workflow runs."""
 
-    workflow_runs: list[WorkflowRun] = Field(default_factory=list)
+    workflow_runs: list[WorkflowRun] = Field(
+        default_factory=list, description="The runs on this page."
+    )
 
 
 #: The token the Review pass reads with: nothing it can change.

@@ -206,4 +206,5 @@ def test_a_board_without_a_review_column_is_skipped() -> None:
 
 
 def test_the_label_is_the_id_and_title() -> None:
-    assert review_mod.task_label(_task("7")) == "MINI-7 · Title 7"
+    task = _task("7")
+    assert review_mod.task_label(task) == task.name
