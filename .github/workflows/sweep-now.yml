@@ -1,0 +1,73 @@
+# Ask for a sweep of the board now, from the Actions tab, rather than
+# waiting for the schedule. It calls api-kaianolevine-com's
+# POST /v1/tasks/sweeps, which puts a task.sweep on this cog's queue, so the
+# sweep runs in line with every other job there.
+#
+# `groom` makes the sweep the one for GROOM_TIMES and `agents` the one for
+# AGENT_TIMES, whatever the time of day. Neither turns on what is off or
+# raises a cap: GROOM_DISPATCH, GROOM_DISPATCH_LIMIT, the groomer's monthly
+# cap, AGENT_DISPATCH, AGENT_DRY_RUN and the agent's per-task and monthly
+# caps all hold. With neither checked it is the scheduled sweep, run now.
+#
+# The key is the repository secret TASK_MANAGER_SWEEP_API_KEY, the
+# task-manager-sweep machine in api-kaianolevine-com's identity registry,
+# which holds tasks.sweeps.create and notify.messages.send and nothing else.
+name: sweep-now
+
+on:
+  workflow_dispatch:
+    inputs:
+      groom:
+        description: "Send tasks for grooming in this sweep, whatever the time"
+        required: false
+        type: boolean
+        default: false
+      agents:
+        description: "Dispatch agents in this sweep, whatever the time"
+        required: false
+        type: boolean
+        default: false
+
+permissions: {}
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Ask for a sweep
+        env:
+          API_KEY: ${{ secrets.TASK_MANAGER_SWEEP_API_KEY }}
+          GROOM: ${{ inputs.groom }}
+          AGENTS: ${{ inputs.agents }}
+        run: |
+          set -euo pipefail
+          if [ -z "${API_KEY}" ]; then
+            echo "FATAL: the repository secret TASK_MANAGER_SWEEP_API_KEY is not set." >&2
+            exit 1
+          fi
+          body=$(jq -cn --argjson groom "${GROOM}" --argjson agents "${AGENTS}" \
+            '{groom: $groom, agents: $agents}')
+          echo "Asking for a sweep: ${body}"
+          # A named User-Agent: the API sits behind Cloudflare, which rejects
+          # unidentified automation (see the shared evaluate.yml). No retry:
+          # each request is its own sweep, so a retry after a lost answer
+          # would run a second one. A failed run is asked again by hand.
+          http_status=$(curl -sS \
+            --max-time 30 \
+            -A "mini-app-polis-task-manager-sweep/1 (+https://github.com/mini-app-polis/task-manager-cog)" \
+            -H "Authorization: Bearer ${API_KEY}" \
+            -H "Content-Type: application/json" \
+            -H "Accept: application/json" \
+            -o response.json \
+            -w "%{http_code}" \
+            -X POST "https://api.kaianolevine.com/v1/tasks/sweeps" \
+            -d "${body}") || {
+              echo "FATAL: could not reach the API." >&2
+              exit 1
+            }
+          jq . response.json || cat response.json
+          if [ "${http_status}" -lt 200 ] || [ "${http_status}" -ge 300 ]; then
+            echo "FATAL: the sweep was not queued (${http_status})." >&2
+            exit 1
+          fi
