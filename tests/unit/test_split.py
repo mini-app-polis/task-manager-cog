@@ -337,6 +337,62 @@ def test_other_ways_of_saying_it_waits_are_caught(said: str, phrase: str) -> Non
     ]
 
 
+@pytest.mark.parametrize(
+    ("said", "phrase"),
+    [
+        ("Waits on the helper child.", "Waits on"),
+        ("This child waits on the infra child landing.", "waits on"),
+        ("It runs after the infra child.", "after the infra child"),
+        ("This child can start after the shared contract child.", "after the"),
+        ("Waits on this week's release of the standard.", "Waits on"),
+        (
+            "The service children wait on this; this child waits on the standard.",
+            "waits on",
+        ),
+        ("Once the other children ship, it waits on infra.", "waits on"),
+    ],
+)
+def test_a_child_that_says_it_waits_itself_is_caught(said: str, phrase: str) -> None:
+    child = WAITS_UNSAID.model_copy(update={"body": said})
+    (found,) = unblocked_waits(_split(children=[child]))
+    assert f'says "{phrase}' in found
+
+
+@pytest.mark.parametrize(
+    "said",
+    [
+        "The service children wait on this.",
+        "Every later child waits on it.",
+        "Children 2 to 12 all wait on this child landing.",
+        "The others wait on this to pass each service its SETTINGS_ALLOWLIST.",
+        "Creates the GitHub Apps; the deploy children wait on them being installed"
+        " and the rest wait on this task.",
+        "The rest start after the infra child.",
+        "Each other child waits on this one, so it goes first.",
+    ],
+)
+def test_a_child_that_others_wait_on_is_not_a_wait(said: str) -> None:
+    prerequisite = WAITS_UNSAID.model_copy(
+        update={
+            "title": "infra: pass each service SETTINGS_ALLOWLIST",
+            "done_when": "Each service gets its allowlist.",
+            "body": said,
+        }
+    )
+    assert unblocked_waits(_split(children=[prerequisite])) == []
+
+
+def test_a_prerequisite_others_wait_on_is_applied(live, _no_outbound_reports) -> None:
+    first = CHILDREN[0].model_copy(
+        update={
+            "body": "Every later child waits on it; the service children wait on this."
+        }
+    )
+    board, store = _board(), FakeRecords()
+    _apply_split(_split(children=[first, CHILDREN[1]]), board, store)
+    assert len(board.created) == 2
+
+
 def test_a_blocked_by_of_none_is_no_blocker() -> None:
     child = WAITS_UNSAID.model_copy(update={"blocked_by": "None"})
     assert unblocked_waits(_split(children=[child]))
