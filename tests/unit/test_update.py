@@ -2,12 +2,18 @@ from __future__ import annotations
 
 import dataclasses
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 
 import pytest
 from mini_app_polis.api.contract import TaskUpdateRequest
 from mini_app_polis.asana import AsanaSection, AsanaTaskRecord
 
-from task_manager_cog.update import apply_update, section_name
+from task_manager_cog.update import (
+    apply_update,
+    is_rotation_prefix,
+    rotated_at,
+    section_name,
+)
 
 EXTERNAL_ID = "ci.watcher-cog.main"
 COMMENT = "CI on watcher-cog main is green again after 3 failed runs."
@@ -52,6 +58,9 @@ class FakeBoard:
 
     def url(self, gid: str) -> str:
         return f"https://board/{gid}"
+
+    def tasks(self) -> list[AsanaTaskRecord]:
+        return [self.task] if self.task is not None else []
 
 
 def _board(section: str = "s-ideas", *, completed: bool = False) -> FakeBoard:
@@ -203,3 +212,176 @@ def test_nothing_is_written_outside_production(monkeypatch) -> None:
     board = _board()
     _apply(_request(), board)
     assert board.looked_up == [] and board.moves == [] and board.comments_ == []
+
+
+# A secret's rotation, named by key prefix.
+
+ROT_PREFIX = "secret-rotation.prd.BREVO_API_KEY."
+ROT_COMMENT = (
+    "Rotated 2026-10-30T12:00:00Z; verification ok\n"
+    "Rotated by hand; the new key is in Doppler."
+)
+CREATED = datetime(2026, 10, 1, 9, 0, tzinfo=UTC)
+
+
+@dataclass
+class RotationBoard(FakeBoard):
+    """A board holding several tasks, looked up by key prefix."""
+
+    all_tasks: list[AsanaTaskRecord] = field(default_factory=list)
+    moved: list[tuple[str, str]] = field(default_factory=list)
+    commented: list[tuple[str, str]] = field(default_factory=list)
+
+    def find(self, external_id: str) -> str | None:
+        raise AssertionError("a prefix is not looked up as an exact key")
+
+    def tasks(self) -> list[AsanaTaskRecord]:
+        return list(self.all_tasks)
+
+    def move(self, gid: str, section_gid: str) -> None:
+        self.moved.append((gid, section_gid))
+        self.all_tasks = [
+            dataclasses.replace(t, section_gid=section_gid) if t.gid == gid else t
+            for t in self.all_tasks
+        ]
+
+    def comment(self, gid: str, text: str) -> None:
+        self.commented.append((gid, text))
+
+    def comments(self, gid: str) -> list[str]:
+        return [text for g, text in self.commented if g == gid]
+
+
+def _rot_task(
+    gid: str,
+    key: str,
+    *,
+    section: str = "s-ideas",
+    completed: bool = False,
+    created_at: datetime | None = CREATED,
+) -> AsanaTaskRecord:
+    return AsanaTaskRecord(
+        gid=gid,
+        name=f"ROT-{gid} · rotate BREVO_API_KEY",
+        notes="",
+        completed=completed,
+        section_gid=section,
+        section_name="",
+        external_id=key,
+        created_at=created_at,
+    )
+
+
+def _rot_board(*tasks: AsanaTaskRecord) -> RotationBoard:
+    return RotationBoard(None, all_tasks=list(tasks))
+
+
+def _rot_request(comment: str = ROT_COMMENT, section: str | None = None):
+    return _request(section=section, external_id=ROT_PREFIX, comment=comment)
+
+
+def test_only_secret_rotation_keys_ending_in_a_dot_are_prefixes() -> None:
+    assert is_rotation_prefix(ROT_PREFIX)
+    assert not is_rotation_prefix("secret-rotation.prd.BREVO_API_KEY.2026-10")
+    assert not is_rotation_prefix("ci.watcher-cog.")
+
+
+def test_the_rotated_line_is_parsed_from_the_first_line_only() -> None:
+    assert rotated_at(ROT_COMMENT) == datetime(2026, 10, 30, 12, tzinfo=UTC)
+    assert rotated_at("Rotated 2026-10-30T12:00:00; verification unchecked") == (
+        datetime(2026, 10, 30, 12, tzinfo=UTC)
+    )
+    assert rotated_at("Rotated 2026-10-30T12:00:00+00:00; verification failed")
+    assert rotated_at("Rotated 2026-10-30T12:00:00Z; verification maybe") is None
+    assert rotated_at("Rotated yesterday; verification ok") is None
+    assert rotated_at("Done.\nRotated 2026-10-30T12:00:00Z; verification ok") is None
+    assert rotated_at("") is None
+
+
+def test_a_newer_rotation_comments_on_the_open_task_and_moves_it_to_review(
+    production,
+) -> None:
+    board = _rot_board(
+        _rot_task("1", "secret-rotation.prd.BREVO_API_KEY.never", completed=True),
+        _rot_task("2", "secret-rotation.prd.BREVO_API_KEY.after-2026-10-01"),
+        _rot_task("3", "secret-rotation.prd.OTHER_KEY.never"),
+    )
+    _apply(_rot_request(), board)
+    assert board.commented == [("2", ROT_COMMENT)]
+    assert board.moved == [("2", "s-review")]
+
+
+def test_a_rotation_goes_to_review_whatever_column_is_named(production) -> None:
+    board = _rot_board(_rot_task("2", ROT_PREFIX + "never", section="s-progress"))
+    _apply(_rot_request(section="Ready"), board)
+    assert board.moved == [("2", "s-review")]
+
+
+def test_a_redelivered_rotation_changes_nothing(production) -> None:
+    board = _rot_board(_rot_task("2", ROT_PREFIX + "never"))
+    _apply(_rot_request(), board)
+    _apply(_rot_request(), board)
+    assert board.commented == [("2", ROT_COMMENT)]
+    assert board.moved == [("2", "s-review")]
+
+
+@pytest.mark.parametrize(
+    ("tasks", "comment", "reason"),
+    [
+        ([], ROT_COMMENT, "no open rotation task"),
+        (
+            [_rot_task("1", ROT_PREFIX + "never", completed=True)],
+            ROT_COMMENT,
+            "no open rotation task",
+        ),
+        (
+            [_rot_task("2", ROT_PREFIX + "never")],
+            "Rotated the key today.",
+            "rotation comment does not parse",
+        ),
+        (
+            [_rot_task("2", ROT_PREFIX + "never")],
+            "Rotated 2026-10-01T09:00:00Z; verification ok",
+            "rotation not after the task",
+        ),
+        (
+            [_rot_task("2", ROT_PREFIX + "never", created_at=None)],
+            ROT_COMMENT,
+            "rotation not after the task",
+        ),
+        (
+            [_rot_task("2", ROT_PREFIX + "never", section="s-review")],
+            ROT_COMMENT,
+            "already in Review",
+        ),
+    ],
+)
+def test_a_rotation_that_does_not_apply_is_a_noted_no_op(
+    production, _no_outbound_reports, tasks, comment: str, reason: str
+) -> None:
+    board = _rot_board(*tasks)
+    _apply(_rot_request(comment), board)
+    assert board.commented == [] and board.moved == []
+    ((_, kwargs),) = _no_outbound_reports
+    assert reason in str(kwargs)
+    assert "no task on the board" not in str(kwargs)
+
+
+def test_two_open_tasks_for_one_secret_are_left_alone_and_reported(
+    production, _no_outbound_reports
+) -> None:
+    board = _rot_board(
+        _rot_task("2", ROT_PREFIX + "never"),
+        _rot_task("4", ROT_PREFIX + "failed-2026-10-20"),
+    )
+    _apply(_rot_request(), board)
+    assert board.commented == [] and board.moved == []
+    ((_, kwargs),) = _no_outbound_reports
+    assert "more than one open rotation task" in str(kwargs)
+
+
+def test_an_exact_rotation_key_keeps_the_exact_lookup(production) -> None:
+    board = _board()
+    _apply(_request(external_id=ROT_PREFIX + "never"), board)
+    assert board.looked_up == [ROT_PREFIX + "never"]
+    assert board.moves == ["s-review"]

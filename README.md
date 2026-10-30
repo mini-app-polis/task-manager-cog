@@ -74,6 +74,24 @@ other name is matched against the board's columns, ignoring case.
 - A comment whose text is already on the task is not posted again, so a
   redelivered update changes nothing. Nothing here completes a task.
 
+An `external_id` that starts with `secret-rotation.` and ends in `.`
+(`secret-rotation.<config>.<name>.`) is a key prefix: it names a secret, whose
+rotation tasks each carry a key under it. The comment's first line must be
+
+```
+Rotated <ISO timestamp>; verification <ok|failed|unchecked>
+```
+
+(a timestamp without an offset is read as UTC). The update goes to the one
+open task whose external id starts with the prefix: when the timestamp is
+after that task's creation and the task is not already in Review, it gets the
+comment and moves to Review, whatever column the request names. Each of these
+is left alone and noted in the run, not reported as a missing task: no open
+task under the prefix, a first line that does not parse, a timestamp not
+after the task's creation, a task already in Review. More than one open task
+under the prefix is left alone and reported as an issue. Any other
+`external_id` is matched exactly, as above.
+
 ## The definition of ready
 
 A task is ready when someone holding only the task and its repositories could
