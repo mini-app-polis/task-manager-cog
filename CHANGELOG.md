@@ -1,3 +1,10 @@
+## [1.21.1](https://github.com/mini-app-polis/task-manager-cog/compare/v1.21.0...v1.21.1) (2026-10-30)
+
+
+### Bug Fixes
+
+* **results:** start a succeeded agent run's comment with "Handed off:" and record the Landed: closing rule ([b7d50ac](https://github.com/mini-app-polis/task-manager-cog/commit/b7d50acb2ab506a86bfedad27b7736d22f15dff4))
+
 # [1.21.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.20.0...v1.21.0) (2026-10-30)
 
 
