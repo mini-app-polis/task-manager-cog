@@ -140,6 +140,27 @@ of tasks moved to Ready over the last 30 days that came back out
 left out and the report notes it). **Agent** has the dispatch's spend this
 month, what it dispatched, and what it skipped by reason, one a line.
 
+## Review
+
+A task moved to Review carries a `Handed off:` comment. Whoever confirms the
+work landed (green CI on dev) posts a comment starting `Landed:` with the
+repo, branch, commit and CI result, and the sweep does the closing. Each
+sweep reads the incomplete tasks in Review (`REVIEW_SECTION`), from their
+comments and column changes only (no GitHub, no model):
+
+- Latest comment starts with `Landed:`: marked complete, and left in Review.
+  Counted in the run report (`Review tasks closed, work landed`).
+- Any comment after the `Landed:` comment: left open.
+- No comment at all since it entered Review: listed in the run report as
+  missing a handoff, on the first sweep that sees it.
+- No `Landed:` comment more than `REVIEW_UNVERIFIED_HOURS` (default 24) after
+  it entered Review: listed as unverified.
+
+A task entered Review at its latest move into the column, or at its creation
+when it has none. Both lists give the task id and title, and make the run
+WARN. The sweep never moves a task out of Review and never marks one
+incomplete.
+
 ## Who does a task
 
 A task's executor is its `Executor:` line, the last line of the template
