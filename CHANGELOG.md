@@ -1,3 +1,10 @@
+## [1.19.2](https://github.com/mini-app-polis/task-manager-cog/compare/v1.19.1...v1.19.2) (2026-10-30)
+
+
+### Bug Fixes
+
+* **executor:** assign every task to the owner, whoever does the work ([f709ffa](https://github.com/mini-app-polis/task-manager-cog/commit/f709ffad4d195747c1cb98bb453a22c49d55e141))
+
 ## [1.19.1](https://github.com/mini-app-polis/task-manager-cog/compare/v1.19.0...v1.19.1) (2026-10-30)
 
 
