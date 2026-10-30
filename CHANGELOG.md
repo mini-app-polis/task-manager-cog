@@ -1,3 +1,18 @@
+# [1.20.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.19.2...v1.20.0) (2026-10-30)
+
+
+### Bug Fixes
+
+* **deps:** bump miniapppolis-common-utils to 7.2.0 ([e536796](https://github.com/mini-app-polis/task-manager-cog/commit/e5367960b6871e22c3d615af1e31ed0bc1ab227c))
+* **deps:** bump miniapppolis-common-utils to 7.3.0 ([97ff627](https://github.com/mini-app-polis/task-manager-cog/commit/97ff6272cd1987b3a58c8bfe2710047f534124c4))
+
+
+### Features
+
+* **lint:** require the Executor line in the definition of ready ([aabe65e](https://github.com/mini-app-polis/task-manager-cog/commit/aabe65e31ee1d52e0f5d70c02b7bea25a16b4e2e))
+* **sweep:** complete Review tasks whose latest comment starts with "Landed:" and report unverified ones ([851b164](https://github.com/mini-app-polis/task-manager-cog/commit/851b164926ea93953dbfe4e549547f8246ebbfea))
+* **update:** move a secret's open rotation task to Review when an update names its key prefix ([9472ef0](https://github.com/mini-app-polis/task-manager-cog/commit/9472ef04b04bb235a4961534895a75cd2b6da3e1))
+
 ## [1.19.2](https://github.com/mini-app-polis/task-manager-cog/compare/v1.19.1...v1.19.2) (2026-10-30)
 
 
