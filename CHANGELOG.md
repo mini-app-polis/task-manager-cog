@@ -1,3 +1,10 @@
+## [1.24.1](https://github.com/mini-app-polis/task-manager-cog/compare/v1.24.0...v1.24.1) (2026-10-30)
+
+
+### Bug Fixes
+
+* **split:** stop flagging a child as waiting when its text says other children wait on it ([fe911d5](https://github.com/mini-app-polis/task-manager-cog/commit/fe911d512f24d6435d5a18c9e9e8a0adf310e8e8))
+
 # [1.24.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.23.0...v1.24.0) (2026-10-30)
 
 
