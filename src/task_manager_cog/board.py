@@ -19,6 +19,7 @@ from mini_app_polis import logger as logger_mod
 from mini_app_polis.asana import (
     AsanaClient,
     AsanaSection,
+    AsanaStory,
     AsanaTaskInput,
     AsanaTaskRecord,
 )
@@ -147,6 +148,14 @@ class Board:
     def comments(self, task_gid: str) -> list[str]:
         """Every comment on a task, oldest first."""
         return self._client.list_comments(task_gid)
+
+    def stories(self, task_gid: str) -> list[AsanaStory]:
+        """A task's history, oldest first: comments and column changes."""
+        return self._client.list_stories(task_gid)
+
+    def complete(self, task_gid: str) -> None:
+        """Mark a task complete."""
+        self._client.complete_task(task_gid)
 
     def url(self, task_gid: str) -> str:
         """A link to the task on this board, for the run report."""

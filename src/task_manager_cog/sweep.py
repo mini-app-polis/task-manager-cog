@@ -74,6 +74,9 @@ swept. Nor are tasks from a source the sources table marks unswept: the
 problems the fleet detected (``CI-``, ``RUN-``, ``CONF-``, ``API-``) wait
 for a person.
 
+Every sweep also reads the Review column and marks complete each task whose
+latest comment starts with ``Landed:`` (review.py).
+
 After grooming, the sweep dispatches an agent for each Ready task it can
 take, when ``AGENT_DISPATCH`` or ``AGENT_DRY_RUN`` is on (dispatch.py), and
 only in the sweeps for ``AGENT_TIMES`` when that is set.
@@ -113,7 +116,7 @@ from mini_app_polis.environment import Effect, effect_enabled
 from mini_app_polis.pipeline_status import run_report
 
 from . import dispatch as agent
-from . import executor
+from . import executor, review
 from ._version import __version__
 from .board import Board
 from .github import AgentApp
@@ -186,6 +189,7 @@ BOARD_LABELS: dict[str, str] = {
     "ready_not_moved": "ready, not moved (GROOM_AUTO_READY is off)",
     "blocked_not_moved": "waiting on blockers, not moved (GROOM_AUTO_READY is off)",
     "failing_in_ready_not_moved": "failing in Ready, not moved (GROOM_AUTO_READY is off)",
+    "review_closed": "Review tasks closed, work landed",
 }
 
 #: The window the return-from-Ready ratio is read over.
@@ -745,6 +749,13 @@ def run_sweep(
             board_count("blocked_not_moved", result.blocked_not_moved)
             board_count("failing_in_ready_not_moved", len(result.failed_ready))
         _report_return_rate(store, report)
+        reviewed = review.review(board)
+        if reviewed is not None:
+            board_count("review_closed", len(reviewed.closed))
+            for task in reviewed.missing_handoff:
+                report.issue("review task missing a handoff", review.task_label(task))
+            for task in reviewed.unverified:
+                report.issue("review task unverified", review.task_label(task))
         for task in result.newly_held:
             report.notice(
                 "task newly held with nobody asked",

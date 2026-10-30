@@ -74,6 +74,24 @@ other name is matched against the board's columns, ignoring case.
 - A comment whose text is already on the task is not posted again, so a
   redelivered update changes nothing. Nothing here completes a task.
 
+An `external_id` that starts with `secret-rotation.` and ends in `.`
+(`secret-rotation.<config>.<name>.`) is a key prefix: it names a secret, whose
+rotation tasks each carry a key under it. The comment's first line must be
+
+```
+Rotated <ISO timestamp>; verification <ok|failed|unchecked>
+```
+
+(a timestamp without an offset is read as UTC). The update goes to the one
+open task whose external id starts with the prefix: when the timestamp is
+after that task's creation and the task is not already in Review, it gets the
+comment and moves to Review, whatever column the request names. Each of these
+is left alone and noted in the run, not reported as a missing task: no open
+task under the prefix, a first line that does not parse, a timestamp not
+after the task's creation, a task already in Review. More than one open task
+under the prefix is left alone and reported as an issue. Any other
+`external_id` is matched exactly, as above.
+
 ## The definition of ready
 
 A task is ready when someone holding only the task and its repositories could
@@ -89,7 +107,7 @@ linter (`lint.py`) checks what can be checked without a model:
 | Effort | `S`, `M` or `L`. An `L` task is ready: its implementation creates its subtasks. |
 | PR | Blank. It belongs to whoever works the task. |
 | Blocked by | Blank, `None`, or only tasks that are done and dates (`YYYY-MM-DD`, a UTC day) that have come. A task can wait on a date alone, beside task ids, or both. Before the date it is not ready (`Blocked until <date>`) and is not sent for grooming; it moves to Ready on the first sweep on or after it. A date written any other way is a problem of its own. |
-| Executor | Not checked yet: the sweep writes the line on every task first (see Who does a task). |
+| Executor | An `Executor:` line naming `agent`, `cowork` or `person`. A task with no line, or another value, is not ready (see Who does a task). |
 | Tags | No `review` tag. |
 | Body | Says why, and links what is needed. No open-questions section (a line starting with one of `OPEN_SECTION_HEADS` in `lint.py`, such as `Open questions:`) lists anything: empty or remove it once it is decided. The author's original text, from the `Before grooming:` line on, is not checked. |
 | Shape | With `GROOM_TASK_SHAPES=true`: a **leaf** (Where names at most one repository, and one executor: its `Executor:` line, or at most one executor tag; only a `cowork` or `person` task may name none) or a **compound** task (Done when opens with its children's ids, "… are done", and Blocked by lists every one of them). Off until splitting is in place, so the existing board is not judged against it first. |
@@ -139,6 +157,27 @@ of tasks moved to Ready over the last 30 days that came back out
 `GET /v1/tasks/groomings/return-rate`; when that read fails the line is
 left out and the report notes it). **Agent** has the dispatch's spend this
 month, what it dispatched, and what it skipped by reason, one a line.
+
+## Review
+
+A task moved to Review carries a `Handed off:` comment. Whoever confirms the
+work landed (green CI on dev) posts a comment starting `Landed:` with the
+repo, branch, commit and CI result, and the sweep does the closing. Each
+sweep reads the incomplete tasks in Review (`REVIEW_SECTION`), from their
+comments and column changes only (no GitHub, no model):
+
+- Latest comment starts with `Landed:`: marked complete, and left in Review.
+  Counted in the run report (`Review tasks closed, work landed`).
+- Any comment after the `Landed:` comment: left open.
+- No comment at all since it entered Review: listed in the run report as
+  missing a handoff, on the first sweep that sees it.
+- No `Landed:` comment more than `REVIEW_UNVERIFIED_HOURS` (default 24) after
+  it entered Review: listed as unverified.
+
+A task entered Review at its latest move into the column, or at its creation
+when it has none. Both lists give the task id and title, and make the run
+WARN. The sweep never moves a task out of Review and never marks one
+incomplete.
 
 ## Who does a task
 

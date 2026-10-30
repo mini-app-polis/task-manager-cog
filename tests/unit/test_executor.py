@@ -248,19 +248,17 @@ def test_compose_writes_the_line_from_the_sources_labels() -> None:
     assert "\nExecutor: agent" in agent.html_notes
 
 
-def test_the_linter_does_not_yet_require_the_line() -> None:
+def test_the_linter_requires_the_line() -> None:
     task = _task()
-    assert (
-        lint(
-            name=task.name,
-            notes=task.notes,
-            tags=(),
-            repos={"infra"},
-            completed_by_id={},
-            shapes=True,
-        )
-        == []
+    problems = lint(
+        name=task.name,
+        notes=task.notes,
+        tags=(),
+        repos={"infra"},
+        completed_by_id={},
+        shapes=True,
     )
+    assert problems == ["template is missing Executor"]
 
 
 def test_with_a_line_two_executor_tags_are_not_a_shape_problem() -> None:

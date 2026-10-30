@@ -52,6 +52,7 @@ Constraints: None
 Effort: S
 PR:
 Blocked by:
+Executor: agent
 
 Because the plan drifted."""
 
