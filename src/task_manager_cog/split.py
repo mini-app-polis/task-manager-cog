@@ -21,6 +21,16 @@ created with an empty Blocked by and moved to Ready ahead of what it waits
 for. Such a proposal is inconsistent and is reported like a split over the
 cap, naming each such child. The check reads the proposal only.
 
+Only the child's own waiting counts. A wait whose object is the child itself
+("… wait on this", "… waits on it", "… wait on this child") or whose subject,
+just before the verb in the same clause, is other children ("the service
+children wait on …", "every later child waits on …", "the others start after
+the … child") says what waits on this child, not what it waits on, and is
+not counted. Anything else that says it waits is: when in doubt the check
+still refuses, so a real wait is not missed. It is a word rule, not a parse:
+a wait whose subject sits more than two words before the verb, or that uses
+another word for "this", is still counted.
+
 **Questions first.** A proposal with children and questions is not split:
 its questions are posted as one ``Grooming questions:`` comment with the
 children listed under them, and any child that says it waits but names no
@@ -86,8 +96,33 @@ COMPOUND_CONSTRAINTS = "A compound task: no work of its own."
 _EFFORT_ORDER = ("S", "M", "L")
 
 #: What a child says when it waits on something: "waits on", "wait on",
-#: "after the … child".
+#: "after the … child". A match counts only when it is the child's own wait:
+#: see :data:`_WAITED_ON_BY_OTHERS` and :data:`_OTHERS_WAIT`.
 _WAIT_WORDS = re.compile(r"\bwaits? on\b|\bafter the\b[^.\n]*?\bchild\b", re.I)
+
+#: After "wait(s) on": the child itself ("this", "it", "this child", "this
+#: task", "this one"), then the end of the clause or a word that does not
+#: make "this" a determiner ("to", "first", "landing", …). "this week's
+#: release" or "this repo" is something else, and still counts.
+_WAITED_ON_BY_OTHERS = re.compile(
+    r"\s+(?:it|this(?:\s+(?:child|task|one))?)"
+    r"(?=\s*(?:$|[.;:,!?)\n]|(?:to|first|before|and|or|being|so)\b|\w+ing\b))",
+    re.I,
+)
+
+#: Just before the verb, in the same clause: other children are the subject
+#: ("the service children", "the others", "the rest", "every later child",
+#: "each other child"), with at most two words between them and the wait.
+#: "This child" is not on the list: it is the child's own wait.
+_OTHERS_WAIT = re.compile(
+    r"(?:\bchildren|\bothers|\bthe rest"
+    r"|\b(?:every|each|later|other|subsequent|following|remaining)\b"
+    r"[^.;:,!?\n]*?\bchild)"
+    r"\s+(?:[\w'-]+\s+){0,2}$",
+    re.I,
+)
+
+_CLAUSE_END = re.compile(r"[.;:,!?\n]")
 
 
 def dry_run() -> bool:
@@ -128,6 +163,21 @@ def _names_a_blocker(child: GroomingChild) -> bool:
     )
 
 
+def _own_wait(text: str) -> re.Match[str] | None:
+    """The first place ``text`` says the child itself waits, if any."""
+    for match in _WAIT_WORDS.finditer(text):
+        if match[0].lower().endswith("on") and _WAITED_ON_BY_OTHERS.match(
+            text, match.end()
+        ):
+            continue
+        before = text[: match.start()]
+        clause = _CLAUSE_END.split(before)[-1]
+        if _OTHERS_WAIT.search(clause):
+            continue
+        return match
+    return None
+
+
 def unblocked_waits(proposal: GroomingProposal) -> list[str]:
     """Each child that says it waits but names no blocker, and where it says so."""
     found = []
@@ -139,7 +189,7 @@ def unblocked_waits(proposal: GroomingProposal) -> list[str]:
             ("Done when", child.done_when),
             ("body", child.body),
         ):
-            if match := _WAIT_WORDS.search(text):
+            if match := _own_wait(text):
                 found.append(
                     f'child {position} ({child.title}) says "{match[0]}" in its '
                     f"{part} but names no blocker"
