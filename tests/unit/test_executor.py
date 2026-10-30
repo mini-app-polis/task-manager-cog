@@ -69,9 +69,6 @@ class FakeBoard:
     def assign(self, task_gid: str) -> None:
         self.calls.append(("assign", task_gid))
 
-    def unassign(self, task_gid: str) -> None:
-        self.calls.append(("unassign", task_gid))
-
 
 # ── reading the executor ──────────────────────────────────────────────────
 
@@ -149,12 +146,18 @@ def test_a_tagged_task_with_no_line_is_backfilled_and_assigned() -> None:
     assert change.describe() == "Executor: cowork written, assigned to the owner"
 
 
-def test_an_untagged_task_with_no_line_is_the_agents_and_unassigned() -> None:
+def test_an_untagged_task_with_no_line_is_the_agents_and_stays_assigned() -> None:
     change = plan(_task(assignee="u1"))
     assert change.executor == "agent"
     assert change.body is not None and "\nExecutor: agent\n" in change.body
-    assert change.unassigned
-    assert change.describe() == "Executor: agent written, unassigned"
+    assert not change.assigned
+    assert change.describe() == "Executor: agent written"
+
+
+def test_an_unassigned_agent_task_is_assigned_to_the_owner() -> None:
+    change = plan(_task(line="agent"))
+    assert change.assigned
+    assert change.describe() == "assigned to the owner"
 
 
 def test_a_line_that_contradicts_the_tag_moves_the_tag() -> None:
@@ -174,7 +177,7 @@ def test_an_agent_line_takes_an_executor_tag_off() -> None:
 
 def test_a_task_in_step_needs_nothing() -> None:
     assert not plan(_task(line="cowork", tags=("cowork",), assignee="u1")).any
-    assert not plan(_task(line="agent")).any
+    assert not plan(_task(line="agent", assignee="u1")).any
 
 
 def test_a_bad_line_is_left_for_the_linter() -> None:
@@ -204,7 +207,6 @@ def test_keep_in_step_writes_what_it_planned() -> None:
         ("body", "1"),
         ("assign", "1"),
         ("untag", "2"),
-        ("unassign", "2"),
     ]
 
 

@@ -55,7 +55,9 @@ def _task(
     notes: str = READY,
     section: str = "Ideas",
     completed: bool = False,
+    assignee: str | None = "owner",
 ) -> AsanaTaskRecord:
+    # Every task on the board is assigned to the owner.
     return AsanaTaskRecord(
         gid=gid,
         name=name,
@@ -63,6 +65,7 @@ def _task(
         completed=completed,
         section_gid=f"s-{section.lower()}",
         section_name=section,
+        assignee_gid=assignee,
     )
 
 
@@ -112,9 +115,6 @@ class FakeBoard:
 
     def assign(self, task_gid: str) -> None:
         self._replace(task_gid, assignee_gid="owner")
-
-    def unassign(self, task_gid: str) -> None:
-        self._replace(task_gid, assignee_gid=None)
 
     def tag(self, task_gid: str, tag_name: str) -> None:
         self.tagged.append((task_gid, tag_name))
@@ -1378,7 +1378,7 @@ def test_the_sweep_keeps_executors_in_step_before_it_judges_the_board(
 ) -> None:
     monkeypatch.setenv("GROOM_AUTO_READY", "true")
     tagged = dataclasses.replace(
-        _task("2", "TASK-2 · Rotate", section="Blocked"),
+        _task("2", "TASK-2 · Rotate", section="Blocked", assignee=None),
         tag_names=("person",),
         html_notes=f"<body>{READY}</body>",
     )

@@ -24,7 +24,7 @@ from mini_app_polis.asana import (
 )
 
 from .compose import ComposedTask
-from .executor import OWNER, tagged_executor
+from .executor import OWNER
 
 log = logger_mod.get_logger()
 
@@ -88,17 +88,16 @@ class Board:
     def create(self, name: str, task: ComposedTask, *, external_id: str) -> str:
         """Create the task and return its gid.
 
-        A cowork or person task is assigned to the owner; an agent task to
-        no one (executor.py).
+        Every task is assigned to the owner, whoever does the work
+        (executor.py).
         """
-        assignee = OWNER if tagged_executor(task.tag_names) is not None else None
         return self._client.create_task(
             AsanaTaskInput(
                 name=name,
                 html_notes=task.html_notes,
                 project_gid=self.project_gid,
                 section_gid=self.section_gid,
-                assignee=assignee,
+                assignee=OWNER,
                 due_on=task.due_on,
                 tag_gids=self.tag_gids(task.tag_names),
                 external_id=external_id,
@@ -132,10 +131,6 @@ class Board:
     def assign(self, task_gid: str) -> None:
         """Assign a task to the owner."""
         self._client.update_task(task_gid, assignee=OWNER)
-
-    def unassign(self, task_gid: str) -> None:
-        """Leave a task assigned to no one."""
-        self._client.update_task(task_gid, unassign=True)
 
     def tag(self, task_gid: str, tag_name: str) -> None:
         """Put a tag on a task."""
