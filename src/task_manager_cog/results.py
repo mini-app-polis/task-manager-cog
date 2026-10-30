@@ -9,9 +9,11 @@ and it is applied here, in line with every other write to the board.
 
 **Succeeded.** The run opened a draft pull request into ``dev``. Its link
 goes on the task's PR line, the task moves to Review (``REVIEW_SECTION``),
-and a comment says what it cost. A person reviews and merges the draft,
-confirms the change in dev, and marks the task done: nothing here ever
-completes a task, because the agent's report is not proof the work is done.
+and a comment starting ``Handed off:`` names the repository and the pull
+request and says what it cost. A person reviews and merges the draft, and
+the task closes when a ``Landed:`` comment confirms green CI on dev: nothing
+here ever completes a task, because the agent's report is not proof the
+work is done.
 
 **Failed or capped.** The task stays in In progress, and a comment says why,
 what it cost and where the run is. Nothing dispatches from In progress, so
@@ -72,6 +74,9 @@ FLOW_NAME = "apply-agent-result"
 
 DEFAULT_REVIEW_SECTION = "Review"
 
+#: Starts the comment that hands a task's work off into Review.
+HANDED_OFF_PREFIX = "Handed off:"
+
 
 def review_section() -> str:
     """Where a task with a draft pull request goes: ``REVIEW_SECTION``."""
@@ -108,14 +113,20 @@ def grooming_comment(run: AgentRun, *, moved_away: bool = False) -> str:
 
 
 def result_comment(run: AgentRun, *, moved_away: bool = False) -> str:
-    """The comment a run's result leaves on its task."""
+    """The comment a run's result leaves on its task.
+
+    A succeeded run's starts with ``Handed off:``.
+    """
     where = f"\nRun: {run.actions_run_url}" if run.actions_run_url else ""
     if run.status == "succeeded":
         text = (
-            f"{marker(run)} opened a draft pull request into dev: {run.pr_url}\n"
-            f"Cost: {_cost(run)}.{where}\n"
-            "Review and merge it, confirm the change in dev, then mark this "
-            "task done."
+            f"{HANDED_OFF_PREFIX} {marker(run)} opened a draft pull request into "
+            f"dev in {run.repository}: {run.pr_url}\n"
+            "The files and commit message are in the pull request; it is not "
+            f"merged yet.\nCost: {_cost(run)}.{where}\n"
+            "Review and merge it. Whoever confirms green CI on dev posts a "
+            'comment starting "Landed:" with the repo, branch, commit and CI '
+            "result, and the sweep marks this task done."
         )
     else:
         how = "stopped at its budget limit" if run.status == "capped" else "failed"

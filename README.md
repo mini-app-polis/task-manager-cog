@@ -160,11 +160,30 @@ month, what it dispatched, and what it skipped by reason, one a line.
 
 ## Review
 
-A task moved to Review carries a `Handed off:` comment. Whoever confirms the
-work landed (green CI on dev) posts a comment starting `Landed:` with the
-repo, branch, commit and CI result, and the sweep does the closing. Each
-sweep reads the incomplete tasks in Review (`REVIEW_SECTION`), from their
-comments and column changes only (no GitHub, no model):
+Review holds work handed off and work done. The board process
+(ecosystem-standards ADR-0014):
+
+- **Handed off.** Moving a task to Review comes with a comment starting
+  `Handed off:` that says what changed, the repo and files, the commit
+  message, and whether it is committed yet. A succeeded agent run's result
+  comment is one (Agent dispatch).
+- **Landed.** A task is closed by a comment starting `Landed:` that names
+  the repo, branch, commit and CI result, posted by whoever confirms green
+  CI on dev: an agent run, a Claude session or Kaiano. The sweep marks it
+  complete. A later comment reopens it: the sweep closes a task only while
+  `Landed:` is its latest comment, and never reopens one it has closed, so
+  a closed task is reopened by hand.
+- **Closing out Review.** A session closing out Review checks each
+  incomplete task against its own Done when on dev: the change present, CI
+  green, and the release out if the task needs one. Landed: post
+  `Landed:`. Not landed: move it back to In progress with a comment saying
+  what is missing. Can't tell: comment what could not be confirmed, and
+  move it to Ready with its `Executor:` line set to `cowork`.
+- **Matching.** Work is matched to a task by its Where and Done when, not
+  by task ids in commit messages.
+
+Each sweep reads the incomplete tasks in Review (`REVIEW_SECTION`), from
+their comments and column changes only (no GitHub, no model):
 
 - Latest comment starts with `Landed:`: marked complete, and left in Review.
   Counted in the run report (`Review tasks closed, work landed`).
@@ -361,10 +380,11 @@ fails, hits its budget, cannot be started, or never reports (after
 and nothing dispatches from In progress.
 
 The run's result comes back through the API, and `results.py` applies it. A
-run that succeeded puts its pull request on the task's PR line and moves
-the task to Review; one that needs grooming goes back to Refining (below).
-**Nothing here ever marks a task done:** a person merges the draft,
-confirms the change in dev, and completes the task.
+run that succeeded puts its pull request on the task's PR line, moves the
+task to Review, and posts its `Handed off:` comment; one that needs
+grooming goes back to Refining (below). **Applying a result never marks a
+task done:** a person reviews and merges the draft, and the task closes
+when a `Landed:` comment confirms green CI on dev (Review).
 
 The trigger is the sweep, not Asana webhooks. Asana delivers webhook
 events at most once and recommends polling as a fallback, and this cog has
