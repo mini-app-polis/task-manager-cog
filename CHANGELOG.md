@@ -1,3 +1,16 @@
+# [1.21.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.20.0...v1.21.0) (2026-10-30)
+
+
+### Bug Fixes
+
+* **results:** link a succeeded run's report line to its draft PR ([cd0703e](https://github.com/mini-app-polis/task-manager-cog/commit/cd0703e2bb39a2fbcf5702f4643e85460cc41b01))
+* **sweep:** label dispatch skip reasons in plain words in the groom-sweep report ([ed1af81](https://github.com/mini-app-polis/task-manager-cog/commit/ed1af811029dddf5fc92344a201a1607135bce23))
+
+
+### Features
+
+* **lint:** let a cowork or person task name more than one repository in Where ([2506d57](https://github.com/mini-app-polis/task-manager-cog/commit/2506d57a0c2c1fcfbe8e388243ee1574608a4dd8))
+
 # [1.20.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.19.2...v1.20.0) (2026-10-30)
 
 
