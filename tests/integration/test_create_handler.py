@@ -37,7 +37,7 @@ def test_a_job_puts_one_composed_task_on_the_board(
 ) -> None:
     asana, _api = world
     asana.add_task("VN-3 · An earlier note", completed=True)
-    asana.add_task("MINI-90 · Written by hand")
+    asana.add_task("TASK-90 · Written by hand")
 
     result = handler(sqs_event(sqs_record(create_body(), "m-1")))
 

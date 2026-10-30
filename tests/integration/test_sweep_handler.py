@@ -28,8 +28,8 @@ def test_a_sweep_moves_the_ready_task_and_records_both_verdicts(
     world, handler, auto_ready
 ) -> None:
     asana, api = world
-    ready = asana.add_task("MINI-1 · Pin runners")
-    blank = asana.add_task("MINI-2 · Idea", notes="Done when:\nWhere:\n")
+    ready = asana.add_task("TASK-1 · Pin runners")
+    blank = asana.add_task("TASK-2 · Idea", notes="Done when:\nWhere:\n")
 
     result = handler(sqs_event(sqs_record(sweep_body(), "s-1")))
 
@@ -45,8 +45,8 @@ def test_a_sweep_moves_the_ready_task_and_records_both_verdicts(
 
 def test_a_redelivered_sweep_changes_nothing_twice(world, handler, auto_ready) -> None:
     asana, api = world
-    ready = asana.add_task("MINI-1 · Pin runners")
-    asana.add_task("MINI-2 · Idea", notes="Done when:\nWhere:\n")
+    ready = asana.add_task("TASK-1 · Pin runners")
+    asana.add_task("TASK-2 · Idea", notes="Done when:\nWhere:\n")
 
     first = handler(sqs_event(sqs_record(sweep_body(), "s-1")))
     writes = len(api.writes)
@@ -61,7 +61,7 @@ def test_a_redelivered_sweep_changes_nothing_twice(world, handler, auto_ready) -
 def test_a_task_failing_in_ready_is_sent_back_once(world, handler, auto_ready) -> None:
     asana, _api = world
     failing = asana.add_task(
-        "MINI-1 · Idea", notes="Done when:\nWhere:\n", section="Ready"
+        "TASK-1 · Idea", notes="Done when:\nWhere:\n", section="Ready"
     )
 
     first = handler(sqs_event(sqs_record(sweep_body(), "s-1")))
@@ -75,7 +75,7 @@ def test_a_task_failing_in_ready_is_sent_back_once(world, handler, auto_ready) -
 
 def test_without_auto_ready_the_sweep_only_reports(world, handler) -> None:
     asana, api = world
-    ready = asana.add_task("MINI-1 · Pin runners")
+    ready = asana.add_task("TASK-1 · Pin runners")
 
     result = handler(sqs_event(sqs_record(sweep_body(), "s-1")))
 
@@ -89,7 +89,7 @@ def test_unanswered_grooming_questions_hold_a_task_out_of_ready(
     world, handler, auto_ready
 ) -> None:
     asana, _api = world
-    held = asana.add_task("MINI-1 · Pin runners")
+    held = asana.add_task("TASK-1 · Pin runners")
     asana.comments[held] = ["Grooming questions: which runner image?"]
 
     result = handler(sqs_event(sqs_record(sweep_body(), "s-1")))
@@ -102,7 +102,7 @@ def test_a_sweep_that_cannot_read_the_board_is_redelivered(
     world, handler, auto_ready
 ) -> None:
     asana, api = world
-    asana.add_task("MINI-1 · Pin runners")
+    asana.add_task("TASK-1 · Pin runners")
     asana.fail("GET tasks", 500)
 
     result = handler(sqs_event(sqs_record(sweep_body(), "s-1")))

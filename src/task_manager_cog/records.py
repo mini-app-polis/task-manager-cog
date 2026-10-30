@@ -276,7 +276,7 @@ def sent_back_record(
 ) -> GroomingRecordWrite:
     """The record for a task the sweep moved out of Ready because it failed.
 
-    It counts once as sent back from Ready, and no longer says this cog moved
+    It counts once as sent back from Ready, and stops saying this cog moved
     it there, so the next sweep does not count it again. Its content is
     recorded as groomed: moving it back does not send it for grooming, and a
     person changing it does.

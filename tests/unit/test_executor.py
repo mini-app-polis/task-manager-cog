@@ -42,7 +42,7 @@ def _task(
     notes = f"{block}\n\n{BODY}"
     return AsanaTaskRecord(
         gid=gid,
-        name=f"MINI-{gid} · plan",
+        name=f"TASK-{gid} · plan",
         notes=notes,
         completed=completed,
         section_gid="s-ready",
@@ -109,9 +109,9 @@ def test_a_missing_line_goes_after_blocked_by_and_keeps_the_formatting() -> None
 
 
 def test_a_line_goes_after_a_blocked_by_that_runs_on() -> None:
-    html_notes = "<body>Done when: x\nBlocked by: MINI-1,\nMINI-2\n\nBody</body>"
+    html_notes = "<body>Done when: x\nBlocked by: TASK-1,\nTASK-2\n\nBody</body>"
     assert with_line(html_notes, "person") == (
-        "<body>Done when: x\nBlocked by: MINI-1,\nMINI-2\nExecutor: person\n\nBody</body>"
+        "<body>Done when: x\nBlocked by: TASK-1,\nTASK-2\nExecutor: person\n\nBody</body>"
     )
 
 
@@ -277,7 +277,7 @@ def test_with_a_line_two_executor_tags_are_not_a_shape_problem() -> None:
 def test_a_cowork_line_lets_a_leaf_name_no_repository() -> None:
     notes = _task(line="cowork").notes.replace("Where: infra", "Where: None")
     problems = lint(
-        name="MINI-1 · plan",
+        name="TASK-1 · plan",
         notes=notes,
         tags=(),
         repos={"infra"},
@@ -343,10 +343,10 @@ def test_a_split_child_carries_its_executor_line() -> None:
         body="Because.",
         executor="person",
     )
-    block, _ = child_notes(child, ["MINI-9"], "MINI-8", "parent")
+    block, _ = child_notes(child, ["TASK-9"], "TASK-8", "parent")
     assert block.splitlines()[-1] == "Executor: person"
     agent = child.model_copy(update={"executor": None})
-    assert child_notes(agent, ["MINI-9"], "MINI-8", "parent")[0].endswith(
+    assert child_notes(agent, ["TASK-9"], "TASK-8", "parent")[0].endswith(
         "Executor: agent"
     )
 

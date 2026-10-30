@@ -2,7 +2,7 @@
 
 A task that is neither a leaf (one repository, one executor) nor a compound
 task comes back from grooming with children. Each child is created on the
-board as a leaf, in the template, with its own ``MINI-`` id and executor
+board as a leaf, in the template, with its own :data:`MANUAL_PREFIX` id and executor
 tag; a child that waits on an earlier one names it in Blocked by. The task
 itself is rewritten as their compound task: done when its children are,
 blocked by every one of them, with no work of its own.
@@ -35,7 +35,7 @@ The next sweep then sends it to be groomed again with the answers.
 **Once.** Each child is created with an external id made of its parent, the
 content the split was made for, and its position, so a redelivered proposal
 finds the children it already created and creates no second set. Once the
-parent is rewritten, a redelivery no longer matches its content and is not
+parent is rewritten, a redelivery does not match its new content and is not
 applied at all.
 
 The children are recorded as groomed, so the sweep moves the ones that pass

@@ -17,7 +17,7 @@ def test_next_id_is_the_highest_plus_one_not_the_count() -> None:
 @pytest.mark.parametrize(
     "name",
     [
-        "MINI-40 · manual",  # another prefix
+        "TASK-40 · manual",  # another prefix
         "VNX-40 · lookalike",
         "VN-40x · not an id",
         "about VN-40",  # not leading

@@ -24,7 +24,7 @@ everything a task is missing.
   executor (its ``Executor:`` line, or at most one executor tag). Only a
   cowork or person task (board or console work) may name no repository.
 - a *compound* task: its Done when says it is done when its children are
-  (``MINI-1, MINI-2 and MINI-3 are done``), and its Blocked by lists every
+  (``TASK-1, TASK-2 and TASK-3 are done``), and its Blocked by lists every
   one of them. It has no work of its own, so it may span repositories.
 """
 
@@ -62,7 +62,7 @@ BLOCKED_UNTIL = "Blocked until "
 #: What an empty ``Blocked by`` or ``Constraints`` may say instead of nothing.
 NONE_WORDS: frozenset[str] = frozenset({"none", "-", "\u2014", "\u2013", "n/a"})
 
-#: A task id as the board names them: a prefixed number (``MINI-12``) or a
+#: A task id as the board names them: a prefixed number (``TASK-12``) or a
 #: repository issue (``infra#4``).
 _TASK_ID = re.compile(r"\b(?:[A-Z][A-Z0-9]*-\d+|[a-z0-9][a-z0-9._-]*#\d+)\b")
 
@@ -202,7 +202,7 @@ def looks_like_label(line: str) -> bool:
 
 
 def mentioned_ids(text: str) -> list[str]:
-    """Every task id the text names (``MINI-12``, ``infra#4``), in order, once."""
+    """Every task id the text names (``TASK-12``, ``infra#4``), in order, once."""
     return list(dict.fromkeys(_TASK_ID.findall(text)))
 
 
@@ -257,7 +257,7 @@ def children_of(done_when: str) -> list[str]:
     """The children a compound task's Done when names, or [] for a leaf.
 
     A compound task's Done when opens with its children's ids and says they
-    are done: ``MINI-183, MINI-184 and MINI-186 are done. Between them: …``.
+    are done: ``TASK-183, TASK-184 and TASK-186 are done. Between them: …``.
     """
     match = _DONE_CLAUSE.match(done_when)
     if match is None or not _ID_LIST.fullmatch(match["ids"]):
@@ -314,7 +314,7 @@ def only_blocked(problems: Collection[str]) -> bool:
 def _blocking_dates(blocked_by: str, today: dt.date) -> tuple[list[str], int]:
     """The problems the dates in ``Blocked by`` raise, and how many it names.
 
-    A date ahead of ``today`` blocks; one on or before it no longer does. A
+    A date ahead of ``today`` blocks; one on or before it does not. A
     date that is not ``YYYY-MM-DD``, or is no real day, is a problem of its
     own.
     """

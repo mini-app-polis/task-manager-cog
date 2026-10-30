@@ -72,7 +72,7 @@ def test_create_assigns_a_cowork_or_person_task_to_the_owner(executor: str) -> N
     task = ComposedTask(
         title="t", html_notes="<body>x</body>", tag_names=(executor,), due_on=None
     )
-    board.create("MINI-2 · t", task, external_id="x")
+    board.create("TASK-2 · t", task, external_id="x")
     assert client.created[0].assignee == "me"
 
 
