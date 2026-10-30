@@ -127,6 +127,16 @@ def test_a_success_fills_the_pr_line_and_moves_to_review(
     assert kwargs["cost_usd"] == "0.8400"
 
 
+def test_a_success_links_its_report_line_to_the_draft_pr(
+    production, _no_outbound_reports
+) -> None:
+    _apply(_run(), _board())
+
+    ((_, kwargs),) = _no_outbound_reports
+    assert f"[TASK-1 · Fix the watcher]({PR})" in kwargs["text"]
+    assert "https://board/1" not in kwargs["text"]
+
+
 @pytest.mark.parametrize(
     ("status", "words"), [("failed", "failed"), ("capped", "budget limit")]
 )
