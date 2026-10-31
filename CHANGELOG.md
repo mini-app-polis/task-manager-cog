@@ -1,3 +1,15 @@
+# [1.25.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.24.2...v1.25.0) (2026-10-31)
+
+
+### Bug Fixes
+
+* **deps:** bump miniapppolis-common-utils to 7.8.0 ([5ab8d61](https://github.com/mini-app-polis/task-manager-cog/commit/5ab8d6151cf72d6b1f2618932e16ad2b820a292b))
+
+
+### Features
+
+* **worker:** log effective settings once at cold start, values only for allowlisted names ([0fe4451](https://github.com/mini-app-polis/task-manager-cog/commit/0fe4451ba78e02a25f800741ac15411ea1c7178d))
+
 ## [1.24.2](https://github.com/mini-app-polis/task-manager-cog/compare/v1.24.1...v1.24.2) (2026-10-31)
 
 
