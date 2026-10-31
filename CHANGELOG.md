@@ -1,3 +1,11 @@
+## [1.24.2](https://github.com/mini-app-polis/task-manager-cog/compare/v1.24.1...v1.24.2) (2026-10-31)
+
+
+### Bug Fixes
+
+* **deps:** bump miniapppolis-common-utils to 7.7.0 ([f3f1afc](https://github.com/mini-app-polis/task-manager-cog/commit/f3f1afcf6b084a90d4f35bdc6a303ede806d6093))
+* **deps:** patch vulnerable dependencies (pyasn1) ([e049280](https://github.com/mini-app-polis/task-manager-cog/commit/e04928038ec247dc7d8270f754d932d02f805403))
+
 ## [1.24.1](https://github.com/mini-app-polis/task-manager-cog/compare/v1.24.0...v1.24.1) (2026-10-30)
 
 
