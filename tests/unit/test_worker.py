@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -439,3 +440,32 @@ def test_an_update_is_applied(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     worker.process_message(_update(), run_id="m-1")
     assert applied == ["CI is green again."]
+
+
+def test_effective_settings_show_values_only_for_allowlisted_names(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    secret = "asana-secret-token-value"
+    monkeypatch.setenv("SETTINGS_ALLOWLIST", "AGENT_MODEL,GROOM_SPLIT_MAX_CHILDREN")
+    monkeypatch.delenv("AGENT_MODEL", raising=False)
+    monkeypatch.setenv("GROOM_SPLIT_MAX_CHILDREN", "7")
+    monkeypatch.setenv("ASANA_ACCESS_TOKEN", secret)
+    monkeypatch.delenv("AGENT_APP_PRIVATE_KEY", raising=False)
+
+    with caplog.at_level(logging.DEBUG):
+        worker.log_effective_settings()
+
+    lines = [r.getMessage() for r in caplog.records]
+    assert f"AGENT_MODEL={worker.dispatch.DEFAULT_MODEL} (default)" in lines
+    assert "GROOM_SPLIT_MAX_CHILDREN=7 (set)" in lines
+    assert "ASANA_ACCESS_TOKEN (set)" in lines
+    assert "AGENT_APP_PRIVATE_KEY (unset)" in lines
+    assert all(secret not in r.getMessage() for r in caplog.records)
+    assert secret not in caplog.text
+
+
+def test_effective_settings_report_an_unparsable_value_as_given(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GROOM_DISPATCH_LIMIT", "lots")
+    assert worker.effective_settings()["GROOM_DISPATCH_LIMIT"] == "lots"

@@ -60,6 +60,7 @@ someone can see it, rather than being guessed at or dropped.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -77,7 +78,7 @@ from mini_app_polis.api.contract import (
     TaskUpdateMessage,
     TaskUpdateRequest,
 )
-from mini_app_polis.environment import Effect, effect_enabled
+from mini_app_polis.environment import Effect, effect_enabled, log_settings
 from mini_app_polis.lambda_worker import (
     UnprocessableMessage,
     all_failed,
@@ -88,11 +89,13 @@ from mini_app_polis.lambda_worker import parse_message as parse_queue_message
 from mini_app_polis.pipeline_status import post_run_finding, run_report
 from mini_app_polis.sentry import init_sentry
 
+from . import dispatch, github, landed, review, split, sweep
 from ._version import __version__
 from .board import Board
 from .compose import compose
 from .groom import apply_proposal
 from .ids import next_id, task_name
+from .registry import DEFAULT_URL as DEFAULT_ECOSYSTEM_YAML_URL
 from .results import apply_result
 from .sources import SOURCES
 from .sweep import run_sweep
@@ -110,6 +113,100 @@ DEADLINE_MARGIN_SECONDS = 20
 # At import, not per invocation: a Lambda container is reused across
 # invocations, so this runs once per cold start.
 init_sentry(REPO)
+
+#: Names this cog reads whose value no accessor here resolves: the shared
+#: library reads them itself, or they are read as given when used.
+_PLAIN_SETTINGS: tuple[str, ...] = (
+    "ASANA_ACCESS_TOKEN",
+    "ASANA_WORKSPACE_ID",
+    "ASANA_INBOX_PROJECT_ID",
+    "ASANA_INBOX_SECTION_ID",
+    "AGENT_APP_CLIENT_ID",
+    "AGENT_APP_PRIVATE_KEY",
+    "TASK_MANAGER_COG_API_KEY",
+    "KAIANO_API_BASE_URL",
+    "LOGGING_LEVEL",
+    "SENTRY_DSN_COGS",
+)
+
+
+def _resolved(name: str, read: Callable[[], Any]) -> Any:
+    """``read()``, or the raw value when it cannot be parsed.
+
+    A bad value fails where it is used, as before; reporting it must not
+    stop the cold start.
+    """
+    try:
+        return read()
+    except (ValueError, KeyError):
+        return os.environ.get(name) or ""
+
+
+def _number(name: str, default: int) -> int:
+    """A whole-number setting as the sweep reads it: at least 0, or ``default``."""
+    raw = (os.environ.get(name) or "").strip()
+    return max(0, int(raw)) if raw else default
+
+
+def effective_settings() -> dict[str, Any]:
+    """Every name this cog reads, mapped to the value in effect, defaults applied.
+
+    Each value comes from the accessor the code uses, so it is the value a
+    job would see now.
+    """
+    accessors: dict[str, Callable[[], Any]] = {
+        "AGENT_DISPATCH": dispatch.enabled,
+        "AGENT_DRY_RUN": dispatch.dry_run,
+        "AGENT_MODEL": dispatch.model,
+        "AGENT_TASK_CAP_USD": dispatch.task_cap,
+        "AGENT_MONTHLY_CAP_USD": dispatch.monthly_cap,
+        "AGENT_RUN_TIMEOUT_MINUTES": lambda: (
+            dispatch.run_timeout().total_seconds() / 60
+        ),
+        "AGENT_TIMES": lambda: sweep.times_of_day("AGENT_TIMES"),
+        "IN_PROGRESS_SECTION": dispatch.in_progress_section,
+        "AGENT_WORKFLOW": github.workflow,
+        "GITHUB_ORG": github.org,
+        "GROOM_AUTO_READY": sweep.auto_ready,
+        "GROOM_TASK_SHAPES": sweep.task_shapes,
+        "GROOM_DISPATCH": lambda: (
+            (os.environ.get("GROOM_DISPATCH") or "").strip().lower() == "true"
+        ),
+        "GROOM_DISPATCH_LIMIT": lambda: _number(
+            "GROOM_DISPATCH_LIMIT", sweep.DEFAULT_DISPATCH_LIMIT
+        ),
+        "GROOM_TIMES": lambda: sweep.times_of_day("GROOM_TIMES"),
+        "GROOM_SECTIONS": lambda: ",".join(sweep.groom_sections()),
+        "SWEEP_TIMEZONE": lambda: str(sweep.sweep_timezone()),
+        "READY_SECTION": sweep.ready_section,
+        "REFINING_SECTION": sweep.refining_section,
+        "BLOCKED_SECTION": sweep.blocked_section,
+        "REVIEW_SECTION": review.review_section,
+        "REVIEW_UNVERIFIED_HOURS": lambda: (
+            review.unverified_after().total_seconds() / 3600
+        ),
+        "GROOM_SPLIT_DRY_RUN": split.dry_run,
+        "GROOM_SPLIT_MAX_CHILDREN": split.max_children,
+        "LANDED_CI_WORKFLOW": landed.ci_workflow,
+        "ECOSYSTEM_YAML_URL": lambda: (
+            (os.environ.get("ECOSYSTEM_YAML_URL") or "").strip()
+            or DEFAULT_ECOSYSTEM_YAML_URL
+        ),
+    }
+    values = {name: _resolved(name, read) for name, read in accessors.items()}
+    for name in _PLAIN_SETTINGS:
+        values[name] = (os.environ.get(name) or "").strip()
+    return values
+
+
+def log_effective_settings() -> None:
+    """Log the effective settings, values only for names in SETTINGS_ALLOWLIST."""
+    log_settings(effective_settings())
+
+
+# Once per cold start, beside Sentry's init: the package's import has already
+# loaded the settings from SSM, and a warm container keeps the process.
+log_effective_settings()
 
 
 @dataclass(frozen=True)
