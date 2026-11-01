@@ -1,3 +1,10 @@
+## [1.25.4](https://github.com/mini-app-polis/task-manager-cog/compare/v1.25.3...v1.25.4) (2026-11-01)
+
+
+### Bug Fixes
+
+* **review:** flag an unverified Review task once with a comment instead of on every sweep ([413f8c5](https://github.com/mini-app-polis/task-manager-cog/commit/413f8c510859f4f6f1f1ebd2d6ec15ec1d3d11f2))
+
 ## [1.25.3](https://github.com/mini-app-polis/task-manager-cog/compare/v1.25.2...v1.25.3) (2026-11-01)
 
 
