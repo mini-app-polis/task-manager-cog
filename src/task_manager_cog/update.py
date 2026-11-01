@@ -120,6 +120,19 @@ def rotated_at(comment: str) -> datetime | None:
     return when if when.tzinfo is not None else when.replace(tzinfo=UTC)
 
 
+def _scan_for(board: Board, external_id: str) -> str | None:
+    """The open task whose stored external id is ``external_id``, by a scan.
+
+    The fallback when the direct lookup by external id misses: the board's
+    task list carries each task's external id too, so a task the lookup
+    cannot reach is still found while it is open.
+    """
+    for task in board.tasks():
+        if task.external_id == external_id:
+            return task.gid
+    return None
+
+
 def _apply_rotation(
     request: TaskUpdateRequest, board: Board, report: RunReport
 ) -> None:
@@ -192,11 +205,13 @@ def apply_update(
             _apply_rotation(request, board, report)
             return
 
-        gid = board.find(request.external_id)
+        gid = board.find(request.external_id) or _scan_for(board, request.external_id)
         task = board.get(gid) if gid is not None else None
         if task is None:
-            log.info("update: no task on the board carries %s", label)
-            report.note("no task on the board", label)
+            # The sender believes a task exists: a miss here means an update
+            # was lost, so it is an issue for a person, not an ordinary skip.
+            log.warning("update: no task on the board carries %s", label)
+            report.issue("no task on the board", label)
             return
         if task.completed:
             report.note("task done; left alone", label)
