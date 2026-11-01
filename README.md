@@ -215,7 +215,10 @@ comments and column changes only:
 - No comment at all since it entered Review: listed in the run report as
   missing a handoff, on the first sweep that sees it.
 - No `Landed:` comment more than `REVIEW_UNVERIFIED_HOURS` (default 24) after
-  it entered Review: listed as unverified.
+  it entered Review: unverified. The first sweep to find it so posts an
+  `Unverified:` comment and reports it once; while that comment is still the
+  latest, later sweeps only count it ("still awaiting Landed:"). A later
+  comment of any kind starts it over.
 
 A task entered Review at its latest move into the column, or at its creation
 when it has none. Both lists give the task id and title, and make the run
