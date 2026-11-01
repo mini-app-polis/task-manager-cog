@@ -16,7 +16,11 @@ it has none. For each incomplete task in Review:
   first sweep that sees it, unless its last comment before the move starts
   with ``Handed off:`` (a handoff is often posted just before the move);
 - no ``Landed:`` comment more than ``REVIEW_UNVERIFIED_HOURS`` (default 24)
-  after it entered Review: listed as unverified.
+  after it entered Review: unverified. The first sweep to find it so posts
+  an ``Unverified:`` comment and lists it, once; while that comment is still
+  the latest, later sweeps only count it, so a task that waits does not
+  raise the same issue every sweep. A later comment of any kind starts it
+  over.
 
   REVIEW_SECTION           the column read (default: Review)
   REVIEW_UNVERIFIED_HOURS  hours in Review before a task with no
@@ -45,6 +49,8 @@ DEFAULT_UNVERIFIED_HOURS = 24.0
 LANDED_PREFIX = "Landed:"
 #: Starts the comment that hands the work off as it moves to Review.
 HANDED_OFF_PREFIX = "Handed off:"
+#: Starts the comment the sweep posts on a task it finds unverified.
+UNVERIFIED_PREFIX = "Unverified:"
 
 COMMENT = "comment_added"
 SECTION_CHANGED = "section_changed"
@@ -69,6 +75,10 @@ class ReviewBoard(Protocol):
         """Mark a task complete."""
         ...
 
+    def comment(self, task_gid: str, text: str) -> None:
+        """Post a comment on a task."""
+        ...
+
 
 @dataclass
 class ReviewResult:
@@ -78,8 +88,12 @@ class ReviewResult:
     closed: list[AsanaTaskRecord] = field(default_factory=list)
     #: Tasks with no comment since they entered Review.
     missing_handoff: list[AsanaTaskRecord] = field(default_factory=list)
-    #: Tasks with no ``Landed:`` comment past the threshold.
+    #: Tasks found unverified this pass: no ``Landed:`` comment past the
+    #: threshold, now given an ``Unverified:`` comment.
     unverified: list[AsanaTaskRecord] = field(default_factory=list)
+    #: Tasks still unverified whose latest comment is the sweep's
+    #: ``Unverified:``: already flagged, so only counted.
+    awaiting_landed: list[AsanaTaskRecord] = field(default_factory=list)
 
 
 def review_section() -> str:
@@ -173,5 +187,20 @@ def review(
                 log.info("review: %s landed; marked complete", task.name)
             continue
         if entered is not None and now - entered > threshold:
+            latest = (comments[-1].text or "").lstrip() if comments else ""
+            if latest.startswith(UNVERIFIED_PREFIX):
+                result.awaiting_landed.append(task)
+                continue
+            board.comment(task.gid, _unverified_comment(threshold))
             result.unverified.append(task)
+            log.info("review: %s unverified; flagged", task.name)
     return result
+
+
+def _unverified_comment(threshold: dt.timedelta) -> str:
+    hours = threshold.total_seconds() / 3600
+    return (
+        f"{UNVERIFIED_PREFIX} in Review for more than {hours:g} hours with no "
+        f"{LANDED_PREFIX} comment. Confirm the work landed (green CI on dev) "
+        f"and comment {LANDED_PREFIX}, or move the task out of Review."
+    )

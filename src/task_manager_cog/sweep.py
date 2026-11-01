@@ -203,6 +203,7 @@ BOARD_LABELS: dict[str, str] = {
     "failing_in_ready_not_moved": "failing in Ready, not moved (GROOM_AUTO_READY is off)",
     "review_landed": "Review tasks given Landed:, merged with CI on dev green",
     "review_closed": "Review tasks closed, work landed",
+    "review_awaiting_landed": "Review tasks flagged unverified, still awaiting Landed:",
 }
 
 #: The window the return-from-Ready ratio is read over.
@@ -779,6 +780,7 @@ def run_sweep(
         reviewed = review.review(board)
         if reviewed is not None:
             board_count("review_closed", len(reviewed.closed))
+            board_count("review_awaiting_landed", len(reviewed.awaiting_landed))
             for task in reviewed.missing_handoff:
                 report.issue("review task missing a handoff", review.task_label(task))
             for task in reviewed.unverified:

@@ -60,6 +60,7 @@ class FakeAsanaBoard:
     history: dict[str, list[AsanaStory]] = field(default_factory=dict)
     completed: list[str] = field(default_factory=list)
     moves: list[str] = field(default_factory=list)
+    posted: list[tuple[str, str]] = field(default_factory=list)
 
     def sections(self) -> list[AsanaSection]:
         return SECTIONS
@@ -72,6 +73,9 @@ class FakeAsanaBoard:
 
     def complete(self, task_gid: str) -> None:
         self.completed.append(task_gid)
+
+    def comment(self, task_gid: str, text: str) -> None:
+        self.posted.append((task_gid, text))
 
 
 def test_a_latest_landed_comment_closes_the_task() -> None:
@@ -154,6 +158,50 @@ def test_a_task_without_landed_is_unverified_after_24_hours() -> None:
     assert [t.gid for t in result.unverified] == ["1"]
     assert result.missing_handoff == []
     assert board.completed == []
+
+
+def test_an_unverified_task_is_flagged_once_with_a_comment() -> None:
+    board = FakeAsanaBoard(
+        [_task()], {"1": [_entered(25), _comment("Handed off: PR 4", 24.5)]}
+    )
+    review(board, now=NOW)
+    assert [gid for gid, _ in board.posted] == ["1"]
+    assert board.posted[0][1].startswith("Unverified:")
+
+
+def test_a_task_already_flagged_is_counted_not_flagged_again() -> None:
+    board = FakeAsanaBoard(
+        [_task()],
+        {
+            "1": [
+                _entered(30),
+                _comment("Handed off: PR 4", 29),
+                _comment("Unverified: in Review for more than 24 hours", 5),
+            ]
+        },
+    )
+    result = review(board, now=NOW)
+    assert result.unverified == []
+    assert [t.gid for t in result.awaiting_landed] == ["1"]
+    assert board.posted == [] and board.completed == []
+
+
+def test_a_comment_after_the_flag_starts_it_over() -> None:
+    board = FakeAsanaBoard(
+        [_task()],
+        {
+            "1": [
+                _entered(30),
+                _comment("Handed off: PR 4", 29),
+                _comment("Unverified: in Review for more than 24 hours", 5),
+                _comment("still waiting on the deploy", 1),
+            ]
+        },
+    )
+    result = review(board, now=NOW)
+    assert [t.gid for t in result.unverified] == ["1"]
+    assert result.awaiting_landed == []
+    assert len(board.posted) == 1
 
 
 def test_a_task_is_not_unverified_before_24_hours() -> None:

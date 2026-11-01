@@ -305,7 +305,9 @@ def test_the_sweep_names_a_merged_pull_request_with_red_ci(
         records_factory=FakeRecords,
         reader_factory=lambda: FakeReader(runs=[_run("failure")]),
     )
-    assert board.comments_["1"] == ["Handed off: PR 7"] and board.completed == []
+    # No Landed: for red CI; the review pass may flag the task as unverified.
+    assert not any(c.startswith("Landed:") for c in board.comments_["1"])
+    assert board.completed == []
     ((_, kwargs),) = _no_outbound_reports
     assert "merged, CI on dev failed" in kwargs["text"]
     assert "infra#7" in kwargs["text"]
