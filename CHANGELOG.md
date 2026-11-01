@@ -1,3 +1,11 @@
+## [1.25.3](https://github.com/mini-app-polis/task-manager-cog/compare/v1.25.2...v1.25.3) (2026-11-01)
+
+
+### Bug Fixes
+
+* **deps:** bump the minor-and-patch group with 2 updates ([3c05bdf](https://github.com/mini-app-polis/task-manager-cog/commit/3c05bdf20d37c9a167a8431326ff0d1d326365bc))
+* **update:** find a recovery's task by scanning the board when the external-id lookup misses, and report a miss as an issue ([ef202f2](https://github.com/mini-app-polis/task-manager-cog/commit/ef202f2b82129e90aaa72ce23c2b6b8129fde442))
+
 ## [1.25.2](https://github.com/mini-app-polis/task-manager-cog/compare/v1.25.1...v1.25.2) (2026-11-01)
 
 
