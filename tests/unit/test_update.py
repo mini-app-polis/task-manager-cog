@@ -123,6 +123,28 @@ def test_a_redelivered_update_changes_nothing(production) -> None:
     assert held.moves == [] and held.comments_ == [COMMENT]
 
 
+def test_a_task_the_lookup_misses_is_found_by_its_stored_external_id(
+    production,
+) -> None:
+    board = _board()
+    board.found = None
+    board.task = dataclasses.replace(board.task, external_id=EXTERNAL_ID)
+    _apply(_request(), board)
+    assert board.looked_up == [EXTERNAL_ID]
+    assert board.comments_ == [COMMENT]
+    assert board.moves == ["s-review"]
+
+
+def test_the_scan_ignores_a_task_with_another_external_id(
+    production, _no_outbound_reports
+) -> None:
+    board = _board()
+    board.found = None
+    board.task = dataclasses.replace(board.task, external_id="ci.other.main")
+    _apply(_request(), board)
+    assert board.moves == [] and board.comments_ == []
+
+
 def test_a_comment_already_posted_is_not_posted_again_but_the_move_is_made(
     production,
 ) -> None:
