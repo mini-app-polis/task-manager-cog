@@ -1,3 +1,10 @@
+## [1.25.5](https://github.com/mini-app-polis/task-manager-cog/compare/v1.25.4...v1.25.5) (2026-11-02)
+
+
+### Bug Fixes
+
+* **worker:** scan the board for a task's external id when the direct lookup misses, before creating it ([a36cc99](https://github.com/mini-app-polis/task-manager-cog/commit/a36cc99190bbc9ae441a941b528f06cd883a54c9))
+
 ## [1.25.4](https://github.com/mini-app-polis/task-manager-cog/compare/v1.25.3...v1.25.4) (2026-11-01)
 
 
