@@ -19,6 +19,7 @@ source ──POST /v1/tasks──► api-kaianolevine-com ──► task-manager
                                                           ▼
                                              task-manager-cog (Lambda)
                                                1. look up the external id
+                                                  (then scan the board for it)
                                                2. compose the task
                                                3. mint or take the id
                                                4. create it on the board
@@ -54,8 +55,9 @@ agent workflow ──result──► API ──task.agent-result──► task-m
 
 source ──update──► API ──task.update──► task-manager queue
                                                apply it (update.py): find the task
-                                               by external id, comment, and move
-                                               it to the named column
+                                               by external id (then a board scan),
+                                               comment, and move it to the named
+                                               column
 ```
 
 ### Updating a task

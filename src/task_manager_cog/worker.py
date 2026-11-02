@@ -46,7 +46,9 @@ And so does a change to a task a source already asked for, found by its
 **A duplicate request makes no second task.** The source's ``external_id`` is stored on
 the task, and looked up before anything is composed or minted. A job that
 created its task and then failed (a timeout on the response, a lost report)
-finds that task when it comes back, and stops.
+finds that task when it comes back, and stops. When the direct lookup by
+external id misses, the board's task list is scanned for it (board.py,
+``find_or_scan``), as an update does.
 
 **Nothing is deleted until the work is done.** The event source mapping
 deletes every record the handler does not name in ``batchItemFailures``, so
@@ -91,7 +93,7 @@ from mini_app_polis.sentry import init_sentry
 
 from . import dispatch, github, landed, review, split, sweep
 from ._version import __version__
-from .board import Board
+from .board import Board, find_or_scan
 from .compose import compose
 from .groom import apply_proposal
 from .ids import next_id, task_name
@@ -276,7 +278,9 @@ def create_task(
             return
 
         board = (board_factory or Board.from_env)()
-        existing = board.find(request.external_id)
+        # The scan catches a task the direct lookup misses, so a redelivered
+        # create for a task already on the board makes no second one.
+        existing = find_or_scan(board, request.external_id)
         if existing is not None:
             log.info("worker: %s is already task %s", request.external_id, existing)
             report.note("already on the board", request.external_id)
