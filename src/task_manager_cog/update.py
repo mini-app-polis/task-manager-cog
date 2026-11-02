@@ -62,7 +62,7 @@ from mini_app_polis.environment import Effect, effect_enabled
 from mini_app_polis.pipeline_status import RunReport, run_report
 
 from ._version import __version__
-from .board import Board
+from .board import Board, find_or_scan
 from .dispatch import in_progress_section
 from .results import DEFAULT_REVIEW_SECTION, review_section
 from .sweep import SweepMisconfigured, _section_named
@@ -118,19 +118,6 @@ def rotated_at(comment: str) -> datetime | None:
     except ValueError:
         return None
     return when if when.tzinfo is not None else when.replace(tzinfo=UTC)
-
-
-def _scan_for(board: Board, external_id: str) -> str | None:
-    """The open task whose stored external id is ``external_id``, by a scan.
-
-    The fallback when the direct lookup by external id misses: the board's
-    task list carries each task's external id too, so a task the lookup
-    cannot reach is still found while it is open.
-    """
-    for task in board.tasks():
-        if task.external_id == external_id:
-            return task.gid
-    return None
 
 
 def _apply_rotation(
@@ -205,7 +192,7 @@ def apply_update(
             _apply_rotation(request, board, report)
             return
 
-        gid = board.find(request.external_id) or _scan_for(board, request.external_id)
+        gid = find_or_scan(board, request.external_id)
         task = board.get(gid) if gid is not None else None
         if task is None:
             # The sender believes a task exists: a miss here means an update

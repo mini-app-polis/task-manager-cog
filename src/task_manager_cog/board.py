@@ -63,7 +63,11 @@ class Board:
         return cls(AsanaClient(), project_gid=project, section_gid=section)
 
     def find(self, external_id: str) -> str | None:
-        """The task already carrying ``external_id``, completed ones included."""
+        """The task already carrying ``external_id``, completed ones included.
+
+        Asana can miss a task here that does carry the id, so callers use
+        :func:`find_or_scan` rather than this alone.
+        """
         return self._client.find_task_by_external_id(external_id)
 
     def names(self) -> list[str]:
@@ -160,3 +164,22 @@ class Board:
     def url(self, task_gid: str) -> str:
         """A link to the task on this board, for the run report."""
         return TASK_URL_TEMPLATE.format(project_gid=self.project_gid, task_gid=task_gid)
+
+
+def find_or_scan(board: Board, external_id: str) -> str | None:
+    """The task carrying ``external_id``: the direct lookup, then a scan.
+
+    The direct lookup can answer not found for a task that does store the
+    id; ids holding characters such as ``/`` and ``#``, which go into the
+    request path, have been seen to. The board's task list carries
+    each task's stored external id too, completed tasks included, so a
+    task the lookup cannot reach is still found while it is on this
+    board's project. Exact match only.
+    """
+    gid = board.find(external_id)
+    if gid is not None:
+        return gid
+    for task in board.tasks():
+        if task.external_id == external_id:
+            return task.gid
+    return None

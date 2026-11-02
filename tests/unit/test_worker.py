@@ -7,6 +7,7 @@ from typing import Any
 
 import pytest
 from mini_app_polis.api.contract import TaskSweepMessage, TaskSweepPayload
+from mini_app_polis.asana import AsanaTaskRecord
 
 from task_manager_cog import worker
 from task_manager_cog.compose import ComposedTask
@@ -21,6 +22,8 @@ class FakeBoard:
     by_external_id: dict[str, str] = field(default_factory=dict)
     created: list[tuple[str, ComposedTask, str]] = field(default_factory=list)
     fail_create: bool = False
+    # Tasks the direct lookup misses but the board's task list carries.
+    listed: list[AsanaTaskRecord] = field(default_factory=list)
 
     def find(self, external_id: str) -> str | None:
         return self.by_external_id.get(external_id)
@@ -39,6 +42,21 @@ class FakeBoard:
 
     def url(self, gid: str) -> str:
         return f"https://board/{gid}"
+
+    def tasks(self) -> list[AsanaTaskRecord]:
+        return list(self.listed)
+
+
+def _listed(external_id: str, *, completed: bool = False) -> AsanaTaskRecord:
+    return AsanaTaskRecord(
+        gid="gid-listed",
+        name="VN-1 · Call the venue",
+        notes="",
+        completed=completed,
+        section_gid="s-ideas",
+        section_name="Ideas",
+        external_id=external_id,
+    )
 
 
 def _body(**payload_overrides: Any) -> str:
@@ -276,6 +294,27 @@ def test_a_found_task_is_reported_without_reading_the_board(
     board = NoNames(by_external_id={"voicenote.file-1": "gid-old"})
     _run(_body(), board)
     assert board.created == []
+
+
+@pytest.mark.parametrize("completed", [False, True])
+def test_a_redelivered_create_the_lookup_misses_is_found_on_the_board(
+    production: None, completed: bool
+) -> None:
+    class NoNames(FakeBoard):
+        def names(self) -> list[str]:  # pragma: no cover — must not be reached
+            raise AssertionError("minted for a task that already exists")
+
+    board = NoNames(listed=[_listed("voicenote.file-1", completed=completed)])
+    _run(_body(), board)
+    assert board.created == []
+
+
+def test_the_scan_on_create_ignores_a_task_with_another_external_id(
+    production: None,
+) -> None:
+    board = FakeBoard(listed=[_listed("voicenote.file-9")])
+    _run(_body(), board)
+    assert [c[2] for c in board.created] == ["voicenote.file-1"]
 
 
 def test_outside_production_nothing_touches_the_board(
