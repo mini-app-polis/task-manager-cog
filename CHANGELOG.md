@@ -1,3 +1,10 @@
+## [1.25.6](https://github.com/mini-app-polis/task-manager-cog/compare/v1.25.5...v1.25.6) (2026-11-02)
+
+
+### Bug Fixes
+
+* **deps:** bump miniapppolis-common-utils to 7.8.3 ([054a99c](https://github.com/mini-app-polis/task-manager-cog/commit/054a99cbc85bed8dd81f87928580a5114c8130b7))
+
 ## [1.25.5](https://github.com/mini-app-polis/task-manager-cog/compare/v1.25.4...v1.25.5) (2026-11-02)
 
 
