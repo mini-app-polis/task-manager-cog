@@ -219,6 +219,33 @@ def test_a_due_secret_rotation_gets_the_next_rot_id(production: None) -> None:
     assert external_id == "secret-rotation.prd.BREVO_API_KEY.2026-10"
 
 
+def test_an_infra_apply_step_for_a_person_gets_the_next_inf_id(
+    production: None,
+) -> None:
+    board = FakeBoard(existing_names=["INF-2 · old", "TASK-90 · manual"])
+    _run(
+        _body(
+            source="infra-apply",
+            external_id="infra-apply.prd.sns-subscription.2026-11",
+            draft={
+                "title": "Confirm the SNS subscription email",
+                "where": "infra",
+                "done_when": "the subscription is confirmed",
+                "constraints": "None",
+                "effort": "S",
+                "body": "The apply sent a confirmation email.",
+                "labels": ["person"],
+            },
+        ),
+        board,
+    )
+    name, task, external_id = board.created[0]
+    assert name == "INF-3 · Confirm the SNS subscription email"
+    assert task.tag_names == ("person",)
+    assert "\nExecutor: person" in task.html_notes
+    assert external_id == "infra-apply.prd.sns-subscription.2026-11"
+
+
 #: The id prefix the manual source mints.
 MANUAL = SOURCES["manual"].prefix
 
