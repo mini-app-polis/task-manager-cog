@@ -1,3 +1,10 @@
+# [1.26.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.25.7...v1.26.0) (2026-11-03)
+
+
+### Features
+
+* **sources:** require common-python-utils 7.9.0 and test the infra-apply source ([b44bf84](https://github.com/mini-app-polis/task-manager-cog/commit/b44bf84197d67c1c7ea16f0e542a4357774fbac4))
+
 ## [1.25.7](https://github.com/mini-app-polis/task-manager-cog/compare/v1.25.6...v1.25.7) (2026-11-03)
 
 
