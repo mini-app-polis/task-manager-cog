@@ -138,9 +138,9 @@ the sweep never takes it.
 
 The sweep never touches a task whose name says "do not work" (the board's
 template), nor a task from a source `sources.py` marks unswept: the problems
-the fleet detected (`CI-`, `RUN-`, `CONF-`, `API-`). Those wait for a person,
-neither groomed nor moved to Ready, until fixing them automatically is
-decided on.
+the fleet detected, and steps only a person can finish. Those wait for a
+person, neither groomed nor moved to Ready; for the detected problems, until
+fixing them automatically is decided on.
 
 Each swept task's verdict is kept as a grooming record in
 api-kaianolevine-com (`/v1/tasks/groomings`), written only when it changed.
@@ -422,8 +422,7 @@ one trigger.
 
 After grooming, the sweep takes Ready tasks in board order that:
 
-- are not the template task nor a detected problem (`CI-`, `RUN-`, `CONF-`,
-  `API-`);
+- are not the template task nor from an unswept source (`sources.py`);
 - are `agent` tasks (their `Executor:` line, or with no line, no executor
   tag);
 - are Effort `S`: larger tasks are left for a person;
