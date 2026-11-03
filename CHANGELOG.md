@@ -1,3 +1,11 @@
+## [1.25.7](https://github.com/mini-app-polis/task-manager-cog/compare/v1.25.6...v1.25.7) (2026-11-03)
+
+
+### Bug Fixes
+
+* **deps:** bump miniapppolis-common-utils to 7.9.1 ([eea8c5e](https://github.com/mini-app-polis/task-manager-cog/commit/eea8c5e79fa21ec79efefc04ec6dfa28515a378d))
+* **sources:** handle the infra-apply task source ([484242e](https://github.com/mini-app-polis/task-manager-cog/commit/484242eaa537a047ab0f2f0f5188a609acb98ee2))
+
 ## [1.25.6](https://github.com/mini-app-polis/task-manager-cog/compare/v1.25.5...v1.25.6) (2026-11-02)
 
 
