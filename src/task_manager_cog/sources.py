@@ -50,6 +50,10 @@ SOURCES: dict[str, Source] = {
     # template and tags the task for a person, so it is neither groomed nor
     # dispatched to an agent.
     "secret-rotation": Source("secret-rotation", prefix="ROT", swept=False),
+    # A step only a person can finish, filed by the infra apply job: a new
+    # alert subscription whose email must be confirmed. Neither groomed nor
+    # dispatched, for the same reason.
+    "infra-apply": Source("infra-apply", prefix="INF", swept=False),
     # A task filed by hand from a working session. It is minted from the
     # board's own prefix, as grooming mints a task with no id, and groomed
     # and dispatched like any other.
