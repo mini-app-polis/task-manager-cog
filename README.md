@@ -501,11 +501,17 @@ is refused.
 | `voicenote`    | `VN-<n>`            | yes         |
 | `github-issue` | `<repo>#<n>`        | no          |
 | `manual`       | `MINI-<n>`          | yes         |
+| `infra-apply`  | `INF-<n>`           | yes         |
 
 A `manual` task is one filed by hand from a working session, through
 common-python-utils' `file-task` command as the `claude-session` machine.
 Its key is `manual.<key>`, so filing it again creates nothing new, and who
 works it comes from the draft's labels into its `Executor:` line.
+
+An `infra-apply` task is a step the infra apply job found that only a person
+can finish, such as confirming an SNS subscription email. It is filed with the
+`person` label, so it waits for a person: the sweep neither grooms it nor
+dispatches it to an agent.
 
 `src/task_manager_cog/sources.py` is the table; the request contract in
 common-python-utils (`mini_app_polis.api.contract.TaskCreateRequest`) is the
