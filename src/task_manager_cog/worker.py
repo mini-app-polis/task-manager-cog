@@ -263,15 +263,6 @@ def create_task(
 ) -> None:
     """Put the requested task on the board, once. Raises to be redelivered."""
     source = SOURCES[request.source]
-    if not source.creates:
-        # Consumed, not redelivered: the source's problems are GitHub Issues,
-        # and asking again would be refused the same way.
-        log.info(
-            "worker: %s makes no board tasks; not creating %s",
-            request.source,
-            request.external_id,
-        )
-        return
     with run_report(FLOW_NAME, repo=REPO, run_id=run_id, version=__version__) as report:
         task = compose(request.draft)
 

@@ -26,15 +26,6 @@ def test_keys_match_names() -> None:
     assert all(key == source.name for key, source in SOURCES.items())
 
 
-def test_detected_problems_and_person_only_steps_are_left_for_a_person() -> None:
-    assert {"CI", "RUN", "CONF", "API", "ROT", "INF"} == UNSWEPT_PREFIXES
+def test_person_only_steps_are_left_for_a_person() -> None:
+    assert {"ROT", "INF"} == UNSWEPT_PREFIXES
     assert SOURCES["voicenote"].swept
-
-
-def test_detected_problems_make_no_board_tasks() -> None:
-    assert {s.name for s in SOURCES.values() if not s.creates} == {
-        "ci",
-        "cog-run",
-        "conformance",
-        "api-fault",
-    }

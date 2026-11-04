@@ -356,22 +356,6 @@ def test_outside_production_nothing_touches_the_board(
     worker.process_message(_body(), run_id="m-1", board_factory=no_board)
 
 
-@pytest.mark.parametrize("source", ["ci", "cog-run", "conformance", "api-fault"])
-def test_a_detected_problem_makes_no_board_task(
-    production: None, source: str, caplog: pytest.LogCaptureFixture
-) -> None:
-    def no_board() -> FakeBoard:  # pragma: no cover — must not be reached
-        raise AssertionError("built a board for a source that makes no tasks")
-
-    caplog.set_level(logging.INFO)
-    worker.process_message(
-        _body(source=source, external_id=f"{source}.repo/key#1"),
-        run_id="m-1",
-        board_factory=no_board,
-    )
-    assert "makes no board tasks" in caplog.text
-
-
 def test_a_failed_create_raises_for_redelivery(production: None) -> None:
     board = FakeBoard(fail_create=True)
     with pytest.raises(RuntimeError, match="asana is down"):
