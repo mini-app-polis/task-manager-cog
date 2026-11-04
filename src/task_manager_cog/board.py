@@ -9,6 +9,10 @@ applies to the next job without a cold start.
   ASANA_WORKSPACE_ID      for resolving tag names
   ASANA_INBOX_PROJECT_ID  the board
   ASANA_INBOX_SECTION_ID  the column new tasks land in; optional
+  ON_HOLD_SECTION         the owner's parking column (default: On Hold)
+
+On Hold belongs to the owner. Nothing this cog does moves a task into it or
+out of it: :meth:`Board.move` refuses either, for every writer.
 """
 
 from __future__ import annotations
@@ -31,6 +35,19 @@ log = logger_mod.get_logger()
 
 TASK_URL_TEMPLATE = "https://app.asana.com/0/{project_gid}/{task_gid}"
 
+DEFAULT_ON_HOLD_SECTION = "On Hold"
+
+
+def on_hold_section() -> str:
+    """The owner's parking column: ``ON_HOLD_SECTION``, or On Hold."""
+    return (os.environ.get("ON_HOLD_SECTION") or "").strip() or DEFAULT_ON_HOLD_SECTION
+
+
+def on_hold_gid(sections: list[AsanaSection]) -> str | None:
+    """The On Hold column's gid, or None when the board has no such column."""
+    name = on_hold_section().lower()
+    return next((s.gid for s in sections if s.name.lower() == name), None)
+
 
 class BoardNotConfigured(RuntimeError):
     """The board's project is not set, so no task can be placed."""
@@ -45,6 +62,11 @@ class Board:
         self._client = client
         self.project_gid = project_gid
         self.section_gid = section_gid
+        # The column each task was last seen in, from tasks(), get() and
+        # move(), so move() can tell a task on hold without another read.
+        self._seen: dict[str, str | None] = {}
+        self._on_hold: str | None = None
+        self._on_hold_read = False
 
     @classmethod
     def from_env(cls) -> Board:
@@ -115,15 +137,36 @@ class Board:
 
     def tasks(self) -> list[AsanaTaskRecord]:
         """Every task on the board, with its body, column and tags."""
-        return self._client.list_project_tasks(self.project_gid)
+        tasks = self._client.list_project_tasks(self.project_gid)
+        self._seen.update({t.gid: t.section_gid for t in tasks})
+        return tasks
+
+    def on_hold_gid(self) -> str | None:
+        """The On Hold column's gid, read once per board; None when absent."""
+        if not self._on_hold_read:
+            self._on_hold = on_hold_gid(self.sections())
+            self._on_hold_read = True
+        return self._on_hold
 
     def move(self, task_gid: str, section_gid: str) -> None:
-        """Move a task to a column."""
+        """Move a task to a column.
+
+        A task on hold stays where it is, and nothing is moved onto hold:
+        only the owner moves a task into or out of On Hold.
+        """
+        held = self.on_hold_gid()
+        if held is not None and held in (self._seen.get(task_gid), section_gid):
+            log.info("board: %s not moved; On Hold is the owner's", task_gid)
+            return
         self._client.move_task_to_section(task_gid, section_gid)
+        self._seen[task_gid] = section_gid
 
     def get(self, task_gid: str) -> AsanaTaskRecord | None:
         """One task, or None when it has been deleted."""
-        return self._client.get_task(task_gid, self.project_gid)
+        task = self._client.get_task(task_gid, self.project_gid)
+        if task is not None:
+            self._seen[task.gid] = task.section_gid
+        return task
 
     def update(self, task_gid: str, *, name: str, html_notes: str) -> None:
         """Rewrite a task's name and body."""

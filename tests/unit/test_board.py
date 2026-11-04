@@ -113,3 +113,77 @@ def test_tag_and_untag_go_through_the_client_by_name() -> None:
     board.tag("t1", "cowork")
     board.untag("t1", "review")
     assert calls == [("add", "t1", "cowork"), ("remove", "t1", "review")]
+
+
+class MoveClient:
+    def __init__(self, sections) -> None:
+        self.sections = sections
+        self.moved: list[tuple[str, str]] = []
+        self.records = []
+
+    def list_sections(self, project_gid: str):
+        return self.sections
+
+    def list_project_tasks(self, project_gid: str):
+        return self.records
+
+    def move_task_to_section(self, task_gid: str, section_gid: str) -> None:
+        self.moved.append((task_gid, section_gid))
+
+
+def _record(gid: str, section_gid: str):
+    from mini_app_polis.asana import AsanaTaskRecord
+
+    return AsanaTaskRecord(
+        gid=gid,
+        name=f"MINI-{gid} · t",
+        notes="",
+        completed=False,
+        section_gid=section_gid,
+        section_name="",
+    )
+
+
+def _hold_sections():
+    from mini_app_polis.asana import AsanaSection
+
+    return [AsanaSection("s-ready", "Ready"), AsanaSection("s-hold", "On Hold")]
+
+
+def test_a_task_on_hold_is_never_moved_out() -> None:
+    client = MoveClient(_hold_sections())
+    client.records = [_record("1", "s-hold")]
+    board = Board(client, project_gid="p", section_gid=None)  # type: ignore[arg-type]
+    board.tasks()
+    board.move("1", "s-ready")
+    assert client.moved == []
+
+
+def test_nothing_is_moved_onto_hold() -> None:
+    client = MoveClient(_hold_sections())
+    client.records = [_record("1", "s-ready")]
+    board = Board(client, project_gid="p", section_gid=None)  # type: ignore[arg-type]
+    board.tasks()
+    board.move("1", "s-hold")
+    assert client.moved == []
+
+
+def test_other_moves_go_through() -> None:
+    client = MoveClient(_hold_sections())
+    client.records = [_record("1", "s-ready")]
+    board = Board(client, project_gid="p", section_gid=None)  # type: ignore[arg-type]
+    board.tasks()
+    board.move("1", "s-other")
+    assert client.moved == [("1", "s-other")]
+
+
+def test_the_on_hold_column_name_is_a_setting(monkeypatch: pytest.MonkeyPatch) -> None:
+    from mini_app_polis.asana import AsanaSection
+
+    monkeypatch.setenv("ON_HOLD_SECTION", "Parked")
+    client = MoveClient([AsanaSection("s-park", "Parked")])
+    client.records = [_record("1", "s-park")]
+    board = Board(client, project_gid="p", section_gid=None)  # type: ignore[arg-type]
+    board.tasks()
+    board.move("1", "s-ready")
+    assert client.moved == []

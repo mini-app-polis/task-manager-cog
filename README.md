@@ -50,10 +50,15 @@ This cog applies every move. Each move has one owner:
 | Prefix | Posted by | What happens |
 |---|---|---|
 | `Started:` | whoever picks the task up | The next sweep moves it from Ready to In progress. |
-| `Handed off:` | whoever finished the work | The next sweep moves it to Review. The comment answers every Done when item, point by point, with what was done and where; with no pull request, each answer carries evidence (a link, a commit, a run id, or a plain statement from the owner). |
+| `Handed off:` | whoever finished the work | The next sweep moves it from In progress to Review, or straight from Ready when it also has a `Started:` comment; without one, a task in Ready stays and the run report names it. The comment answers every Done when item, point by point, with what was done and where; with no pull request, each answer carries evidence (a link, a commit, a run id, or a plain statement from the owner). |
 | `Rejected:` | the Review check | Names each Done when item not answered; the task goes back to In progress. |
 | `Landed:` | the sweep, for an agent's pull request | Records that the pull request merged with green CI on `dev`. The Review check still decides. |
 | `Refining questions:` | the refiner, or anyone | Holds the task in Refining until a later comment answers. `Grooming questions:` is still accepted. |
+
+A comment counts only when it was posted after the task last entered its
+column, so it moves a task once (`moves.py`). The owner's parking column is
+`ON_HOLD_SECTION` (default On Hold): `Board.move` refuses to move a task into
+it or out of it, and the sweep never brings a task there into step.
 
 ### The Review check
 
