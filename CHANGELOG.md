@@ -1,3 +1,15 @@
+# [1.30.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.29.0...v1.30.0) (2026-11-04)
+
+
+### Bug Fixes
+
+* **deps:** require common-utils 7.15.0 for reopen_task ([2dab525](https://github.com/mini-app-polis/task-manager-cog/commit/2dab525b23c986433edbca3c2fe46bf8e0dcc8ae))
+
+
+### Features
+
+* **review:** check Review tasks against their Done when and move passes to Complete ([9884c49](https://github.com/mini-app-polis/task-manager-cog/commit/9884c499976862dd360d8a3fce7691c8906e6363))
+
 # [1.29.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.28.0...v1.29.0) (2026-11-04)
 
 
