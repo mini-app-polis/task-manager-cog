@@ -1,3 +1,17 @@
+# [1.29.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.28.0...v1.29.0) (2026-11-04)
+
+
+### Bug Fixes
+
+* **deps:** bump miniapppolis-common-utils to 7.12.0 ([21ebee0](https://github.com/mini-app-polis/task-manager-cog/commit/21ebee081f267393a8fcef79a6bfaace27c20f75))
+* **deps:** bump miniapppolis-common-utils to 7.13.0 ([74a6cb1](https://github.com/mini-app-polis/task-manager-cog/commit/74a6cb1b36f42513a13e265f5c5a916c612b9188))
+
+
+### Features
+
+* drop the detected-problem task sources ([791bf06](https://github.com/mini-app-polis/task-manager-cog/commit/791bf06170186d7a1ffc1e7ed4eb0551d708cfc2))
+* make no board tasks from detected-problem sources ([f387e3a](https://github.com/mini-app-polis/task-manager-cog/commit/f387e3a61f65969af25413830292c2b18308644c))
+
 # [1.28.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.27.0...v1.28.0) (2026-11-04)
 
 
