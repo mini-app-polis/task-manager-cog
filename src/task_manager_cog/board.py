@@ -204,6 +204,10 @@ class Board:
         """Mark a task complete."""
         self._client.complete_task(task_gid)
 
+    def reopen(self, task_gid: str) -> None:
+        """Mark a task incomplete."""
+        self._client.reopen_task(task_gid)
+
     def url(self, task_gid: str) -> str:
         """A link to the task on this board, for the run report."""
         return TASK_URL_TEMPLATE.format(project_gid=self.project_gid, task_gid=task_gid)

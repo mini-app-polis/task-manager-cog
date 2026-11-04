@@ -63,8 +63,9 @@ it or out of it, and the sweep never brings a task there into step.
 ### The Review check
 
 The sweep checks each task in Review, with no model call: its pull request,
-when it has one, is merged and CI on `dev` is green, and its latest
-`Handed off:` comment answers every Done when item. A task that passes moves
+when it has one, is merged and CI on `dev` is green (its `Landed:` comment),
+and its latest `Handed off:` comment answers every Done when item, one list
+item per item, in order. A task that passes moves
 to Complete and is then marked complete. A task that fails gets a `Rejected:`
 comment and moves to In progress; when the task itself is unclear, a person
 moves it to Refining. A task marked complete by hand in Review is checked the
@@ -299,11 +300,27 @@ that one repository with only read access to pull requests and Actions:
 A task with a `Landed:` comment since it entered Review gets no second one,
 whether it is closed or a later comment reopened it. No model is called.
 
-Then it reads the incomplete tasks in Review (`REVIEW_SECTION`) from their
-comments and column changes only:
+Then it runs the Review check on the tasks in Review (`REVIEW_SECTION`),
+from their body, comments and column changes only (`review.py`):
 
-- Latest comment starts with `Landed:`: marked complete, and left in Review.
-  Counted in the run report (`Review tasks closed, work landed`).
+- **Already complete before the check shipped** (marked complete before
+  `COMPLETE_CHECK_SINCE`, default `2026-11-05T00:00:00Z`): moved to Complete
+  with no check. This is the one-time move of tasks the old pass closed in
+  place; after it, the check is the only way into Complete.
+- **Latest comment starts with `Landed:`, or marked complete by hand:**
+  checked. The latest `Handed off:` comment must answer every Done when item:
+  one list item per item, in order, none empty. Done when's items are its own
+  list items when it has any, and its sentences otherwise. With no pull
+  request, the answers are the evidence (a link, a commit, a run id, or a
+  plain statement from the owner). A task marked complete by hand needs its
+  `Landed:` too.
+  - Passes: moved to Complete (`COMPLETE_SECTION`, default Complete), then
+    marked complete. Counted in the run report.
+  - Fails: one `Rejected:` comment naming each item not answered (and a
+    missing `Landed:`), reopened if it was complete, and moved to In progress
+    (`IN_PROGRESS_SECTION`). A mechanical check cannot tell an unclear task
+    from unfinished work: a person moves it to Refining when the task itself
+    is the problem.
 - Any comment after the `Landed:` comment: left open.
 - No comment at all since it entered Review: listed in the run report as
   missing a handoff, on the first sweep that sees it.
@@ -315,8 +332,8 @@ comments and column changes only:
 
 A task entered Review at its latest move into the column, or at its creation
 when it has none. Both lists give the task id and title, and make the run
-WARN. The sweep never moves a task out of Review and never marks one
-incomplete.
+WARN. No model is called. A board missing the Review, Complete or In progress
+column skips the check, with a warning.
 
 ## Who does a task
 
