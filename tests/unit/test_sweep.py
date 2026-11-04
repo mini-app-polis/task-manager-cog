@@ -18,7 +18,7 @@ from mini_app_polis.api.contract import (
     GroomingRecordWrite,
     GroomingReturnRate,
 )
-from mini_app_polis.asana import AsanaSection, AsanaTaskRecord
+from mini_app_polis.asana import AsanaSection, AsanaStory, AsanaTaskRecord
 
 from task_manager_cog import sweep as sweep_mod
 from task_manager_cog.records import (
@@ -158,6 +158,9 @@ class FakeBoard:
 
     def comments(self, task_gid: str) -> list[str]:
         return list(self.comments_.get(task_gid, []))
+
+    def stories(self, task_gid: str) -> list[AsanaStory]:
+        return []
 
     def url(self, gid: str) -> str:
         return f"https://board/{gid}"
