@@ -183,7 +183,7 @@ BOARD_TASKS = [
 
 
 def test_assess_checks_open_tasks_in_the_swept_columns_only() -> None:
-    verdicts = assess(BOARD_TASKS, swept=("ideas", "Refining", "Blocked"), repos=REPOS)
+    verdicts = assess(BOARD_TASKS, swept=("inbox", "Refining", "Blocked"), repos=REPOS)
     by_name = {v.task.name: v for v in verdicts}
     assert set(by_name) == {
         "TASK-1 · Ready idea",
