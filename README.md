@@ -605,6 +605,13 @@ can finish, such as confirming an SNS subscription email. It is filed with the
 `person` label, so it waits for a person: the sweep neither grooms it nor
 dispatches it to an agent.
 
+The detected-problem sources (`ci`, `cog-run`, `conformance`, `api-fault`)
+make no board tasks: those problems are GitHub Issues in the repository they
+are about (see Detected problems). A create request from one is logged and
+dropped, not redelivered. Their entries stay, with their `CI-`, `RUN-`,
+`CONF-` and `API-` prefixes, so updates to the tasks they made earlier still
+apply.
+
 `src/task_manager_cog/sources.py` is the table; the request contract in
 common-python-utils (`mini_app_polis.api.contract.TaskCreateRequest`) is the
 shape a source sends.

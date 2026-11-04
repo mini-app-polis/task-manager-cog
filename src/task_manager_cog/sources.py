@@ -30,22 +30,31 @@ class Source:
     moves them to Ready. A detected problem is not: it is for a person to
     look at until fixing one automatically is decided on, so it is neither
     sent for paid grooming nor put where an agent would pick it up.
+
+    ``creates`` is whether a create request from the source puts a task on
+    the board. A detected problem does not: it lives as a GitHub Issue in
+    the repository it is about, and a person files a task from the Issue by
+    hand. Such a source still has an entry, so updates to the tasks it made
+    before keep applying.
     """
 
     name: str
     prefix: str | None
     swept: bool = True
+    creates: bool = True
 
 
 SOURCES: dict[str, Source] = {
     "voicenote": Source("voicenote", prefix="VN"),
     "github-issue": Source("github-issue", prefix=None),
     # Problems the fleet detected and escalated: a signal that did not heal
-    # on its own (see the API's signal engine).
-    "ci": Source("ci", prefix="CI", swept=False),
-    "cog-run": Source("cog-run", prefix="RUN", swept=False),
-    "conformance": Source("conformance", prefix="CONF", swept=False),
-    "api-fault": Source("api-fault", prefix="API", swept=False),
+    # on its own (see the API's signal engine). They are GitHub Issues now,
+    # not board tasks; the entries stay so the tasks made before still
+    # take updates.
+    "ci": Source("ci", prefix="CI", swept=False, creates=False),
+    "cog-run": Source("cog-run", prefix="RUN", swept=False, creates=False),
+    "conformance": Source("conformance", prefix="CONF", swept=False, creates=False),
+    "api-fault": Source("api-fault", prefix="API", swept=False, creates=False),
     # A manual secret that is due. The secrets rotator fills in the whole
     # template and tags the task for a person, so it is neither groomed nor
     # dispatched to an agent.
