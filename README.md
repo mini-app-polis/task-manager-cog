@@ -50,10 +50,15 @@ This cog applies every move. Each move has one owner:
 | Prefix | Posted by | What happens |
 |---|---|---|
 | `Started:` | whoever picks the task up | The next sweep moves it from Ready to In progress. |
-| `Handed off:` | whoever finished the work | The next sweep moves it to Review. The comment answers every Done when item, point by point, with what was done and where; with no pull request, each answer carries evidence (a link, a commit, a run id, or a plain statement from the owner). |
+| `Handed off:` | whoever finished the work | The next sweep moves it from In progress to Review, or straight from Ready when it also has a `Started:` comment; without one, a task in Ready stays and the run report names it. The comment answers every Done when item, point by point, with what was done and where; with no pull request, each answer carries evidence (a link, a commit, a run id, or a plain statement from the owner). |
 | `Rejected:` | the Review check | Names each Done when item not answered; the task goes back to In progress. |
 | `Landed:` | the sweep, for an agent's pull request | Records that the pull request merged with green CI on `dev`. The Review check still decides. |
 | `Refining questions:` | the refiner, or anyone | Holds the task in Refining until a later comment answers. `Grooming questions:` is still accepted. |
+
+A comment counts only when it was posted after the task last entered its
+column, so it moves a task once (`moves.py`). The owner's parking column is
+`ON_HOLD_SECTION` (default On Hold): `Board.move` refuses to move a task into
+it or out of it, and the sweep never brings a task there into step.
 
 ### The Review check
 
@@ -81,9 +86,12 @@ is assigned to the owner, whoever does the work.
   says where the work is to be committed.
 - **Files new work:** through the API (`file-task` in common-python-utils),
   never directly on the board.
-- **Edits a task by hand:** allowed at any time. The next run polishes the
-  edit rather than starting over, and an edited task that meets the definition
-  of ready moves on without a paid refining run.
+- **Edits a task by hand:** allowed at any time, and the edit is the answer
+  to any open questions. After questions, a task whose name, body or tags a
+  person edited moves on with no paid refining run when it passes (to Ready)
+  or waits only on blockers (to Blocked). One that still fails is refined,
+  keeping what the person wrote. Answers left only as comments still go to
+  refining, which folds them into the task.
 
 ### Detected problems
 
@@ -197,7 +205,7 @@ linter (`lint.py`) checks what can be checked without a model:
 | Tags | No `review` tag. |
 | Body | Says why, and links what is needed. No open-questions section (a line starting with one of `OPEN_SECTION_HEADS` in `lint.py`, such as `Open questions:`) lists anything: empty or remove it once it is decided. The author's original text, from the `Before grooming:` line on, is not checked. |
 | Shape | With `GROOM_TASK_SHAPES=true`: a **leaf** (one executor: its `Executor:` line, or at most one executor tag; an agent task's Where names at most one repository, and only a `cowork` or `person` task may name several or none) or a **compound** task (Done when opens with its children's ids, "… are done", and Blocked by lists every one of them). Off until splitting is in place, so the existing board is not judged against it first. |
-| Grooming questions | None unanswered. A task whose last grooming asked questions waits until a grooming answers them, even if its template is complete. A task that passes everything else is also held while its last `Grooming questions:` comment or reported split, from anyone, has no comment after it; it waits for its owner and is not sent for grooming (`waiting_on_owner` in the run report). Comments are read only for such a task. |
+| Grooming questions | None unanswered. A task whose last grooming asked questions waits until a grooming answers them, even if its template is complete, unless a person has since edited its name, body or tags and it passes or waits only on blockers (`edited_since_grooming` in `records.py`). A task that passes everything else is also held while its last `Grooming questions:` comment or reported split, from anyone, has no comment after it; it waits for its owner and is not sent for grooming (`waiting_on_owner` in the run report). Comments are read only for such a task. |
 
 A task whose only problems are blockers (a task in Blocked by that is not
 done, or a date still ahead) is never sent for grooming. With

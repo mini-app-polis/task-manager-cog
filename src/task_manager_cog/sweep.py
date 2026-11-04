@@ -124,15 +124,16 @@ from mini_app_polis.environment import Effect, effect_enabled
 from mini_app_polis.pipeline_status import run_report
 
 from . import dispatch as agent
-from . import executor, landed, review
+from . import executor, landed, moves, review
 from ._version import __version__
-from .board import Board
+from .board import Board, on_hold_gid
 from .github import AgentApp
 from .lint import lint, mentioned_ids, only_blocked, task_id_of
 from .records import (
     answers,
     awaiting_grooming,
     changed,
+    edited_since_grooming,
     fingerprint,
     needs_grooming,
     next_record,
@@ -201,6 +202,7 @@ BOARD_LABELS: dict[str, str] = {
     "ready_not_moved": "ready, not moved (GROOM_AUTO_READY is off)",
     "blocked_not_moved": "waiting on blockers, not moved (GROOM_AUTO_READY is off)",
     "failing_in_ready_not_moved": "failing in Ready, not moved (GROOM_AUTO_READY is off)",
+    "moved_by_comment": "tasks moved by a Started: or Handed off: comment",
     "review_landed": "Review tasks given Landed:, merged with CI on dev green",
     "review_closed": "Review tasks closed, work landed",
     "review_awaiting_landed": "Review tasks flagged unverified, still awaiting Landed:",
@@ -420,7 +422,8 @@ def assess(
     """A verdict for every open task in a swept column, in board order.
 
     A task whose last grooming asked questions is not ready until a
-    grooming answers them, whatever the linter says. So is a task that
+    grooming answers them, whatever the linter says, unless a person has
+    since edited it and it passes, or waits only on blockers. So is a task that
     would otherwise be ready while a "Grooming questions:" comment on it,
     from anyone, has nothing after it; ``comments`` reads a task's comments,
     and is called only for such a task.
@@ -452,7 +455,13 @@ def assess(
         previous = records.get(task.gid)
         awaiting_owner = False
         if previous is not None and previous.outcome == "questions":
-            problems.append(OPEN_QUESTIONS)
+            # A person's edit is their answer: a task they edited that now
+            # passes, or waits only on blockers, needs no grooming to move on.
+            released = edited_since_grooming(task, previous) and (
+                not problems or only_blocked(problems)
+            )
+            if not released:
+                problems.append(OPEN_QUESTIONS)
         elif not problems and comments is not None and unanswered(comments(task.gid)):
             problems.append(OPEN_QUESTIONS)
             awaiting_owner = True
@@ -730,7 +739,13 @@ def run_sweep(
 
         # Executor lines, tags and assignments first, so what follows reads
         # the board as it will stay. With moving off, only reported.
-        stepped = executor.keep_in_step(board, board.tasks(), write=auto_ready())
+        # A task on hold is the owner's: never brought into step.
+        held = on_hold_gid(board.sections())
+        stepped = executor.keep_in_step(
+            board,
+            [t for t in board.tasks() if held is None or t.section_gid != held],
+            write=auto_ready(),
+        )
         for change in stepped:
             report.updated(
                 "executor kept in step" if auto_ready() else "executor out of step",
@@ -776,6 +791,14 @@ def run_sweep(
             board_count("blocked_not_moved", result.blocked_not_moved)
             board_count("failing_in_ready_not_moved", len(result.failed_ready))
         _report_return_rate(store, report)
+        # Sessions move tasks by comment; with moving off, nothing moves.
+        commented = moves.apply_moves(board) if auto_ready() else None
+        if commented is not None:
+            board_count("moved_by_comment", len(commented.moved))
+            for task in commented.wrong_column:
+                report.issue(
+                    "handed off in Ready without Started:", review.task_label(task)
+                )
         _report_landings(board, reader_factory, report)
         reviewed = review.review(board)
         if reviewed is not None:
@@ -805,6 +828,9 @@ def run_sweep(
             moved("came back out of Ready", task)
         for task in result.sent:
             moved("sent for grooming", task)
+        if commented is not None:
+            for task, column in commented.moved:
+                moved(f"{column}, by its comment", task)
 
         if (agent.enabled() or agent.dry_run()) and (agents or due("AGENT_TIMES")):
             _dispatch_agents(
