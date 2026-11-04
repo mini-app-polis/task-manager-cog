@@ -1,3 +1,10 @@
+# [1.27.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.26.1...v1.27.0) (2026-11-04)
+
+
+### Features
+
+* sweep the Inbox column by default instead of Ideas ([6042a85](https://github.com/mini-app-polis/task-manager-cog/commit/6042a853d4530d429a1e8415e57c129a3d40f255))
+
 ## [1.26.1](https://github.com/mini-app-polis/task-manager-cog/compare/v1.26.0...v1.26.1) (2026-11-03)
 
 
