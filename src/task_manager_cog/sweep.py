@@ -74,8 +74,10 @@ swept. Nor are tasks from a source the sources table marks unswept: steps
 only a person can finish (``ROT-``, ``INF-``) wait for a person.
 
 Every sweep also reads the Review column: it posts ``Landed:`` on each task
-whose pull request is merged with CI on dev green (landed.py), then marks
-complete each task whose latest comment starts with ``Landed:`` (review.py).
+whose pull request is merged with CI on dev green (landed.py), then runs the
+Review check (review.py): a task whose ``Handed off:`` answers every Done when
+item and whose latest comment is ``Landed:`` moves to Complete and is marked
+complete; one that falls short gets ``Rejected:`` and moves to In progress.
 
 After grooming, the sweep dispatches an agent for each Ready task it can
 take, when ``AGENT_DISPATCH`` or ``AGENT_DRY_RUN`` is on (dispatch.py), and
@@ -203,7 +205,9 @@ BOARD_LABELS: dict[str, str] = {
     "failing_in_ready_not_moved": "failing in Ready, not moved (GROOM_AUTO_READY is off)",
     "moved_by_comment": "tasks moved by a Started: or Handed off: comment",
     "review_landed": "Review tasks given Landed:, merged with CI on dev green",
-    "review_closed": "Review tasks closed, work landed",
+    "review_closed": "Review tasks passed the check, moved to Complete",
+    "review_rejected": "Review tasks rejected, moved to In progress",
+    "review_moved_complete": "Review tasks already complete, moved to Complete",
     "review_awaiting_landed": "Review tasks flagged unverified, still awaiting Landed:",
 }
 
@@ -802,6 +806,8 @@ def run_sweep(
         reviewed = review.review(board)
         if reviewed is not None:
             board_count("review_closed", len(reviewed.closed))
+            board_count("review_rejected", len(reviewed.rejected))
+            board_count("review_moved_complete", len(reviewed.moved_complete))
             board_count("review_awaiting_landed", len(reviewed.awaiting_landed))
             for task in reviewed.missing_handoff:
                 report.issue("review task missing a handoff", review.task_label(task))

@@ -276,8 +276,11 @@ def test_the_sweep_posts_landed_and_closes_the_task_in_one_sweep(
 ) -> None:
     _production(monkeypatch)
     board = ReviewingBoard([_task()])
-    board.sections_.append(AsanaSection("s-review", "Review"))
-    board.comments_["1"] = ["Handed off: PR 7"]
+    board.sections_ += [
+        AsanaSection("s-review", "Review"),
+        AsanaSection("s-complete", "Complete"),
+    ]
+    board.comments_["1"] = ["Handed off: PR 7\n- plan is clean on dev"]
     run_sweep(
         run_id="r-1",
         board_factory=lambda: board,
@@ -286,6 +289,7 @@ def test_the_sweep_posts_landed_and_closes_the_task_in_one_sweep(
         reader_factory=FakeReader,
     )
     assert board.comments_["1"][-1].startswith("Landed:")
+    assert board.moves == [("1", "s-complete")]
     assert board.completed == ["1"]
     ((_, kwargs),) = _no_outbound_reports
     assert kwargs["review_landed"] == 1 and kwargs["review_closed"] == 1

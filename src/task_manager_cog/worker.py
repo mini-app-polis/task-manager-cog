@@ -184,6 +184,8 @@ def effective_settings() -> dict[str, Any]:
         "REFINING_SECTION": sweep.refining_section,
         "BLOCKED_SECTION": sweep.blocked_section,
         "REVIEW_SECTION": review.review_section,
+        "COMPLETE_SECTION": review.complete_section,
+        "COMPLETE_CHECK_SINCE": lambda: review.complete_check_since().isoformat(),
         "REVIEW_UNVERIFIED_HOURS": lambda: (
             review.unverified_after().total_seconds() / 3600
         ),
