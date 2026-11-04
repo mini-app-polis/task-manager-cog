@@ -436,6 +436,84 @@ def test_a_task_with_open_questions_is_not_moved_even_when_it_lints_clean() -> N
     assert result.writes == []
 
 
+def _asked(task: AsanaTaskRecord, groomed: AsanaTaskRecord) -> GroomingRecord:
+    """A record whose grooming wrote ``groomed`` and asked questions."""
+    return GroomingRecord(
+        task_gid=task.gid,
+        task_id="TASK-1",
+        fingerprint=fingerprint(groomed),
+        groomed_fingerprint=fingerprint(groomed),
+        outcome="questions",
+        problems=[sweep_mod.OPEN_QUESTIONS],
+        updated_at=dt.datetime(2026, 11, 4, tzinfo=dt.UTC),
+    )
+
+
+def test_a_task_edited_by_hand_after_questions_moves_to_ready_without_grooming() -> (
+    None
+):
+    groomed = _task("1", "TASK-1 · Vague", notes="look into this")
+    edited = _task("1", "TASK-1 · Vague", notes=READY)
+    board = FakeBoard([edited])
+    sent: list[GroomingJobRequest] = []
+    result = sweep(
+        board,
+        repos=REPOS,
+        move=True,
+        records={"1": _asked(edited, groomed)},
+        send=lambda job: sent.append(job) or True,
+        limit=5,
+    )
+    assert board.moves == [("1", "s-ready")]
+    assert sent == []
+    assert result.writes[0].outcome == "ready"
+
+
+def test_a_task_edited_by_hand_that_waits_on_blockers_moves_to_blocked() -> None:
+    groomed = _task("6", "TASK-6 · Vague", notes="look into this")
+    edited = _task("6", "TASK-6 · Vague", notes=WAITS_ON_OPEN_TASK)
+    board = FakeBoard([edited, OPEN_BLOCKER])
+    sent: list[GroomingJobRequest] = []
+    sweep(
+        board,
+        repos=REPOS,
+        move=True,
+        records={"6": _asked(edited, groomed)},
+        send=lambda job: sent.append(job) or True,
+        limit=5,
+    )
+    assert board.moves == [("6", "s-blocked")]
+    assert sent == []
+
+
+def test_an_edit_that_still_fails_keeps_the_questions_and_is_groomed() -> None:
+    groomed = _task("1", "TASK-1 · Vague", notes="look into this")
+    edited = _task("1", "TASK-1 · Vague", notes="look into this, and that")
+    board = FakeBoard([edited])
+    sent: list[GroomingJobRequest] = []
+    result = sweep(
+        board,
+        repos=REPOS,
+        move=True,
+        records={"1": _asked(edited, groomed)},
+        send=lambda job: sent.append(job) or True,
+        limit=5,
+    )
+    assert board.moves == []
+    assert sweep_mod.OPEN_QUESTIONS in result.verdicts[0].problems
+    assert [j.task.name for j in sent] == ["TASK-1 · Vague"]
+
+
+def test_answers_left_only_as_comments_do_not_release_the_questions() -> None:
+    task = BOARD_TASKS[0]  # passes the linter, unedited since its grooming
+    board = FakeBoard([task], comments_={task.gid: ["Grooming questions: A?", "A."]})
+    result = sweep(
+        board, repos=REPOS, move=True, records={task.gid: _asked(task, task)}
+    )
+    assert board.moves == []
+    assert sweep_mod.OPEN_QUESTIONS in result.verdicts[0].problems
+
+
 def test_a_task_with_open_questions_in_its_body_is_not_moved_to_ready() -> None:
     task = _task(
         "1", "TASK-1 · Undecided", notes=f"{READY}\n\nOpen decisions:\n- A or B"

@@ -133,6 +133,7 @@ from .records import (
     answers,
     awaiting_grooming,
     changed,
+    edited_since_grooming,
     fingerprint,
     needs_grooming,
     next_record,
@@ -421,7 +422,8 @@ def assess(
     """A verdict for every open task in a swept column, in board order.
 
     A task whose last grooming asked questions is not ready until a
-    grooming answers them, whatever the linter says. So is a task that
+    grooming answers them, whatever the linter says, unless a person has
+    since edited it and it passes, or waits only on blockers. So is a task that
     would otherwise be ready while a "Grooming questions:" comment on it,
     from anyone, has nothing after it; ``comments`` reads a task's comments,
     and is called only for such a task.
@@ -453,7 +455,13 @@ def assess(
         previous = records.get(task.gid)
         awaiting_owner = False
         if previous is not None and previous.outcome == "questions":
-            problems.append(OPEN_QUESTIONS)
+            # A person's edit is their answer: a task they edited that now
+            # passes, or waits only on blockers, needs no grooming to move on.
+            released = edited_since_grooming(task, previous) and (
+                not problems or only_blocked(problems)
+            )
+            if not released:
+                problems.append(OPEN_QUESTIONS)
         elif not problems and comments is not None and unanswered(comments(task.gid)):
             problems.append(OPEN_QUESTIONS)
             awaiting_owner = True

@@ -45,6 +45,13 @@ comments after the last such comment are the owner's answers, and count as
 the task's content: answering changes the fingerprint, which sends the task
 to be groomed again, answers included.
 
+**Edited by hand.** A person who edits a task's name, body or tags after
+its grooming asked questions has written the answer into the task itself.
+:func:`edited_since_grooming` compares the task with the content the last
+grooming wrote; answers left only as comments do not count, since a grooming
+still has to fold them in. An edited task that now passes, or waits only on
+blockers, is released from its questions without a paid run (sweep.py).
+
 A record is written only when something in it changed, so a sweep of a quiet
 board writes nothing.
 """
@@ -136,6 +143,23 @@ def changed(
     """Whether the task is new, or edited since its record was written."""
     record = records.get(task.gid)
     return record is None or record.fingerprint != fingerprint(task, replies)
+
+
+def edited_since_grooming(
+    task: AsanaTaskRecord, previous: GroomingRecord | None
+) -> bool:
+    """Whether a person changed the task's name, body or tags since the last
+    grooming wrote it.
+
+    Comments are left out: an answer given only as a comment still needs a
+    grooming to fold it into the task. The executor line, executor tags and
+    assignment are this cog's own and never count (see :func:`fingerprint`).
+    """
+    return (
+        previous is not None
+        and previous.groomed_fingerprint is not None
+        and previous.groomed_fingerprint != fingerprint(task)
+    )
 
 
 def _outstanding(previous: GroomingRecord, current: str) -> bool:
