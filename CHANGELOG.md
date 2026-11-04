@@ -1,3 +1,11 @@
+# [1.28.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.27.0...v1.28.0) (2026-11-04)
+
+
+### Features
+
+* move tasks by Started: and Handed off: comments, and leave On Hold alone ([a9614f4](https://github.com/mini-app-polis/task-manager-cog/commit/a9614f4aad2c33cb231db8a55f430a4f202428aa))
+* release a task edited by hand after questions without a paid grooming ([5e4c251](https://github.com/mini-app-polis/task-manager-cog/commit/5e4c251241b0957218b7324c2b66c450f1a2ef3f))
+
 # [1.27.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.26.1...v1.27.0) (2026-11-04)
 
 
