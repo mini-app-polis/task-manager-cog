@@ -48,7 +48,7 @@ Moving, to Ready, back from it, or to the blocked column, is a setting,
 would move before it moves anything. The columns are named, not configured
 by gid, so they read the same in Doppler as on the board:
 
-  GROOM_SECTIONS    the columns swept (default: Ideas, Refining, Blocked)
+  GROOM_SECTIONS    the columns swept (default: Inbox, Refining, Blocked)
   READY_SECTION     the column a ready task moves to, and is checked in
                     again (default: Ready)
   REFINING_SECTION  the column a task failing in Ready moves back to
@@ -150,7 +150,7 @@ FLOW_NAME = "groom-sweep"
 #: This cog's name to the API, which picks its key.
 MACHINE_NAME = "task-manager-cog"
 
-DEFAULT_GROOM_SECTIONS: tuple[str, ...] = ("Ideas", "Refining", "Blocked")
+DEFAULT_GROOM_SECTIONS: tuple[str, ...] = ("Inbox", "Refining", "Blocked")
 DEFAULT_READY_SECTION = "Ready"
 DEFAULT_REFINING_SECTION = "Refining"
 DEFAULT_BLOCKED_SECTION = "Blocked"
@@ -319,7 +319,7 @@ class SweepResult:
 
 
 def groom_sections() -> tuple[str, ...]:
-    """The columns swept: ``GROOM_SECTIONS``, or Ideas, Refining and Blocked."""
+    """The columns swept: ``GROOM_SECTIONS``, or Inbox, Refining and Blocked."""
     raw = os.environ.get("GROOM_SECTIONS") or ""
     names = tuple(n.strip() for n in raw.split(",") if n.strip())
     return names or DEFAULT_GROOM_SECTIONS

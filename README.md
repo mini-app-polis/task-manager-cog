@@ -22,12 +22,12 @@ column and its comments only.
 
 | Column | Holds |
 |---|---|
-| Ideas | New tasks, not yet refined |
+| Inbox | New tasks, not yet refined |
 | Refining | Tasks being refined, or waiting on the owner's answers |
 | Ready | Tasks that meet the definition of ready |
 | In progress | Tasks someone has started |
 | Blocked | Tasks waiting only on other tasks or a date |
-| Held | Tasks the owner has parked; nothing automatic reads or moves them |
+| On Hold | Tasks the owner has parked; nothing automatic reads or moves them |
 | Review | Work someone says is finished, waiting for the Review check |
 | Complete | Work that passed the Review check, marked complete |
 
@@ -43,7 +43,7 @@ This cog applies every move. Each move has one owner:
 | In progress to Review | a `Handed off:` comment |
 | Review to Complete, In progress or Refining | the Review check |
 | Blocked to Ready | the sweep, once the blockers are done |
-| Into or out of Held | the owner only |
+| Into or out of On Hold | the owner only |
 
 ### Comments that move work
 
@@ -112,7 +112,7 @@ source ──POST /v1/tasks──► api-kaianolevine-com ──► task-manager
 schedule (30 min) ──task.sweep──► task-manager queue ──► task-manager-cog
                                                1. read the board and the registry
                                                2. lint every open task in
-                                                  Ideas, Refining, Blocked
+                                                  Inbox, Refining, Blocked
                                                   and Ready
                                                3. move each ready task to Ready,
                                                   each task waiting only on

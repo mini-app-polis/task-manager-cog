@@ -54,7 +54,7 @@ def _listed(external_id: str, *, completed: bool = False) -> AsanaTaskRecord:
         notes="",
         completed=completed,
         section_gid="s-ideas",
-        section_name="Ideas",
+        section_name="Inbox",
         external_id=external_id,
     )
 

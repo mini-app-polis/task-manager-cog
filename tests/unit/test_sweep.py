@@ -41,7 +41,7 @@ Executor: agent
 Because the plan drifted."""
 
 SECTIONS = [
-    AsanaSection("s-ideas", "Ideas"),
+    AsanaSection("s-ideas", "Inbox"),
     AsanaSection("s-refining", "Refining"),
     AsanaSection("s-ready", "Ready"),
     AsanaSection("s-blocked", "Blocked"),
@@ -54,7 +54,7 @@ def _task(
     name: str,
     *,
     notes: str = READY,
-    section: str = "Ideas",
+    section: str = "Inbox",
     completed: bool = False,
     assignee: str | None = "owner",
 ) -> AsanaTaskRecord:
@@ -148,7 +148,7 @@ class FakeBoard:
                 notes=html.unescape(text),
                 completed=False,
                 section_gid="s-ideas",
-                section_name="Ideas",
+                section_name="Inbox",
                 tag_names=tuple(task.tag_names),
             )
         )
@@ -206,7 +206,7 @@ def test_a_blocker_that_is_done_no_longer_blocks() -> None:
         ),
         _task("4", "TASK-4 · Done", completed=True),
     ]
-    (verdict,) = assess(tasks, swept=("Ideas",), repos=REPOS)
+    (verdict,) = assess(tasks, swept=("Inbox",), repos=REPOS)
     assert verdict.ready
 
 
@@ -233,7 +233,7 @@ def test_a_board_without_the_ready_column_stops_the_sweep(
 
 
 def test_columns_and_moving_come_from_settings(monkeypatch: pytest.MonkeyPatch) -> None:
-    assert sweep_mod.groom_sections() == ("Ideas", "Refining", "Blocked")
+    assert sweep_mod.groom_sections() == ("Inbox", "Refining", "Blocked")
     assert sweep_mod.ready_section() == "Ready"
     assert not sweep_mod.auto_ready()
     monkeypatch.setenv("GROOM_SECTIONS", "Inbox, Triage")
@@ -488,7 +488,7 @@ def test_main_logs_every_verdict(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(sweep_mod, "log", lines)
     assert sweep_mod.main([]) == 0
     out = "\n".join(lines.lines)
-    assert "READY  [Ideas] TASK-1 · Ready idea" in out
+    assert "READY  [Inbox] TASK-1 · Ready idea" in out
     assert "- Blocked by TASK-7, which is not done" in out
     assert "1 of 4 tasks ready" in out
     assert board.moves == []
@@ -613,7 +613,7 @@ OPEN_BLOCKER = _task("7", "TASK-7 · Open blocker", section="In progress")
 @pytest.mark.parametrize(
     "notes", [WAITS_ON_OPEN_TASK, WAITS_ON_A_DATE], ids=["open task", "date ahead"]
 )
-@pytest.mark.parametrize("section", ["Ideas", "Refining"])
+@pytest.mark.parametrize("section", ["Inbox", "Refining"])
 def test_a_task_only_waiting_on_blockers_moves_to_blocked(
     notes: str, section: str
 ) -> None:
@@ -683,12 +683,12 @@ def test_a_blocked_task_with_another_problem_stays_where_it_is() -> None:
 @pytest.mark.parametrize(
     ("name", "section"),
     [
-        ("CI-6 · infra: CI failing on dev", "Ideas"),
-        ("RUN-6 · a run failed", "Ideas"),
-        ("CONF-6 · a conformance finding", "Ideas"),
-        ("API-6 · API: GET /v1/x answering 500", "Ideas"),
-        ("ROT-6 · Rotate BREVO_API_KEY in prd", "Ideas"),
-        ("TASK-6 · TEMPLATE — do not work", "Ideas"),
+        ("CI-6 · infra: CI failing on dev", "Inbox"),
+        ("RUN-6 · a run failed", "Inbox"),
+        ("CONF-6 · a conformance finding", "Inbox"),
+        ("API-6 · API: GET /v1/x answering 500", "Inbox"),
+        ("ROT-6 · Rotate BREVO_API_KEY in prd", "Inbox"),
+        ("TASK-6 · TEMPLATE — do not work", "Inbox"),
         ("TASK-6 · Being worked", "In progress"),
     ],
 )
@@ -940,7 +940,7 @@ def test_a_ready_task_is_dispatched_after_grooming(
 ) -> None:
     monkeypatch.setenv("AGENT_DISPATCH", "true")
     monkeypatch.setenv("GROOM_AUTO_READY", "true")
-    # In Ideas and ready: the sweep moves it to Ready, then dispatches it.
+    # In Inbox and ready: the sweep moves it to Ready, then dispatches it.
     board = FakeBoard([_task("1", "TASK-1 · Ready idea")])
     board.sections_.append(AsanaSection("s-review", "Review"))
     store, starter = FakeRecords(), FakeStarter()
@@ -998,10 +998,10 @@ def test_task_shapes_are_off_unless_set(monkeypatch: pytest.MonkeyPatch) -> None
     )
     monkeypatch.delenv("GROOM_TASK_SHAPES", raising=False)
     assert sweep_mod.task_shapes() is False
-    (verdict,) = assess([two], swept=("Ideas",), repos=frozenset({"infra", "other"}))
+    (verdict,) = assess([two], swept=("Inbox",), repos=frozenset({"infra", "other"}))
     assert verdict.ready
     monkeypatch.setenv("GROOM_TASK_SHAPES", "true")
-    (verdict,) = assess([two], swept=("Ideas",), repos=frozenset({"infra", "other"}))
+    (verdict,) = assess([two], swept=("Inbox",), repos=frozenset({"infra", "other"}))
     assert not verdict.ready
     assert verdict.problems[0].startswith("Where names more than one repository")
 

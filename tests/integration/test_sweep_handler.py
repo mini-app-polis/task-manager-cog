@@ -35,7 +35,7 @@ def test_a_sweep_moves_the_ready_task_and_records_both_verdicts(
 
     assert failures(result) == []
     assert asana.moves == [(ready, SECTIONS["Ready"])]
-    assert asana.section_of(blank) == "Ideas"
+    assert asana.section_of(blank) == "Inbox"
     assert api.records[ready]["outcome"] == "ready"
     assert api.records[ready]["moved_to_ready_at"] is not None
     assert api.records[blank]["outcome"] == "not_ready"
