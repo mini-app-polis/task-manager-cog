@@ -70,9 +70,8 @@ within half an hour after it, the interval the schedule runs the sweep at.
                     (lint.py); off unless set
 
 The board's template task says so in its name ("do not work") and is never
-swept. Nor are tasks from a source the sources table marks unswept: the
-problems the fleet detected (``CI-``, ``RUN-``, ``CONF-``, ``API-``) wait
-for a person.
+swept. Nor are tasks from a source the sources table marks unswept: steps
+only a person can finish (``ROT-``, ``INF-``) wait for a person.
 
 Every sweep also reads the Review column: it posts ``Landed:`` on each task
 whose pull request is merged with CI on dev green (landed.py), then marks

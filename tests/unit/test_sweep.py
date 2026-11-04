@@ -179,8 +179,8 @@ BOARD_TASKS = [
         section="Blocked",
     ),
     _task("7", "TASK-7 · Open blocker", section="Refining", notes="later"),
-    _task("8", "CI-8 · infra: CI failing on dev"),
-    _task("9", "API-9 · API: GET /v1/x answering 500", notes="look into this"),
+    _task("8", "INF-8 · Confirm the alerts subscription email"),
+    _task("9", "ROT-9 · Rotate ANTHROPIC_API_KEY in prd", notes="look into this"),
     _task("10", "ROT-10 · Rotate BREVO_API_KEY in prd", notes="look into this"),
 ]
 
@@ -764,10 +764,6 @@ def test_a_blocked_task_with_another_problem_stays_where_it_is() -> None:
 @pytest.mark.parametrize(
     ("name", "section"),
     [
-        ("CI-6 · infra: CI failing on dev", "Inbox"),
-        ("RUN-6 · a run failed", "Inbox"),
-        ("CONF-6 · a conformance finding", "Inbox"),
-        ("API-6 · API: GET /v1/x answering 500", "Inbox"),
         ("ROT-6 · Rotate BREVO_API_KEY in prd", "Inbox"),
         ("TASK-6 · TEMPLATE — do not work", "Inbox"),
         ("TASK-6 · Being worked", "In progress"),
@@ -1426,7 +1422,9 @@ def test_a_task_held_with_nobody_asked_is_counted_and_named(
     asked = _task("3", "TASK-3 · Asked", notes="look into this")
     waits = _task("6", "TASK-6 · Waits", notes=WAITS_ON_OPEN_TASK, section="Blocked")
     new = _task("8", "TASK-8 · New", notes="look into this")
-    unswept = _task("9", "CI-9 · infra: CI failing", notes="look into this")
+    unswept = _task(
+        "9", "INF-9 · Confirm the alerts subscription", notes="look into this"
+    )
     template = _task("5", "TASK-5 · TEMPLATE — do not work", notes="x")
     board = FakeBoard([held, asked, waits, OPEN_BLOCKER, new, unswept, template])
     store = FakeRecords(

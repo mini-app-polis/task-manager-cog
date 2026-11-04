@@ -40,12 +40,6 @@ class Source:
 SOURCES: dict[str, Source] = {
     "voicenote": Source("voicenote", prefix="VN"),
     "github-issue": Source("github-issue", prefix=None),
-    # Problems the fleet detected and escalated: a signal that did not heal
-    # on its own (see the API's signal engine).
-    "ci": Source("ci", prefix="CI", swept=False),
-    "cog-run": Source("cog-run", prefix="RUN", swept=False),
-    "conformance": Source("conformance", prefix="CONF", swept=False),
-    "api-fault": Source("api-fault", prefix="API", swept=False),
     # A manual secret that is due. The secrets rotator fills in the whole
     # template and tags the task for a person, so it is neither groomed nor
     # dispatched to an agent.
