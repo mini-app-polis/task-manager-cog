@@ -27,7 +27,7 @@ def _task(**overrides) -> AsanaTaskRecord:
         "notes": "Done when:",
         "completed": False,
         "section_gid": "s1",
-        "section_name": "Ideas",
+        "section_name": "Inbox",
         "tag_names": ("b", "A"),
     }
     base.update(overrides)

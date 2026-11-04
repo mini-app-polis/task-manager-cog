@@ -19,7 +19,7 @@ EXTERNAL_ID = "ci.watcher-cog.main"
 COMMENT = "CI on watcher-cog main is green again after 3 failed runs."
 
 SECTIONS = [
-    AsanaSection("s-ideas", "Ideas"),
+    AsanaSection("s-ideas", "Inbox"),
     AsanaSection("s-ready", "Ready"),
     AsanaSection("s-progress", "In progress"),
     AsanaSection("s-review", "Review"),

@@ -3,13 +3,97 @@
 [![CI](https://github.com/mini-app-polis/task-manager-cog/actions/workflows/ci.yml/badge.svg)](https://github.com/mini-app-polis/task-manager-cog/actions/workflows/ci.yml)
 [![Version](https://img.shields.io/github/v/tag/mini-app-polis/task-manager-cog?label=version)](https://github.com/mini-app-polis/task-manager-cog/releases)
 
-Puts tasks on the board. Every source of tasks (voice notes, GitHub issues)
-hands this cog a draft of the work, and it adds what every task has in common:
-the board's template block, an id, tags, the column and the assignee. Every
-hour it also sweeps the board, moves each task that meets the definition
-of ready to Ready, and dispatches an agent for each Ready task it can take.
-It is the only thing that writes to the board. See
+Puts tasks on the board. Every source of tasks hands this cog a draft of the
+work, and it adds what every task has in common: the board's template block,
+an id, tags, the column and the assignee. Every 30 minutes it also sweeps the
+board, moves each task that meets the definition of ready to Ready, and
+dispatches an agent for each Ready task it can take. It is the only thing that
+writes to the board. See
 [ADR-0001](docs/decisions/ADR-0001-one-writer-to-the-board.md).
+
+## Board process
+
+The board is where planned work is tracked. This section is the process as
+designed; the decisions behind it are ecosystem-standards ADR-0014 and
+ADR-0015. The board is on Asana's free tier, so a task's state lives in its
+column and its comments only.
+
+### Columns
+
+| Column | Holds |
+|---|---|
+| Inbox | New tasks, not yet refined |
+| Refining | Tasks being refined, or waiting on the owner's answers |
+| Ready | Tasks that meet the definition of ready |
+| In progress | Tasks someone has started |
+| Blocked | Tasks waiting only on other tasks or a date |
+| On Hold | Tasks the owner has parked; nothing automatic reads or moves them |
+| Review | Work someone says is finished, waiting for the Review check |
+| Complete | Work that passed the Review check, marked complete |
+
+### Who moves a task
+
+This cog applies every move. Each move has one owner:
+
+| Move | Owner |
+|---|---|
+| New to Refining | the sweep |
+| Refining to Ready | the refiner's result, applied by the sweep |
+| Ready to In progress | agent dispatch, or a `Started:` comment |
+| In progress to Review | a `Handed off:` comment |
+| Review to Complete, In progress or Refining | the Review check |
+| Blocked to Ready | the sweep, once the blockers are done |
+| Into or out of On Hold | the owner only |
+
+### Comments that move work
+
+| Prefix | Posted by | What happens |
+|---|---|---|
+| `Started:` | whoever picks the task up | The next sweep moves it from Ready to In progress. |
+| `Handed off:` | whoever finished the work | The next sweep moves it to Review. The comment answers every Done when item, point by point, with what was done and where; with no pull request, each answer carries evidence (a link, a commit, a run id, or a plain statement from the owner). |
+| `Rejected:` | the Review check | Names each Done when item not answered; the task goes back to In progress. |
+| `Landed:` | the sweep, for an agent's pull request | Records that the pull request merged with green CI on `dev`. The Review check still decides. |
+| `Refining questions:` | the refiner, or anyone | Holds the task in Refining until a later comment answers. `Grooming questions:` is still accepted. |
+
+### The Review check
+
+The sweep checks each task in Review, with no model call: its pull request,
+when it has one, is merged and CI on `dev` is green, and its latest
+`Handed off:` comment answers every Done when item. A task that passes moves
+to Complete and is then marked complete. A task that fails gets a `Rejected:`
+comment and moves to In progress; when the task itself is unclear, a person
+moves it to Refining. A task marked complete by hand in Review is checked the
+same way.
+
+### Executors
+
+Every task names one executor in its `Executor:` line (see
+[Who does a task](#who-does-a-task)): `agent` for a headless run, `cowork` for
+a working session with the owner, or `person` for the owner alone. Every task
+is assigned to the owner, whoever does the work.
+
+### What a working session does
+
+- **Picks up a task:** posts `Started:`.
+- **Finds the task unclear:** posts `Refining questions:` listing what needs
+  deciding, and stops.
+- **Finishes:** posts `Handed off:` answering the Done when point by point, and
+  says where the work is to be committed.
+- **Files new work:** through the API (`file-task` in common-python-utils),
+  never directly on the board.
+- **Edits a task by hand:** allowed at any time. The next run polishes the
+  edit rather than starting over, and an edited task that meets the definition
+  of ready moves on without a paid refining run.
+
+### Detected problems
+
+Failed CI on `main`, cog run reports at ERROR or worse, bursts of API 5xx
+answers and conformance findings at WARN or worse open a GitHub Issue in the
+affected repository, one per streak, closed when the streak clears. Nothing
+reaches the board automatically; the owner files a task from an Issue when it
+warrants planned work.
+Secret-rotation tasks are not detected problems: they are scheduled work for
+the owner and stay on the board.
 
 ## Flow
 
@@ -28,7 +112,7 @@ source ──POST /v1/tasks──► api-kaianolevine-com ──► task-manager
 schedule (30 min) ──task.sweep──► task-manager queue ──► task-manager-cog
                                                1. read the board and the registry
                                                2. lint every open task in
-                                                  Ideas, Refining, Blocked
+                                                  Inbox, Refining, Blocked
                                                   and Ready
                                                3. move each ready task to Ready,
                                                   each task waiting only on

@@ -26,7 +26,7 @@ PROJECT_GID = "2000"
 
 #: The board's columns, in board order: name -> gid.
 SECTIONS: dict[str, str] = {
-    "Ideas": "3001",
+    "Inbox": "3001",
     "Refining": "3002",
     "Blocked": "3003",
     "Ready": "3004",
@@ -35,7 +35,7 @@ SECTIONS: dict[str, str] = {
 }
 
 #: The column new tasks land in.
-INBOX_SECTION = "Ideas"
+INBOX_SECTION = "Inbox"
 
 REGISTRY_YAML = """\
 services:
