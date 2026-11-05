@@ -1,3 +1,10 @@
+## [1.31.2](https://github.com/mini-app-polis/task-manager-cog/compare/v1.31.1...v1.31.2) (2026-11-05)
+
+
+### Bug Fixes
+
+* **lint:** say an agent task names no repository instead of a repository called None ([76ea8b9](https://github.com/mini-app-polis/task-manager-cog/commit/76ea8b976de3e4e93d956a1c15023baa060c944d))
+
 ## [1.31.1](https://github.com/mini-app-polis/task-manager-cog/compare/v1.31.0...v1.31.1) (2026-11-05)
 
 
