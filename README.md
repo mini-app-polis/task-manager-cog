@@ -204,7 +204,7 @@ linter (`lint.py`) checks what can be checked without a model:
 | Blocked by | Blank, `None`, or only tasks that are done and dates (`YYYY-MM-DD`, a UTC day) that have come. A task can wait on a date alone, beside task ids, or both. Before the date it is not ready (`Blocked until <date>`) and is not sent for refining; it moves to Ready on the first sweep on or after it. A date written any other way is a problem of its own. |
 | Executor | An `Executor:` line naming `agent`, `cowork` or `person`. A task with no line, or another value, is not ready (see Who does a task). |
 | Tags | No `review` tag. |
-| Body | Says why, and links what is needed. No open-questions section (a line starting with one of `OPEN_SECTION_HEADS` in `lint.py`, such as `Open questions:`) lists anything: empty or remove it once it is decided. The author's original text, from the `Before refining:` line on (`Before grooming:` on older tasks), is not checked. |
+| Body | Says why, and links what is needed. No open-questions section (a line starting with one of `OPEN_SECTION_HEADS` in `lint.py`, such as `Open questions:`) lists anything: empty or remove it once it is decided. The author's original text, from the `Before refining:` line on, is not checked. |
 | Shape | With `REFINE_TASK_SHAPES=true`: a **leaf** (one executor: its `Executor:` line, or at most one executor tag; an agent task's Where names at most one repository, and only a `cowork` or `person` task may name several or none) or a **compound** task (Done when opens with its children's ids, "… are done", and Blocked by lists every one of them). Off until splitting is in place, so the existing board is not judged against it first. |
 | Refining questions | None unanswered. A task whose last refining asked questions waits until a refining answers them, even if its template is complete, unless a person has since edited its name, body or tags and it passes or waits only on blockers (`edited_since_refining` in `records.py`). A task that passes everything else is also held while its last `Refining questions:` comment or reported split, from anyone, has no comment after it; it waits for its owner and is not sent for refining (`waiting_on_owner` in the run report). Comments are read only for such a task. |
 
@@ -384,13 +384,6 @@ day, comma-separated `HH:MM`, e.g. `04:15,05:15`, read in `SWEEP_TIMEZONE`,
 default UTC), only the sweep starting within half an hour after one of them
 sends any; the others still lint and move tasks. `AGENT_TIMES` does the same
 for agent dispatch.
-
-Grooming was renamed refining. Until every cog and setting has moved, the
-old names still work: a `GROOM_*` setting stands in for its unset `REFINE_*`
-name (`GROOM_TIMES` for `REFINE_TIMES`, and so on), a `task.groom-proposal`
-from the groomer still running is applied like a `task.refine-proposal`, a
-sweep asked for with `groom` refines, and an agent run that ends
-`needs_grooming` is read as `needs_refining`.
 
 ### Sweeping on demand
 
