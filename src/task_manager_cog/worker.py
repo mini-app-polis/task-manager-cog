@@ -75,7 +75,6 @@ from mini_app_polis.api.contract import (
     TaskAgentResultMessage,
     TaskCreateMessage,
     TaskCreateRequest,
-    TaskGroomProposalMessage,
     TaskRefineProposalMessage,
     TaskSweepMessage,
     TaskUpdateMessage,
@@ -245,9 +244,6 @@ def parse_message(
         TaskCreateMessage,
         TaskSweepMessage,
         TaskRefineProposalMessage,
-        # The grooming name of a proposal, from the groomer still running
-        # until every cog has moved to refining.
-        TaskGroomProposalMessage,
         TaskAgentResultMessage,
         TaskUpdateMessage,
     )

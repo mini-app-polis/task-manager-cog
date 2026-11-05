@@ -70,7 +70,6 @@ from .executor import LABEL as EXECUTOR_LABEL
 from .ids import next_id, task_name
 from .lint import (
     ORIGINAL_MARKER,
-    ORIGINAL_MARKERS,
     executor_of,
     lint,
     looks_like_label,
@@ -158,10 +157,8 @@ def refined_text(task: AsanaTaskRecord, proposal: RefiningProposal) -> tuple[str
     if not proposal.body:
         return "\n".join(block), current.body
     original = current.body
-    for marker in ORIGINAL_MARKERS:
-        if marker in original:
-            original = original.split(marker, 1)[1].strip()
-            break
+    if ORIGINAL_MARKER in original:
+        original = original.split(ORIGINAL_MARKER, 1)[1].strip()
     body = proposal.body.strip()
     if original:
         body = f"{body}\n\n{ORIGINAL_MARKER}\n{original}"

@@ -47,7 +47,7 @@ import os
 from collections.abc import Callable
 
 from mini_app_polis import logger as logger_mod
-from mini_app_polis.api.contract import NEEDS_REFINING, AgentRun, RefiningRecordWrite
+from mini_app_polis.api.contract import AgentRun, RefiningRecordWrite
 from mini_app_polis.asana import AsanaTaskRecord
 from mini_app_polis.environment import Effect, effect_enabled
 from mini_app_polis.pipeline_status import RunReport, run_report
@@ -181,7 +181,7 @@ def apply_result(
 
         sections = board.sections()
         in_progress = _section_named(sections, in_progress_section())
-        if run.status in NEEDS_REFINING:
+        if run.status == "needs_refining":
             _back_to_refining(run, task, board, records_factory, report)
             return
 

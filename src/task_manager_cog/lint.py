@@ -92,11 +92,6 @@ OPEN_SECTION_HEADS: tuple[str, ...] = (
 #: it is the author's text before refining, not the task's current state.
 ORIGINAL_MARKER = "Before refining:"
 
-#: Every line that heads the original text: :data:`ORIGINAL_MARKER`, and
-#: what it was before grooming was renamed refining, which task bodies
-#: already on the board carry.
-ORIGINAL_MARKERS: tuple[str, ...] = (ORIGINAL_MARKER, "Before grooming:")
-
 #: A list item's marker: ``-``, ``*``, ``•``, ``1.`` or ``1)``.
 _LIST_MARKER = re.compile(r"^(?:[-*\u2022]|\d+[.)])\s*")
 
@@ -171,7 +166,7 @@ def open_section(body: str) -> str | None:
     """
     lines = body.replace("\r\n", "\n").split("\n")
     original = next(
-        (i for i, line in enumerate(lines) if line.strip() in ORIGINAL_MARKERS),
+        (i for i, line in enumerate(lines) if line.strip() == ORIGINAL_MARKER),
         len(lines),
     )
     lines = lines[:original]

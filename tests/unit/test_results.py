@@ -244,10 +244,8 @@ def _records(task: AsanaTaskRecord | None) -> FakeRecords:
     return store
 
 
-def _apply_refining(
-    board: FakeBoard, store: FakeRecords, status: str = "needs_refining"
-) -> None:
-    run = _run(status, reason=None, cost_usd=0.31, questions=QUESTIONS)
+def _apply_refining(board: FakeBoard, store: FakeRecords) -> None:
+    run = _run("needs_refining", reason=None, cost_usd=0.31, questions=QUESTIONS)
     apply_result(
         run, run_id="m-1", board_factory=lambda: board, records_factory=lambda: store
     )
@@ -274,19 +272,6 @@ def test_a_run_that_needs_refining_sends_the_task_back_to_refining(
     # Kept, so the next sweep counts the task as sent back from Ready.
     assert record.moved_to_ready_at == MOVED_TO_READY
     assert record.returned_count == 1
-
-
-def test_a_run_that_needs_grooming_is_read_as_needing_refining(
-    production,
-) -> None:
-    """``needs_grooming`` is the old name of ``needs_refining``."""
-    board = _board()
-    store = _records(board.task)
-    _apply_refining(board, store, status="needs_grooming")
-
-    assert board.moves == ["s-refining"]
-    (comment,) = board.comments_
-    assert comment.startswith("Refining questions:\n1. Which env var")
 
 
 def test_a_task_sent_back_waits_for_answers_and_counts_as_returned(
