@@ -36,7 +36,7 @@ from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from typing import get_args
 
-from mini_app_polis.api.contract import GroomingExecutor
+from mini_app_polis.api.contract import RefiningExecutor
 
 from .compose import EMPTY_TITLE_FALLBACK, REVIEW_TAG, TEMPLATE_FIELDS
 from .executor import AGENT, EXECUTORS, executor_of_task
@@ -88,9 +88,14 @@ OPEN_SECTION_HEADS: tuple[str, ...] = (
     "Still open",
 )
 
-#: Heads the task's original text, kept below the groomed body. What follows
-#: it is the author's text before grooming, not the task's current state.
-ORIGINAL_MARKER = "Before grooming:"
+#: Heads the task's original text, kept below the refined body. What follows
+#: it is the author's text before refining, not the task's current state.
+ORIGINAL_MARKER = "Before refining:"
+
+#: Every line that heads the original text: :data:`ORIGINAL_MARKER`, and
+#: what it was before grooming was renamed refining, which task bodies
+#: already on the board carry.
+ORIGINAL_MARKERS: tuple[str, ...] = (ORIGINAL_MARKER, "Before grooming:")
 
 #: A list item's marker: ``-``, ``*``, ``•``, ``1.`` or ``1)``.
 _LIST_MARKER = re.compile(r"^(?:[-*\u2022]|\d+[.)])\s*")
@@ -161,12 +166,12 @@ def open_section(body: str) -> str | None:
     The section's items are what follows the head on its line, and the lines
     after it up to the next blank line. Nothing from the
     :data:`ORIGINAL_MARKER` line on is read: that is the author's text from
-    before grooming. A head with nothing after it, or only
+    before refining. A head with nothing after it, or only
     ``None``, is an emptied section and lists nothing.
     """
     lines = body.replace("\r\n", "\n").split("\n")
     original = next(
-        (i for i, line in enumerate(lines) if line.strip() == ORIGINAL_MARKER),
+        (i for i, line in enumerate(lines) if line.strip() in ORIGINAL_MARKERS),
         len(lines),
     )
     lines = lines[:original]
@@ -243,10 +248,10 @@ def where_repos(where: str) -> list[str]:
 def executor_of(tags: Collection[str]) -> str | None:
     """The executor a task is tagged with, or None: the agent may take it.
 
-    The names are the shared contract's (``GroomingExecutor``). A tag never
+    The names are the shared contract's (``RefiningExecutor``). A tag never
     makes a task less ready; it only says who may work it.
     """
-    names = get_args(GroomingExecutor)
+    names = get_args(RefiningExecutor)
     return next((t.lower() for t in tags if t.lower() in names), None)
 
 
@@ -295,7 +300,7 @@ def only_blocked(problems: Collection[str]) -> bool:
     """Whether every problem is a blocker that is on the board and not done,
     or a date still ahead.
 
-    Such a task is complete but waiting: grooming cannot finish its blocker
+    Such a task is complete but waiting: refining cannot finish its blocker
     or bring its date closer.
     """
     return bool(problems) and all(

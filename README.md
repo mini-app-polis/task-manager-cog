@@ -127,18 +127,18 @@ schedule (30 min) ──task.sweep──► task-manager queue ──► task-ma
                                                   each task waiting only on
                                                   blockers to Blocked, and each
                                                   task failing in Ready back
-                                                  (GROOM_AUTO_READY)
+                                                  (REFINE_AUTO_READY)
                                                4. send tasks that are not ready
                                                   and have changed to
-                                                  task-groomer-cog (GROOM_DISPATCH)
-                                               5. write the grooming records
+                                                  task-refiner-cog (REFINE_DISPATCH)
+                                               5. write the refining records
                                                   that changed (the API)
                                                6. dispatch an agent for each
                                                   Ready task it can take
                                                   (AGENT_DISPATCH)
 
-task-groomer-cog ──proposal──► API ──task.groom-proposal──► task-manager queue
-                                               apply it (groom.py): name, template,
+task-refiner-cog ──proposal──► API ──task.refine-proposal──► task-manager queue
+                                               apply it (refine.py): name, template,
                                                body; then Ready, or Refining with
                                                any questions as a comment
 
@@ -201,41 +201,41 @@ linter (`lint.py`) checks what can be checked without a model:
 | Constraints | Filled in. `None` is an answer; blank is not. |
 | Effort | `S`, `M` or `L`. An `L` task is ready: its implementation creates its subtasks. |
 | PR | Blank. It belongs to whoever works the task. |
-| Blocked by | Blank, `None`, or only tasks that are done and dates (`YYYY-MM-DD`, a UTC day) that have come. A task can wait on a date alone, beside task ids, or both. Before the date it is not ready (`Blocked until <date>`) and is not sent for grooming; it moves to Ready on the first sweep on or after it. A date written any other way is a problem of its own. |
+| Blocked by | Blank, `None`, or only tasks that are done and dates (`YYYY-MM-DD`, a UTC day) that have come. A task can wait on a date alone, beside task ids, or both. Before the date it is not ready (`Blocked until <date>`) and is not sent for refining; it moves to Ready on the first sweep on or after it. A date written any other way is a problem of its own. |
 | Executor | An `Executor:` line naming `agent`, `cowork` or `person`. A task with no line, or another value, is not ready (see Who does a task). |
 | Tags | No `review` tag. |
-| Body | Says why, and links what is needed. No open-questions section (a line starting with one of `OPEN_SECTION_HEADS` in `lint.py`, such as `Open questions:`) lists anything: empty or remove it once it is decided. The author's original text, from the `Before grooming:` line on, is not checked. |
-| Shape | With `GROOM_TASK_SHAPES=true`: a **leaf** (one executor: its `Executor:` line, or at most one executor tag; an agent task's Where names at most one repository, and only a `cowork` or `person` task may name several or none) or a **compound** task (Done when opens with its children's ids, "… are done", and Blocked by lists every one of them). Off until splitting is in place, so the existing board is not judged against it first. |
-| Grooming questions | None unanswered. A task whose last grooming asked questions waits until a grooming answers them, even if its template is complete, unless a person has since edited its name, body or tags and it passes or waits only on blockers (`edited_since_grooming` in `records.py`). A task that passes everything else is also held while its last `Grooming questions:` comment or reported split, from anyone, has no comment after it; it waits for its owner and is not sent for grooming (`waiting_on_owner` in the run report). Comments are read only for such a task. |
+| Body | Says why, and links what is needed. No open-questions section (a line starting with one of `OPEN_SECTION_HEADS` in `lint.py`, such as `Open questions:`) lists anything: empty or remove it once it is decided. The author's original text, from the `Before refining:` line on (`Before grooming:` on older tasks), is not checked. |
+| Shape | With `REFINE_TASK_SHAPES=true`: a **leaf** (one executor: its `Executor:` line, or at most one executor tag; an agent task's Where names at most one repository, and only a `cowork` or `person` task may name several or none) or a **compound** task (Done when opens with its children's ids, "… are done", and Blocked by lists every one of them). Off until splitting is in place, so the existing board is not judged against it first. |
+| Refining questions | None unanswered. A task whose last refining asked questions waits until a refining answers them, even if its template is complete, unless a person has since edited its name, body or tags and it passes or waits only on blockers (`edited_since_refining` in `records.py`). A task that passes everything else is also held while its last `Refining questions:` comment or reported split, from anyone, has no comment after it; it waits for its owner and is not sent for refining (`waiting_on_owner` in the run report). Comments are read only for such a task. |
 
 A task whose only problems are blockers (a task in Blocked by that is not
-done, or a date still ahead) is never sent for grooming. With
-`GROOM_AUTO_READY` on, the sweep moves it from the column it is in to
+done, or a date still ahead) is never sent for refining. With
+`REFINE_AUTO_READY` on, the sweep moves it from the column it is in to
 Blocked (`BLOCKED_SECTION`), and names it in the run report; with it off,
 the report counts it (`blocked_not_moved`). From Blocked it moves to Ready
 on the first sweep after its blockers are done and its date has come. A
-task with any other problem stays where it is and is groomed.
+task with any other problem stays where it is and is refined.
 
 Ready is checked too, so a task put there by hand, or edited after it got
 there, is held to the same bar. One that passes is left alone, and its
-record is not rewritten. With `GROOM_AUTO_READY` on, one that fails moves
+record is not rewritten. With `REFINE_AUTO_READY` on, one that fails moves
 to Refining (`REFINING_SECTION`) with one comment starting
 `Sent back from Ready:` that lists its problems, or to Blocked when its
 blockers are its only problem. Either counts as sent back from Ready, on
 its record and in the run report (`sent_back_from_ready`). A task put back
 in Ready unchanged is moved again, but gets no second comment. Moving it
-back does not send it for grooming: it waits until a person changes it.
-With `GROOM_AUTO_READY` off, the report counts it
+back does not send it for refining: it waits until a person changes it.
+With `REFINE_AUTO_READY` off, the report counts it
 (`failing_in_ready_not_moved`). Either way, the agent dispatch at the end of
 the sweep never takes it.
 
 The sweep never touches a task whose name says "do not work" (the board's
 template), nor a task from a source `sources.py` marks unswept: steps only
-a person can finish. Those wait for a person, neither groomed nor moved to
+a person can finish. Those wait for a person, neither refined nor moved to
 Ready.
 
-Each swept task's verdict is kept as a grooming record in
-api-kaianolevine-com (`/v1/tasks/groomings`), written only when it changed.
+Each swept task's verdict is kept as a refining record in
+api-kaianolevine-com (`/v1/tasks/refinings`), written only when it changed.
 A record's fingerprint covers the task's name, body and tags, so a later
 sweep can tell an edited task from one still waiting. A task this cog moved
 to Ready that a person moves back, or that the sweep sends back from Ready,
@@ -248,7 +248,7 @@ counts what the sweep found, one count a line: tasks checked, not ready,
 waiting on blockers, held without questions, and the rest, with the share
 of tasks moved to Ready over the last 30 days that came back out
 (`returned from Ready, 30 days: 3 of 40 (8%)`, from
-`GET /v1/tasks/groomings/return-rate`; when that read fails the line is
+`GET /v1/tasks/refinings/return-rate`; when that read fails the line is
 left out and the report notes it). **Agent** has the dispatch's spend this
 month, what it dispatched, and what it skipped by reason, one a line.
 
@@ -339,7 +339,7 @@ column skips the check, with a warning.
 
 A task's executor is its `Executor:` line, the last line of the template
 block, after `Blocked by` (`executor.py`). The values are `agent` and the
-shared contract's executors (`mini_app_polis.api.contract.GroomingExecutor`):
+shared contract's executors (`mini_app_polis.api.contract.RefiningExecutor`):
 
 | Executor | Who | Tag | Assigned |
 |---|---|---|---|
@@ -348,7 +348,7 @@ shared contract's executors (`mini_app_polis.api.contract.GroomingExecutor`):
 | `person` | Kaiano alone: consoles behind his login, accounts, physical checks | `person` | Kaiano |
 
 The line is the source of truth, because anyone who writes a task's body
-can set it: a working session, the groomer, a source. The tag and the
+can set it: a working session, the refiner, a source. The tag and the
 assignment follow from it, and this cog is their only writer. Every sweep,
 before it judges the board, brings up to `STEP_LIMIT` open tasks into step:
 
@@ -359,31 +359,38 @@ before it judges the board, brings up to `STEP_LIMIT` open tasks into step:
   task on the board.
 
 Each change is named in the run report (`executor kept in step`; with
-`GROOM_AUTO_READY` off, `executor out of step`, and nothing is written).
-None of it counts as a change to the task: the grooming fingerprint leaves
-the line out and counts the executor once, so a task is not groomed again
+`REFINE_AUTO_READY` off, `executor out of step`, and nothing is written).
+None of it counts as a change to the task: the refining fingerprint leaves
+the line out and counts the executor once, so a task is not refined again
 for it. A line that names no executor is left for the writer to fix.
 
 An executor never blocks: a cowork or person task is held to the definition
 of ready like any other and moves to Ready when it passes. Dispatch takes
 only `agent` tasks, and counts each other task it passes over in the run
 report (`agent_skipped_executor_cowork`, `agent_skipped_executor_person`).
-The groomer proposes an executor for a task the agent cannot do, and
-grooming writes it into the line; an executor a task already has is never
+The refiner proposes an executor for a task the agent cannot do, and
+refining writes it into the line; an executor a task already has is never
 replaced. A task this cog creates gets its line from its source's labels,
 and is assigned to Kaiano whatever its executor.
 
-## Grooming
+## Refining
 
-A task that is not ready is sent to task-groomer-cog when its content
-differs from what was last sent for grooming (the record's
-`groomed_fingerprint`): at most `GROOM_DISPATCH_LIMIT` a sweep (default 5),
-and only when `GROOM_DISPATCH=true`, because each one is a paid run. A job
-the API refuses is sent again next sweep. With `GROOM_TIMES` set (times of
+A task that is not ready is sent to task-refiner-cog when its content
+differs from what was last sent for refining (the record's
+`refined_fingerprint`): at most `REFINE_DISPATCH_LIMIT` a sweep (default 5),
+and only when `REFINE_DISPATCH=true`, because each one is a paid run. A job
+the API refuses is sent again next sweep. With `REFINE_TIMES` set (times of
 day, comma-separated `HH:MM`, e.g. `04:15,05:15`, read in `SWEEP_TIMEZONE`,
 default UTC), only the sweep starting within half an hour after one of them
 sends any; the others still lint and move tasks. `AGENT_TIMES` does the same
 for agent dispatch.
+
+Grooming was renamed refining. Until every cog and setting has moved, the
+old names still work: a `GROOM_*` setting stands in for its unset `REFINE_*`
+name (`GROOM_TIMES` for `REFINE_TIMES`, and so on), a `task.groom-proposal`
+from the groomer still running is applied like a `task.refine-proposal`, a
+sweep asked for with `groom` refines, and an agent run that ends
+`needs_grooming` is read as `needs_refining`.
 
 ### Sweeping on demand
 
@@ -393,14 +400,14 @@ api-kaianolevine-com's `POST /v1/tasks/sweeps` (scope
 queue, so it runs in line with every other job. Its optional body says what
 the sweep should do whatever the time of day:
 
-- no body, or `{}`: the sweep the schedule sends; it grooms and dispatches
-  only at `GROOM_TIMES` and `AGENT_TIMES`;
-- `{"groom": true}`: it counts as the sweep for `GROOM_TIMES`;
+- no body, or `{}`: the sweep the schedule sends; it refines and dispatches
+  only at `REFINE_TIMES` and `AGENT_TIMES`;
+- `{"refine": true}`: it counts as the sweep for `REFINE_TIMES`;
 - `{"agents": true}`: it counts as the sweep for `AGENT_TIMES`;
 - both, for both.
 
-A flag stands in for the clock and nothing else: `GROOM_DISPATCH`,
-`GROOM_DISPATCH_LIMIT`, the groomer's monthly cap, `AGENT_DISPATCH`,
+A flag stands in for the clock and nothing else: `REFINE_DISPATCH`,
+`REFINE_DISPATCH_LIMIT`, the refiner's monthly cap, `AGENT_DISPATCH`,
 `AGENT_DRY_RUN`, `AGENT_TASK_CAP_USD` and `AGENT_MONTHLY_CAP_USD` all apply
 as they do to a scheduled sweep. Its run report opens with `sweep requested
 on demand` and names the parts asked for.
@@ -411,32 +418,32 @@ Two ways to ask:
   `claude-session` machine:
 
   ```bash
-  doppler run --project owner-session --config prd -- uv run request-sweep --groom --agents
+  doppler run --project owner-session --config prd -- uv run request-sweep --refine --agents
   ```
 
 - From GitHub: the **sweep-now** workflow (Actions → sweep-now → Run
-  workflow), with a `groom` and an `agents` checkbox. It calls the
+  workflow), with a `refine` and an `agents` checkbox. It calls the
   production API with the `TASK_MANAGER_SWEEP_API_KEY` repository secret,
   the `task-manager-sweep` machine in api-kaianolevine-com's identity
   registry, which may ask for a sweep and, like every fleet machine, post a
   notification, and nothing else.
 
-A grooming run the spent budget stopped is reported by the groomer, and the
+A refining run the spent budget stopped is reported by the refiner, and the
 task's record comes back with that content's fingerprint
 (`budget_spent_fingerprint`). While it equals the task's content, the task
 is sent again even though it was sent before, within the same limit and at
-most once a sweep, so content the budget stopped is groomed once there is
+most once a sweep, so content the budget stopped is refined once there is
 budget. A stop for older content is ignored.
 
-A grooming lost any other way (a run that crashes, a proposal that never
+A refining lost any other way (a run that crashes, a proposal that never
 reaches the board) is sent again too. Sending stamps the record with
-`groom_sent_at` and counts the send in `groom_attempts`; the record written
-when a grooming comes back, applied or not, clears both. While a send is
-outstanding the task is counted as `awaiting_grooming`. Once it has been
+`refine_sent_at` and counts the send in `refine_attempts`; the record written
+when a refining comes back, applied or not, clears both. While a send is
+outstanding the task is counted as `awaiting_refining`. Once it has been
 outstanding for 12 hours it is sent again, up to 3 sends of the same content;
 after that the task is held and named like any other held task.
 
-The groomer's proposal is applied here (`groom.py`), and only to the content
+The refiner's proposal is applied here (`refine.py`), and only to the content
 it was made for:
 
 - The name becomes `<id> · <title>`. A task without an id takes the next
@@ -444,25 +451,25 @@ it was made for:
 - The template block is filled from the proposal, keeping the task's own
   value for any part the proposal left out, and its PR line. The
   proposal's body follows, then the task's original text under
-  `Before grooming:`, added the first time only.
+  `Before refining:`, added the first time only.
 - The `review` tag comes off.
 - A proposed executor goes into the `Executor:` line (and on as a tag),
   unless the task already has one.
 - With questions, they are posted as one comment starting
-  `Grooming questions:` and the task moves to Refining. **Answer in a
+  `Refining questions:` and the task moves to Refining. **Answer in a
   comment:** the answers become part of the task's content, so the next
-  sweep sends it to be groomed again, answers included.
-- Without, it moves to Ready if it now passes and `GROOM_AUTO_READY` is on,
+  sweep sends it to be refined again, answers included.
+- Without, it moves to Ready if it now passes and `REFINE_AUTO_READY` is on,
   and to Refining otherwise. A task that still has problems gets one
-  comment starting `Grooming left this task not ready:` listing them, and
+  comment starting `Refining left this task not ready:` listing them, and
   the run report names them.
 
-A groomed task is not sent again until someone changes it, so a task
+A refined task is not sent again until someone changes it, so a task
 waiting on you costs nothing.
 
-A task that is not ready, has no grooming questions out, is not waiting
+A task that is not ready, has no refining questions out, is not waiting
 only on blockers, and is not sent because it is unchanged since it was last
-groomed is held with nobody asked: nothing happens to it until a person
+refined is held with nobody asked: nothing happens to it until a person
 changes it. Each sweep counts these (`held_without_questions`). The sweep
 that first finds a task held names it, with its link, as a notice (`task
 newly held with nobody asked`): it is seen rather than silent, but a
@@ -472,22 +479,22 @@ to it: it is not moved, sent or commented on.
 
 ### Splits
 
-A proposal with children (from a groomer with splitting on) divides its
+A proposal with children (from a refiner with splitting on) divides its
 task, and `split.py` applies it:
 
 - Each child is created as a leaf in the template, with the next `MINI-`
   id, its executor tag, and Blocked by naming the earlier children it waits
   on by id, then any task or date the proposal gave it. It is recorded as
-  groomed, so the sweep moves it to Ready if it passes rather than sending
-  it to be groomed again.
+  refined, so the sweep moves it to Ready if it passes rather than sending
+  it to be refined again.
 - The task becomes their compound task: Done when "`<children>` are done",
   Blocked by every child, Where the children's repositories, Constraints
   "A compound task: no work of its own.", Effort its largest child's. It
   waits in Blocked (`BLOCKED_SECTION`) until they are done.
-- **Dry run first.** Unless `GROOM_SPLIT_DRY_RUN=false`, nothing is
+- **Dry run first.** Unless `REFINE_SPLIT_DRY_RUN=false`, nothing is
   created: the children are posted on the task as one comment starting
   `Proposed split (not created` and named in the run report.
-- **A cap.** A split with more children than `GROOM_SPLIT_MAX_CHILDREN`
+- **A cap.** A split with more children than `REFINE_SPLIT_MAX_CHILDREN`
   (default 25) is reported the same way and not applied.
 - **Waits are named.** A child whose title, Done when or body says it
   waits ("waits on", "wait on", "after the … child", in any case) but whose
@@ -496,23 +503,23 @@ task, and `split.py` applies it:
   ahead of what it waits for. Such a split is reported the same way, naming
   each child and what it says, with an issue in the run report, and not
   applied. The check reads the proposal only.
-- **A reported split waits on you**, as grooming questions do. **Answer in
+- **A reported split waits on you**, as refining questions do. **Answer in
   a comment** — approve it, or correct it — and the next sweep sends the
-  task to be groomed again with your answer; with dry run off and the split
-  under the cap, that grooming creates it. Until then the task is held and
+  task to be refined again with your answer; with dry run off and the split
+  under the cap, that refining creates it. Until then the task is held and
   costs nothing.
 - **Questions first.** A proposal with children and questions is not
-  split: its questions are posted as one `Grooming questions:` comment,
+  split: its questions are posted as one `Refining questions:` comment,
   with the proposed children listed under them (and any child that says it
   waits but names no blocker), and the task moves to Refining as it reads.
-  **Answer in a comment**, and the next sweep sends it to be groomed again
-  with your answers; that grooming may then split it.
+  **Answer in a comment**, and the next sweep sends it to be refined again
+  with your answers; that refining may then split it.
 - **Once.** Each child's external id is its parent, the content the split
   was made for, and its position, so a redelivered proposal creates no
   second set, even one cut short partway.
 
-The shape check (`GROOM_TASK_SHAPES`) and the groomer's splitting
-(`GROOMER_SPLIT` in task-groomer-cog) are turned on together with this.
+The shape check (`REFINE_TASK_SHAPES`) and the refiner's splitting
+(`REFINER_SPLIT` in task-refiner-cog) are turned on together with this.
 
 ## Agent dispatch
 
@@ -528,7 +535,7 @@ delivers a webhook at most once and recommends polling beside it, and this
 cog has no public endpoint for the webhook handshake, so the sweep is the
 one trigger.
 
-After grooming, the sweep takes Ready tasks in board order that:
+After refining, the sweep takes Ready tasks in board order that:
 
 - are not the template task nor from an unswept source (`sources.py`);
 - are `agent` tasks (their `Executor:` line, or with no line, no executor
@@ -554,7 +561,7 @@ and nothing dispatches from In progress.
 The run's result comes back through the API, and `results.py` applies it. A
 run that succeeded puts its pull request on the task's PR line, moves the
 task to Review, and posts its `Handed off:` comment; one that needs
-grooming goes back to Refining (below). **Applying a result never marks a
+refining goes back to Refining (below). **Applying a result never marks a
 task done:** a person reviews and merges the draft, and the task closes
 when a `Landed:` comment, which the sweep posts once the pull request is
 merged and CI on dev is green, confirms it (Review).
@@ -567,38 +574,38 @@ way; an hour's wait does not matter for this work.
 `AGENT_DRY_RUN=true` reports what would be dispatched, and the most each
 could cost, without writing anything.
 
-### Back to grooming
+### Back to refining
 
 Implementation that finds a task unclear or undetermined sends it back to
-grooming rather than guessing, including partway through. It is not a
-retry: the task reaches Ready again only through grooming.
+refining rather than guessing, including partway through. It is not a
+retry: the task reaches Ready again only through refining.
 
-- **An agent run** changes nothing and ends as `needs_grooming` with its
+- **An agent run** changes nothing and ends as `needs_refining` with its
   questions. `results.py` moves the task from In progress to Refining, posts
-  the questions as one comment starting `Grooming questions:`, and records
-  the task as having questions. It is not dispatched or groomed again until
-  you answer in a comment; the next grooming reads your answers. The task
+  the questions as one comment starting `Refining questions:`, and records
+  the task as having questions. It is not dispatched or refined again until
+  you answer in a comment; the next refining reads your answers. The task
   counts once as sent back from Ready.
 - **A cowork session** that finds a task unclear midway does the same by
   hand: move the task to Refining, post the questions as one comment
-  starting `Grooming questions:` (numbered, one per line), and add a
+  starting `Refining questions:` (numbered, one per line), and add a
   comment saying what is already done and where (repository, branch, files,
   whether anything is committed). The next sweep reads the task as waiting
   on your answers.
 
-The other way round, a cowork session that grooms a task by hand records
+The other way round, a cowork session that refines a task by hand records
 it, so its open questions are cleared and the sweep does not send it to
-the paid groomer:
+the paid refiner:
 
 ```bash
-doppler run --config prd -- uv run python -m task_manager_cog.groomed 1219828105613597
+doppler run --config prd -- uv run python -m task_manager_cog.refined 1219828105613597
 ```
 
-It lints each task as the sweep does and writes its grooming record with
-the task's current content as groomed; it never writes the board.
+It lints each task as the sweep does and writes its refining record with
+the task's current content as refined; it never writes the board.
 `--awaiting-owner` records each task as waiting on its owner instead, as if
-its grooming had asked questions: it is held, and the comments after its
-last `Grooming questions:` comment or reported split are read as answers.
+its refining had asked questions: it is held, and the comments after its
+last `Refining questions:` comment or reported split are read as answers.
 `--dry-run` prints what it would record. A gid that is not an open task
 is refused.
 
@@ -618,7 +625,7 @@ works it comes from the draft's labels into its `Executor:` line.
 
 An `infra-apply` task is a step the infra apply job found that only a person
 can finish, such as confirming an SNS subscription email. It is filed with the
-`person` label, so it waits for a person: the sweep neither grooms it nor
+`person` label, so it waits for a person: the sweep neither refines it nor
 dispatches it to an agent.
 
 `src/task_manager_cog/sources.py` is the table; the request contract in
@@ -636,11 +643,11 @@ src/task_manager_cog/
   board.py      the Asana project, and the only Asana calls
   sweep.py      the sweep: lint the board, move what is ready
   split.py      applying a split: the children, then the compound task
-  groomed.py    recording tasks groomed by hand in a working session
+  refined.py    recording tasks refined by hand in a working session
   lint.py       the definition of ready
   registry.py   the fleet's repositories, from ecosystem.yaml
-  records.py    grooming records: fingerprints, verdicts, sent back from Ready
-  groom.py      applying a groomer's proposal to the board
+  records.py    refining records: fingerprints, verdicts, sent back from Ready
+  refine.py      applying a refiner's proposal to the board
   dispatch.py   dispatching an agent for each Ready task it can take
   github.py     the agent GitHub App: is there a caller, start it
   results.py    applying an agent run's result to the board

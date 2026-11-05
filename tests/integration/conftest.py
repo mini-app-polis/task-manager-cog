@@ -45,19 +45,19 @@ _CLEARED = (
     "SSM_PREFIX",
     "SSM_PARAMETERS",
     "SSM_OPTIONAL_PARAMETERS",
-    "GROOM_SECTIONS",
+    "REFINE_SECTIONS",
     "READY_SECTION",
     "REFINING_SECTION",
     "BLOCKED_SECTION",
     "IN_PROGRESS_SECTION",
     "REVIEW_SECTION",
-    "GROOM_AUTO_READY",
-    "GROOM_DISPATCH",
-    "GROOM_DISPATCH_LIMIT",
-    "GROOM_TIMES",
+    "REFINE_AUTO_READY",
+    "REFINE_DISPATCH",
+    "REFINE_DISPATCH_LIMIT",
+    "REFINE_TIMES",
     "AGENT_TIMES",
     "SWEEP_TIMEZONE",
-    "GROOM_TASK_SHAPES",
+    "REFINE_TASK_SHAPES",
     "AGENT_DISPATCH",
     "AGENT_DRY_RUN",
     "SENTRY_DSN_COGS",
@@ -91,11 +91,11 @@ def world() -> Iterator[tuple[FakeAsana, FakeApi]]:
     with respx.mock(assert_all_called=False, assert_all_mocked=True) as router:
         router.route(host="app.asana.com").mock(side_effect=asana)
         router.get(REGISTRY_URL).respond(200, text=REGISTRY_YAML)
-        router.get(f"{API_BASE}/v1/tasks/groomings").mock(
-            side_effect=api.list_groomings
+        router.get(f"{API_BASE}/v1/tasks/refinings").mock(
+            side_effect=api.list_refinings
         )
-        router.post(f"{API_BASE}/v1/tasks/groomings").mock(
-            side_effect=api.record_grooming
+        router.post(f"{API_BASE}/v1/tasks/refinings").mock(
+            side_effect=api.record_refining
         )
         yield asana, api
 

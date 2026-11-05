@@ -1,17 +1,17 @@
-"""Applying a split: a groomer's proposal that divides its task into children.
+"""Applying a split: a refiner's proposal that divides its task into children.
 
 A task that is neither a leaf (one executor; one repository for the agent) nor a compound
-task comes back from grooming with children. Each child is created on the
+task comes back from refining with children. Each child is created on the
 board as a leaf, in the template, with its own :data:`MANUAL_PREFIX` id and executor
 tag; a child that waits on an earlier one names it in Blocked by. The task
 itself is rewritten as their compound task: done when its children are,
 blocked by every one of them, with no work of its own.
 
-**Dry run first.** Unless ``GROOM_SPLIT_DRY_RUN`` is ``false``, a split is
+**Dry run first.** Unless ``REFINE_SPLIT_DRY_RUN`` is ``false``, a split is
 only reported: the children it would create are posted on the task as one
 comment and named in the run report, and nothing is created.
 
-**A cap.** A split with more children than ``GROOM_SPLIT_MAX_CHILDREN`` is
+**A cap.** A split with more children than ``REFINE_SPLIT_MAX_CHILDREN`` is
 not applied: it is reported on the task and in the run report.
 
 **Waits it names.** A child whose title, Done when or body says it waits
@@ -32,15 +32,15 @@ a wait whose subject sits more than two words before the verb, or that uses
 another word for "this", is still counted.
 
 **Questions first.** A proposal with children and questions is not split:
-its questions are posted as one ``Grooming questions:`` comment with the
+its questions are posted as one ``Refining questions:`` comment with the
 children listed under them, and any child that says it waits but names no
 blocker, and the task moves to Refining and waits on its owner. Answering
-sends it to be groomed again, and that grooming may split it.
+sends it to be refined again, and that refining may split it.
 
-A reported split waits on its owner as grooming questions do: the task is
-recorded as having questions, and is not groomed again until the owner
+A reported split waits on its owner as refining questions do: the task is
+recorded as having questions, and is not refined again until the owner
 answers in a comment (approving it, or correcting it) or edits the task.
-The next sweep then sends it to be groomed again with the answers.
+The next sweep then sends it to be refined again with the answers.
 
 **Once.** Each child is created with an external id made of its parent, the
 content the split was made for, and its position, so a redelivered proposal
@@ -48,11 +48,11 @@ finds the children it already created and creates no second set. Once the
 parent is rewritten, a redelivery does not match its new content and is not
 applied at all.
 
-The children are recorded as groomed, so the sweep moves the ones that pass
-the definition of ready without sending them to be groomed again.
+The children are recorded as refined, so the sweep moves the ones that pass
+the definition of ready without sending them to be refined again.
 
-  GROOM_SPLIT_DRY_RUN       "false" to create children; anything else reports
-  GROOM_SPLIT_MAX_CHILDREN  children one split may create (default: 25)
+  REFINE_SPLIT_DRY_RUN       "false" to create children; anything else reports
+  REFINE_SPLIT_MAX_CHILDREN  children one split may create (default: 25)
   BLOCKED_SECTION           where a compound task waits (default: Blocked)
 """
 
@@ -64,11 +64,11 @@ from collections.abc import Collection, Mapping
 
 from mini_app_polis import logger as logger_mod
 from mini_app_polis.api.contract import (
-    GroomingChild,
-    GroomingOutcome,
-    GroomingProposal,
-    GroomingRecord,
-    GroomingRecordWrite,
+    RefiningChild,
+    RefiningOutcome,
+    RefiningProposal,
+    RefiningRecord,
+    RefiningRecordWrite,
 )
 from mini_app_polis.asana import AsanaTaskRecord
 from mini_app_polis.pipeline_status import RunReport
@@ -76,10 +76,10 @@ from mini_app_polis.pipeline_status import RunReport
 from .board import Board
 from .compose import REVIEW_TAG, ComposedTask
 from .executor import AGENT, plain_line
-from .groom import MANUAL_PREFIX, groomed_html, groomed_text, questions_comment
 from .ids import next_id, task_name
 from .lint import NONE_WORDS, lint, only_blocked, parse, task_id_of, where_repos
 from .records import SPLIT_REPORT_PREFIX, fingerprint
+from .refine import MANUAL_PREFIX, questions_comment, refined_html, refined_text
 from .sweep import Records, _section_named, blocked_section, task_shapes
 
 log = logger_mod.get_logger()
@@ -126,13 +126,13 @@ _CLAUSE_END = re.compile(r"[.;:,!?\n]")
 
 
 def dry_run() -> bool:
-    """Whether a split is only reported: ``GROOM_SPLIT_DRY_RUN``, on unless false."""
-    return (os.environ.get("GROOM_SPLIT_DRY_RUN") or "").strip().lower() != "false"
+    """Whether a split is only reported: ``REFINE_SPLIT_DRY_RUN``, on unless false."""
+    return (os.environ.get("REFINE_SPLIT_DRY_RUN") or "").strip().lower() != "false"
 
 
 def max_children() -> int:
-    """The most children one split may create: ``GROOM_SPLIT_MAX_CHILDREN``."""
-    raw = (os.environ.get("GROOM_SPLIT_MAX_CHILDREN") or "").strip()
+    """The most children one split may create: ``REFINE_SPLIT_MAX_CHILDREN``."""
+    raw = (os.environ.get("REFINE_SPLIT_MAX_CHILDREN") or "").strip()
     return max(0, int(raw)) if raw else DEFAULT_MAX_CHILDREN
 
 
@@ -146,7 +146,7 @@ def _join(ids: list[str]) -> str:
     return ids[0] if len(ids) == 1 else f"{', '.join(ids[:-1])} and {ids[-1]}"
 
 
-def child_blocked_by(child: GroomingChild, ids: list[str]) -> str:
+def child_blocked_by(child: RefiningChild, ids: list[str]) -> str:
     """A child's Blocked by: the earlier children it waits on, by id, then
     the existing tasks and dates the proposal named."""
     waits = [ids[s] for s in child.blocked_by_siblings]
@@ -156,7 +156,7 @@ def child_blocked_by(child: GroomingChild, ids: list[str]) -> str:
     return ", ".join(waits) or "None"
 
 
-def _names_a_blocker(child: GroomingChild) -> bool:
+def _names_a_blocker(child: RefiningChild) -> bool:
     own = (child.blocked_by or "").strip()
     return bool(child.blocked_by_siblings) or (
         bool(own) and own.lower() not in NONE_WORDS
@@ -178,7 +178,7 @@ def _own_wait(text: str) -> re.Match[str] | None:
     return None
 
 
-def unblocked_waits(proposal: GroomingProposal) -> list[str]:
+def unblocked_waits(proposal: RefiningProposal) -> list[str]:
     """Each child that says it waits but names no blocker, and where it says so."""
     found = []
     for position, child in enumerate(proposal.children):
@@ -199,7 +199,7 @@ def unblocked_waits(proposal: GroomingProposal) -> list[str]:
 
 
 def child_notes(
-    child: GroomingChild, ids: list[str], parent_id: str, parent_title: str
+    child: RefiningChild, ids: list[str], parent_id: str, parent_title: str
 ) -> tuple[str, str]:
     """A child's template block and body, as plain text."""
     block = "\n".join(
@@ -222,7 +222,7 @@ def _one_line(value: str) -> str:
 
 
 def compound_fields(
-    children: list[GroomingChild], ids: list[str], current_where: str
+    children: list[RefiningChild], ids: list[str], current_where: str
 ) -> dict[str, str]:
     """What the parent's template says once it is their compound task."""
     repos = list(
@@ -243,7 +243,7 @@ def compound_fields(
     }
 
 
-def child_lines(proposal: GroomingProposal) -> list[str]:
+def child_lines(proposal: RefiningProposal) -> list[str]:
     """The split as it would be created, one child a line."""
     lines = []
     for position, child in enumerate(proposal.children):
@@ -256,40 +256,40 @@ def child_lines(proposal: GroomingProposal) -> list[str]:
     return lines
 
 
-def dry_run_comment(proposal: GroomingProposal, why: str) -> str:
+def dry_run_comment(proposal: RefiningProposal, why: str) -> str:
     """The split as it would be created, one child a line."""
     first = f"{DRY_RUN_MARKER}: {why}; content {proposal.fingerprint[:12]})"
     return "\n".join([first, *child_lines(proposal)])
 
 
-def _groomed_record(
+def _refined_record(
     task: AsanaTaskRecord,
     task_id: str | None,
     problems: list[str],
-    previous: GroomingRecord | None,
-) -> GroomingRecordWrite:
-    """A record saying the task, as it reads now, is groomed."""
+    previous: RefiningRecord | None,
+) -> RefiningRecordWrite:
+    """A record saying the task, as it reads now, is refined."""
     current = fingerprint(task)
-    outcome: GroomingOutcome = "ready" if not problems else "not_ready"
-    return GroomingRecordWrite(
+    outcome: RefiningOutcome = "ready" if not problems else "not_ready"
+    return RefiningRecordWrite(
         task_gid=task.gid,
         task_id=task_id,
         fingerprint=current,
         outcome=outcome,
         problems=problems,
         returned_count=previous.returned_count if previous else 0,
-        groomed_fingerprint=current,
+        refined_fingerprint=current,
     )
 
 
 def _not_applied(
     task: AsanaTaskRecord,
-    proposal: GroomingProposal,
+    proposal: RefiningProposal,
     why: str,
     *,
     board: Board,
     store: Records,
-    previous: GroomingRecord | None,
+    previous: RefiningRecord | None,
 ) -> None:
     """Report a split without creating it; the task waits on its owner."""
     marker = f"content {proposal.fingerprint[:12]})"
@@ -297,8 +297,8 @@ def _not_applied(
         c.startswith(DRY_RUN_MARKER) and marker in c for c in board.comments(task.gid)
     ):
         board.comment(task.gid, dry_run_comment(proposal, why))
-    store.record_grooming(
-        _groomed_record(
+    store.record_refining(
+        _refined_record(
             task,
             task_id_of(task.name),
             list(previous.problems) if previous else [],
@@ -308,18 +308,18 @@ def _not_applied(
 
 
 def ask_before_splitting(
-    proposal: GroomingProposal,
+    proposal: RefiningProposal,
     task: AsanaTaskRecord,
     *,
     board: Board,
     store: Records,
-    previous: GroomingRecord | None,
+    previous: RefiningRecord | None,
     report: RunReport,
 ) -> None:
     """Post a split's questions, with its children under them; create nothing.
 
     The task is left as it reads, moved to Refining, and recorded as having
-    questions, so an answer sends it to be groomed again.
+    questions, so an answer sends it to be refined again.
     """
     label = task_id_of(task.name) or task.name
     count = len(proposal.children)
@@ -330,8 +330,8 @@ def ask_before_splitting(
     column = _section_named(board.sections(), _refining())
     if task.section_gid != column.gid:
         board.move(task.gid, column.gid)
-    store.record_grooming(
-        _groomed_record(
+    store.record_refining(
+        _refined_record(
             task,
             task_id_of(task.name),
             list(previous.problems) if previous else [],
@@ -349,12 +349,12 @@ def ask_before_splitting(
 
 
 def apply_split(
-    proposal: GroomingProposal,
+    proposal: RefiningProposal,
     task: AsanaTaskRecord,
     *,
     board: Board,
     store: Records,
-    previous: GroomingRecord | None,
+    previous: RefiningRecord | None,
     repos: Collection[str],
     report: RunReport,
 ) -> None:
@@ -362,7 +362,7 @@ def apply_split(
     label = task_id_of(task.name) or task.name
     count = len(proposal.children)
     if count > max_children():
-        why = f"{count} children is over GROOM_SPLIT_MAX_CHILDREN ({max_children()})"
+        why = f"{count} children is over REFINE_SPLIT_MAX_CHILDREN ({max_children()})"
         _not_applied(task, proposal, why, board=board, store=store, previous=previous)
         report.issue("split over the cap; not applied", label, detail=why)
         return
@@ -374,7 +374,7 @@ def apply_split(
         )
         return
     if dry_run():
-        why = "GROOM_SPLIT_DRY_RUN is on"
+        why = "REFINE_SPLIT_DRY_RUN is on"
         _not_applied(task, proposal, why, board=board, store=store, previous=previous)
         report.count("children_proposed", count)
         report.count("cost_usd", f"{proposal.cost_usd:.4f}")
@@ -417,7 +417,7 @@ def apply_split(
             task_name(ids[position], child.title),
             ComposedTask(
                 title=child.title,
-                html_notes=groomed_html(block, body),
+                html_notes=refined_html(block, body),
                 tag_names=(child.executor,) if child.executor else (),
                 due_on=None,
             ),
@@ -433,8 +433,8 @@ def apply_split(
                 completed_by_id={**completed_by_id, **dict.fromkeys(ids, False)},
                 shapes=shapes,
             )
-            store.record_grooming(
-                _groomed_record(created, ids[position], problems, None)
+            store.record_refining(
+                _refined_record(created, ids[position], problems, None)
             )
         report.created(
             "child task", task_name(ids[position], child.title), link=board.url(gid)
@@ -449,9 +449,9 @@ def apply_split(
             "executor": None,
         }
     )
-    block, body = groomed_text(task, compound)
+    block, body = refined_text(task, compound)
     name = task_name(parent_id, proposal.title)
-    board.update(task.gid, name=name, html_notes=groomed_html(block, body))
+    board.update(task.gid, name=name, html_notes=refined_html(block, body))
     if REVIEW_TAG in {t.lower() for t in task.tag_names}:
         board.untag(task.gid, REVIEW_TAG)
 
@@ -471,7 +471,7 @@ def apply_split(
     )
     if rewritten.section_gid != column.gid:
         board.move(task.gid, column.gid)
-    store.record_grooming(_groomed_record(rewritten, parent_id, problems, previous))
+    store.record_refining(_refined_record(rewritten, parent_id, problems, previous))
     report.count("children_created", count - len(found))
     report.updated(
         f"task split into {count}, now in {column.name}", name, link=board.url(task.gid)

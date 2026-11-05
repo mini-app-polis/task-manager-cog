@@ -12,18 +12,18 @@ from mini_app_polis.api.contract import (
     AgentRunCreate,
     AgentRunFailure,
     AgentSpend,
-    GroomingJobAccepted,
-    GroomingJobRequest,
-    GroomingRecord,
-    GroomingRecordWrite,
-    GroomingReturnRate,
+    RefiningJobAccepted,
+    RefiningJobRequest,
+    RefiningRecord,
+    RefiningRecordWrite,
+    RefiningReturnRate,
 )
 from mini_app_polis.asana import AsanaSection, AsanaStory, AsanaTaskRecord
 
 from task_manager_cog import sweep as sweep_mod
 from task_manager_cog.records import (
-    GROOM_MAX_ATTEMPTS,
-    GROOM_RETRY_AFTER,
+    REFINE_MAX_ATTEMPTS,
+    REFINE_RETRY_AFTER,
     fingerprint,
 )
 from task_manager_cog.sweep import assess, run_sweep, sweep
@@ -236,13 +236,13 @@ def test_a_board_without_the_ready_column_stops_the_sweep(
 
 
 def test_columns_and_moving_come_from_settings(monkeypatch: pytest.MonkeyPatch) -> None:
-    assert sweep_mod.groom_sections() == ("Inbox", "Refining", "Blocked")
+    assert sweep_mod.refine_sections() == ("Inbox", "Refining", "Blocked")
     assert sweep_mod.ready_section() == "Ready"
     assert not sweep_mod.auto_ready()
-    monkeypatch.setenv("GROOM_SECTIONS", "Inbox, Triage")
+    monkeypatch.setenv("REFINE_SECTIONS", "Inbox, Triage")
     monkeypatch.setenv("READY_SECTION", "Up next")
-    monkeypatch.setenv("GROOM_AUTO_READY", "TRUE")
-    assert sweep_mod.groom_sections() == ("Inbox", "Triage")
+    monkeypatch.setenv("REFINE_AUTO_READY", "TRUE")
+    assert sweep_mod.refine_sections() == ("Inbox", "Triage")
     assert sweep_mod.ready_section() == "Up next"
     assert sweep_mod.auto_ready()
 
@@ -255,30 +255,30 @@ def production(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @dataclass
 class FakeRecords:
-    """The API's grooming records, in memory."""
+    """The API's refining records, in memory."""
 
-    stored: dict[str, GroomingRecord] = field(default_factory=dict)
-    written: list[GroomingRecordWrite] = field(default_factory=list)
+    stored: dict[str, RefiningRecord] = field(default_factory=dict)
+    written: list[RefiningRecordWrite] = field(default_factory=list)
 
-    def list_groomings(self) -> list[GroomingRecord]:
+    def list_refinings(self) -> list[RefiningRecord]:
         return list(self.stored.values())
 
-    def record_grooming(self, payload: GroomingRecordWrite) -> GroomingRecord:
+    def record_refining(self, payload: RefiningRecordWrite) -> RefiningRecord:
         self.written.append(payload)
-        record = GroomingRecord(
+        record = RefiningRecord(
             **payload.model_dump(), updated_at=dt.datetime.now(dt.UTC)
         )
         self.stored[payload.task_gid] = record
         return record
 
-    jobs: list[GroomingJobRequest] = field(default_factory=list)
+    jobs: list[RefiningJobRequest] = field(default_factory=list)
     refuse: bool = False
 
-    def request_grooming(self, payload: GroomingJobRequest) -> GroomingJobAccepted:
+    def request_refining(self, payload: RefiningJobRequest) -> RefiningJobAccepted:
         if self.refuse:
             raise RuntimeError("502 dispatch_failed")
         self.jobs.append(payload)
-        return GroomingJobAccepted(message_id="m", task_gid=payload.task.task_gid)
+        return RefiningJobAccepted(message_id="m", task_gid=payload.task.task_gid)
 
     agent_runs: list[AgentRunCreate] = field(default_factory=list)
 
@@ -300,10 +300,10 @@ class FakeRecords:
     def fail_agent_run(self, payload: AgentRunFailure) -> AgentRun:
         raise AssertionError("nothing fails here")
 
-    return_rate: GroomingReturnRate | None = None
+    return_rate: RefiningReturnRate | None = None
     return_rate_reads: list[int | None] = field(default_factory=list)
 
-    def grooming_return_rate(self, days: int | None = None) -> GroomingReturnRate:
+    def refining_return_rate(self, days: int | None = None) -> RefiningReturnRate:
         self.return_rate_reads.append(days)
         if self.return_rate is None:
             raise RuntimeError("503 from the API")
@@ -313,7 +313,7 @@ class FakeRecords:
 def test_run_sweep_moves_and_reports_in_production(
     production, monkeypatch: pytest.MonkeyPatch, _no_outbound_reports
 ) -> None:
-    monkeypatch.setenv("GROOM_AUTO_READY", "true")
+    monkeypatch.setenv("REFINE_AUTO_READY", "true")
     board = FakeBoard(list(BOARD_TASKS))
     store = FakeRecords()
     run_sweep(
@@ -353,7 +353,7 @@ def test_a_quiet_board_writes_no_records(production, _no_outbound_reports) -> No
 def test_an_edited_task_is_changed_and_its_record_rewritten() -> None:
     task = _task("2", "TASK-2 · Vague idea", notes="look into this")
     first = sweep(FakeBoard([task]), repos=REPOS, move=False)
-    stored = GroomingRecord(
+    stored = RefiningRecord(
         **first.writes[0].model_dump(), updated_at=dt.datetime.now(dt.UTC)
     )
 
@@ -369,7 +369,7 @@ def test_an_edited_task_is_changed_and_its_record_rewritten() -> None:
 
 def test_a_task_sent_back_from_ready_is_counted_once() -> None:
     task = _task("12", "TASK-2 · Vague idea", notes="look into this")
-    moved = GroomingRecord(
+    moved = RefiningRecord(
         task_gid="12",
         task_id="TASK-2",
         fingerprint=fingerprint(task),
@@ -389,7 +389,7 @@ def test_a_task_sent_back_from_ready_is_counted_once() -> None:
         repos=REPOS,
         move=False,
         records={
-            "12": GroomingRecord(**write.model_dump(), updated_at=moved.updated_at)
+            "12": RefiningRecord(**write.model_dump(), updated_at=moved.updated_at)
         },
     )
     assert again.returned == []
@@ -400,7 +400,7 @@ def test_a_question_waits_until_the_task_changes() -> None:
     task = _task("12", "TASK-2 · Vague idea", notes="look into this")
     first = sweep(FakeBoard([task]), repos=REPOS, move=False)
     written = first.writes[0]
-    asked = GroomingRecord(
+    asked = RefiningRecord(
         **{
             **written.model_dump(),
             "outcome": "questions",
@@ -411,7 +411,7 @@ def test_a_question_waits_until_the_task_changes() -> None:
     unchanged = sweep(FakeBoard([task]), repos=REPOS, move=False, records={"12": asked})
     assert unchanged.writes == []
 
-    # Still waiting after an edit: questions are out until a grooming answers.
+    # Still waiting after an edit: questions are out until a refining answers.
     edited = _task("12", "TASK-2 · Vague idea", notes="look into this: edited")
     after = sweep(FakeBoard([edited]), repos=REPOS, move=False, records={"12": asked})
     assert after.writes[0].outcome == "questions"
@@ -419,11 +419,11 @@ def test_a_question_waits_until_the_task_changes() -> None:
 
 def test_a_task_with_open_questions_is_not_moved_even_when_it_lints_clean() -> None:
     task = BOARD_TASKS[0]  # passes the linter
-    asked = GroomingRecord(
+    asked = RefiningRecord(
         task_gid=task.gid,
         task_id="TASK-1",
         fingerprint=fingerprint(task),
-        groomed_fingerprint=fingerprint(task),
+        refined_fingerprint=fingerprint(task),
         outcome="questions",
         problems=[sweep_mod.OPEN_QUESTIONS],
         updated_at=dt.datetime(2026, 10, 22, tzinfo=dt.UTC),
@@ -436,31 +436,31 @@ def test_a_task_with_open_questions_is_not_moved_even_when_it_lints_clean() -> N
     assert result.writes == []
 
 
-def _asked(task: AsanaTaskRecord, groomed: AsanaTaskRecord) -> GroomingRecord:
-    """A record whose grooming wrote ``groomed`` and asked questions."""
-    return GroomingRecord(
+def _asked(task: AsanaTaskRecord, refined: AsanaTaskRecord) -> RefiningRecord:
+    """A record whose refining wrote ``refined`` and asked questions."""
+    return RefiningRecord(
         task_gid=task.gid,
         task_id="TASK-1",
-        fingerprint=fingerprint(groomed),
-        groomed_fingerprint=fingerprint(groomed),
+        fingerprint=fingerprint(refined),
+        refined_fingerprint=fingerprint(refined),
         outcome="questions",
         problems=[sweep_mod.OPEN_QUESTIONS],
         updated_at=dt.datetime(2026, 11, 4, tzinfo=dt.UTC),
     )
 
 
-def test_a_task_edited_by_hand_after_questions_moves_to_ready_without_grooming() -> (
+def test_a_task_edited_by_hand_after_questions_moves_to_ready_without_refining() -> (
     None
 ):
-    groomed = _task("1", "TASK-1 · Vague", notes="look into this")
+    refined = _task("1", "TASK-1 · Vague", notes="look into this")
     edited = _task("1", "TASK-1 · Vague", notes=READY)
     board = FakeBoard([edited])
-    sent: list[GroomingJobRequest] = []
+    sent: list[RefiningJobRequest] = []
     result = sweep(
         board,
         repos=REPOS,
         move=True,
-        records={"1": _asked(edited, groomed)},
+        records={"1": _asked(edited, refined)},
         send=lambda job: sent.append(job) or True,
         limit=5,
     )
@@ -470,15 +470,15 @@ def test_a_task_edited_by_hand_after_questions_moves_to_ready_without_grooming()
 
 
 def test_a_task_edited_by_hand_that_waits_on_blockers_moves_to_blocked() -> None:
-    groomed = _task("6", "TASK-6 · Vague", notes="look into this")
+    refined = _task("6", "TASK-6 · Vague", notes="look into this")
     edited = _task("6", "TASK-6 · Vague", notes=WAITS_ON_OPEN_TASK)
     board = FakeBoard([edited, OPEN_BLOCKER])
-    sent: list[GroomingJobRequest] = []
+    sent: list[RefiningJobRequest] = []
     sweep(
         board,
         repos=REPOS,
         move=True,
-        records={"6": _asked(edited, groomed)},
+        records={"6": _asked(edited, refined)},
         send=lambda job: sent.append(job) or True,
         limit=5,
     )
@@ -486,16 +486,16 @@ def test_a_task_edited_by_hand_that_waits_on_blockers_moves_to_blocked() -> None
     assert sent == []
 
 
-def test_an_edit_that_still_fails_keeps_the_questions_and_is_groomed() -> None:
-    groomed = _task("1", "TASK-1 · Vague", notes="look into this")
+def test_an_edit_that_still_fails_keeps_the_questions_and_is_refined() -> None:
+    refined = _task("1", "TASK-1 · Vague", notes="look into this")
     edited = _task("1", "TASK-1 · Vague", notes="look into this, and that")
     board = FakeBoard([edited])
-    sent: list[GroomingJobRequest] = []
+    sent: list[RefiningJobRequest] = []
     result = sweep(
         board,
         repos=REPOS,
         move=True,
-        records={"1": _asked(edited, groomed)},
+        records={"1": _asked(edited, refined)},
         send=lambda job: sent.append(job) or True,
         limit=5,
     )
@@ -505,8 +505,8 @@ def test_an_edit_that_still_fails_keeps_the_questions_and_is_groomed() -> None:
 
 
 def test_answers_left_only_as_comments_do_not_release_the_questions() -> None:
-    task = BOARD_TASKS[0]  # passes the linter, unedited since its grooming
-    board = FakeBoard([task], comments_={task.gid: ["Grooming questions: A?", "A."]})
+    task = BOARD_TASKS[0]  # passes the linter, unedited since its refining
+    board = FakeBoard([task], comments_={task.gid: ["Refining questions: A?", "A."]})
     result = sweep(
         board, repos=REPOS, move=True, records={task.gid: _asked(task, task)}
     )
@@ -575,14 +575,14 @@ def test_main_logs_every_verdict(monkeypatch: pytest.MonkeyPatch) -> None:
     assert board.moves == []
 
 
-# ── sending for grooming ──────────────────────────────────────────────────
+# ── sending for refining ──────────────────────────────────────────────────
 
 
 def _sweep_sending(
     store: FakeRecords, board: FakeBoard, monkeypatch: pytest.MonkeyPatch, limit: str
 ) -> None:
-    monkeypatch.setenv("GROOM_DISPATCH", "true")
-    monkeypatch.setenv("GROOM_DISPATCH_LIMIT", limit)
+    monkeypatch.setenv("REFINE_DISPATCH", "true")
+    monkeypatch.setenv("REFINE_DISPATCH_LIMIT", limit)
     run_sweep(
         run_id="r",
         board_factory=lambda: board,
@@ -593,15 +593,15 @@ def _sweep_sending(
 
 def test_sending_is_off_unless_set(monkeypatch: pytest.MonkeyPatch) -> None:
     assert sweep_mod.dispatch_limit() == 0
-    monkeypatch.setenv("GROOM_DISPATCH", "true")
+    monkeypatch.setenv("REFINE_DISPATCH", "true")
     assert sweep_mod.dispatch_limit() == 5
-    monkeypatch.setenv("GROOM_DISPATCH_LIMIT", "2")
+    monkeypatch.setenv("REFINE_DISPATCH_LIMIT", "2")
     assert sweep_mod.dispatch_limit() == 2
 
 
-def test_sending_only_in_groom_times(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("GROOM_DISPATCH", "true")
-    monkeypatch.setenv("GROOM_TIMES", "04:15,05:15,06:15")
+def test_sending_only_in_refine_times(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("REFINE_DISPATCH", "true")
+    monkeypatch.setenv("REFINE_TIMES", "04:15,05:15,06:15")
     monkeypatch.setenv("SWEEP_TIMEZONE", "America/Chicago")
     # 09:15 UTC is 04:15 in Chicago in summer (CDT) and 03:15 in winter (CST).
     summer = dt.datetime(2026, 7, 1, 9, 15, tzinfo=dt.UTC)
@@ -609,7 +609,7 @@ def test_sending_only_in_groom_times(monkeypatch: pytest.MonkeyPatch) -> None:
     assert sweep_mod.dispatch_limit(summer) == 5
     assert sweep_mod.dispatch_limit(winter) == 0
     assert sweep_mod.dispatch_limit(winter + dt.timedelta(hours=1)) == 5
-    # The half-hour sweep after a groom time is not one for it.
+    # The half-hour sweep after a refine time is not one for it.
     assert sweep_mod.dispatch_limit(summer + dt.timedelta(minutes=30)) == 0
     assert sweep_mod.dispatch_limit(summer + dt.timedelta(hours=3)) == 0
 
@@ -648,7 +648,7 @@ def test_tasks_not_ready_are_sent_once_up_to_the_limit(
     assert job.task.problems
     assert "TASK-2 · Vague idea" not in job.board
     assert "TASK-1 · Ready idea" in job.board
-    assert store.stored["2"].groomed_fingerprint == fingerprint(BOARD_TASKS[1])
+    assert store.stored["2"].refined_fingerprint == fingerprint(BOARD_TASKS[1])
 
     # The next sweep sends the next one, and never the first again. TASK-6
     # only waits on its blocker, so it is never sent.
@@ -669,7 +669,7 @@ def test_a_task_only_waiting_on_a_blocker_is_never_sent() -> None:
         notes=READY.replace("Blocked by:", "Blocked by: TASK-7"),
     )
     blocker = _task("7", "TASK-7 · Open blocker", section="In progress")
-    sent: list[GroomingJobRequest] = []
+    sent: list[RefiningJobRequest] = []
     result = sweep(
         FakeBoard([waiting, blocker]),
         repos=REPOS,
@@ -700,7 +700,7 @@ def test_a_task_only_waiting_on_blockers_moves_to_blocked(
 ) -> None:
     task = _task("6", "TASK-6 · Waits", notes=notes, section=section)
     board = FakeBoard([task, OPEN_BLOCKER])
-    sent: list[GroomingJobRequest] = []
+    sent: list[RefiningJobRequest] = []
     result = sweep(
         board,
         repos=REPOS,
@@ -714,7 +714,7 @@ def test_a_task_only_waiting_on_blockers_moves_to_blocked(
     # The move is not a change to its content.
     (write,) = result.writes
     assert write.fingerprint == fingerprint(task)
-    assert write.groomed_fingerprint is None
+    assert write.refined_fingerprint is None
 
 
 def test_with_moving_off_a_waiting_task_is_only_counted() -> None:
@@ -748,7 +748,7 @@ def test_a_blocked_task_with_another_problem_stays_where_it_is() -> None:
         section="Refining",
     )
     board = FakeBoard([task, OPEN_BLOCKER])
-    sent: list[GroomingJobRequest] = []
+    sent: list[RefiningJobRequest] = []
     result = sweep(
         board,
         repos=REPOS,
@@ -794,7 +794,7 @@ def test_the_blocked_column_comes_from_a_setting(
 def test_run_sweep_names_each_task_moved_to_blocked(
     production, monkeypatch: pytest.MonkeyPatch, _no_outbound_reports
 ) -> None:
-    monkeypatch.setenv("GROOM_AUTO_READY", "true")
+    monkeypatch.setenv("REFINE_AUTO_READY", "true")
     task = _task("6", "TASK-6 · Waits", notes=WAITS_ON_OPEN_TASK, section="Refining")
     board = FakeBoard([task, OPEN_BLOCKER])
     run_sweep(
@@ -832,7 +832,7 @@ def test_a_blocked_task_with_another_problem_is_still_sent() -> None:
         ),
     )
     blocker = _task("7", "TASK-7 · Open blocker", section="In progress")
-    sent: list[GroomingJobRequest] = []
+    sent: list[RefiningJobRequest] = []
     result = sweep(
         FakeBoard([task, blocker]),
         repos=REPOS,
@@ -846,8 +846,8 @@ def test_a_blocked_task_with_another_problem_is_still_sent() -> None:
 
 def _send_from(
     tasks: list[AsanaTaskRecord],
-) -> tuple[list[GroomingJobRequest], sweep_mod.SweepResult]:
-    sent: list[GroomingJobRequest] = []
+) -> tuple[list[RefiningJobRequest], sweep_mod.SweepResult]:
+    sent: list[RefiningJobRequest] = []
     result = sweep(
         FakeBoard(tasks),
         repos=REPOS,
@@ -884,7 +884,7 @@ def test_a_task_whose_date_has_come_moves_to_ready() -> None:
     assert [t.name for t in result.moved] == ["TASK-6 · Waited on a date"]
 
 
-def test_a_task_with_a_malformed_date_is_sent_for_grooming() -> None:
+def test_a_task_with_a_malformed_date_is_sent_for_refining() -> None:
     task = _task(
         "6",
         "TASK-6 · Waits on a bad date",
@@ -914,7 +914,7 @@ def test_a_refused_job_is_sent_again_next_sweep(
     store = FakeRecords(refuse=True)
     board = FakeBoard([BOARD_TASKS[1]])
     _sweep_sending(store, board, monkeypatch, "5")
-    assert store.stored["2"].groomed_fingerprint is None
+    assert store.stored["2"].refined_fingerprint is None
     store.refuse = False
     _sweep_sending(store, board, monkeypatch, "5")
     assert len(store.jobs) == 1
@@ -925,15 +925,15 @@ def test_an_answer_sends_a_task_with_questions_again(
 ) -> None:
     task = BOARD_TASKS[1]
     store = FakeRecords()
-    store.stored["2"] = GroomingRecord(
+    store.stored["2"] = RefiningRecord(
         task_gid="2",
         task_id="TASK-2",
         fingerprint=fingerprint(task),
-        groomed_fingerprint=fingerprint(task),
+        refined_fingerprint=fingerprint(task),
         outcome="questions",
         updated_at=dt.datetime.now(dt.UTC),
     )
-    board = FakeBoard([task], comments_={"2": ["Grooming questions:\n1. Why?"]})
+    board = FakeBoard([task], comments_={"2": ["Refining questions:\n1. Why?"]})
     _sweep_sending(store, board, monkeypatch, "5")
     assert store.jobs == []
 
@@ -942,12 +942,12 @@ def test_an_answer_sends_a_task_with_questions_again(
     (job,) = store.jobs
     assert job.task.comments == ["Because the API needs it."]
     assert sweep_mod.OPEN_QUESTIONS not in job.task.problems
-    # Still not ready while the grooming with the answers is out.
+    # Still not ready while the refining with the answers is out.
     assert store.stored["2"].outcome == "questions"
     assert job.task.fingerprint == fingerprint(task, ["Because the API needs it."])
 
 
-# ── what the groomer is sent ──────────────────────────────────────────────
+# ── what the refiner is sent ──────────────────────────────────────────────
 
 
 def test_a_job_lists_the_done_tasks_its_task_mentions() -> None:
@@ -961,7 +961,7 @@ def test_a_job_lists_the_done_tasks_its_task_mentions() -> None:
         "TASK-21": "TASK-21 · First part",
         "TASK-23": "TASK-23 · Unrelated and done",
     }
-    job = sweep_mod.grooming_job(
+    job = sweep_mod.refining_job(
         verdict, ["TASK-20 · Epic", "TASK-22 · Second part", "TASK-30 · Other"], done
     )
     assert job.board == [
@@ -976,7 +976,7 @@ def test_an_answer_that_names_a_done_task_lists_it() -> None:
     verdict = sweep_mod.Verdict(
         task=task, problems=("x",), replies=("TASK-21 is finished.",)
     )
-    job = sweep_mod.grooming_job(verdict, [], {"TASK-21": "TASK-21 · First part"})
+    job = sweep_mod.refining_job(verdict, [], {"TASK-21": "TASK-21 · First part"})
     assert job.board == ["TASK-21 · First part (done)"]
 
 
@@ -1012,11 +1012,11 @@ def test_dispatch_is_off_unless_set(production, _no_outbound_reports) -> None:
     _sweep_dispatching(FakeRecords(), board, never)
 
 
-def test_a_ready_task_is_dispatched_after_grooming(
+def test_a_ready_task_is_dispatched_after_refining(
     production, monkeypatch: pytest.MonkeyPatch, _no_outbound_reports
 ) -> None:
     monkeypatch.setenv("AGENT_DISPATCH", "true")
-    monkeypatch.setenv("GROOM_AUTO_READY", "true")
+    monkeypatch.setenv("REFINE_AUTO_READY", "true")
     # In Inbox and ready: the sweep moves it to Ready, then dispatches it.
     board = FakeBoard([_task("1", "TASK-1 · Ready idea")])
     board.sections_.append(AsanaSection("s-review", "Review"))
@@ -1073,11 +1073,11 @@ def test_task_shapes_are_off_unless_set(monkeypatch: pytest.MonkeyPatch) -> None
         "TASK-1 · Two repos",
         notes=READY.replace("Where: infra", "Where: infra, other"),
     )
-    monkeypatch.delenv("GROOM_TASK_SHAPES", raising=False)
+    monkeypatch.delenv("REFINE_TASK_SHAPES", raising=False)
     assert sweep_mod.task_shapes() is False
     (verdict,) = assess([two], swept=("Inbox",), repos=frozenset({"infra", "other"}))
     assert verdict.ready
-    monkeypatch.setenv("GROOM_TASK_SHAPES", "true")
+    monkeypatch.setenv("REFINE_TASK_SHAPES", "true")
     (verdict,) = assess([two], swept=("Inbox",), repos=frozenset({"infra", "other"}))
     assert not verdict.ready
     assert verdict.problems[0].startswith("Where names more than one repository")
@@ -1095,8 +1095,8 @@ class CountingBoard(FakeBoard):
 
 
 def test_a_questions_comment_from_anyone_holds_a_ready_task() -> None:
-    task = BOARD_TASKS[0]  # passes the linter, and has no grooming record
-    board = FakeBoard([task], comments_={"1": ["Grooming questions:\n1. Which queue?"]})
+    task = BOARD_TASKS[0]  # passes the linter, and has no refining record
+    board = FakeBoard([task], comments_={"1": ["Refining questions:\n1. Which queue?"]})
     result = sweep(board, repos=REPOS, move=True)
     (verdict,) = result.verdicts
     assert verdict.problems == (sweep_mod.OPEN_QUESTIONS,)
@@ -1104,7 +1104,7 @@ def test_a_questions_comment_from_anyone_holds_a_ready_task() -> None:
     assert board.moves == []
     assert result.awaiting_owner == 1
 
-    board.comment("1", "Answers to grooming questions:\n1. The FIFO one.")
+    board.comment("1", "Answers to refining questions:\n1. The FIFO one.")
     sweep(board, repos=REPOS, move=True)
     assert board.moves == [("1", "s-ready")]
 
@@ -1125,11 +1125,11 @@ def test_comments_are_read_only_for_tasks_that_would_be_ready() -> None:
 
 def test_a_task_waiting_on_its_owner_is_never_sent() -> None:
     board = FakeBoard(
-        [BOARD_TASKS[0]], comments_={"1": ["Grooming questions:\n1. Which queue?"]}
+        [BOARD_TASKS[0]], comments_={"1": ["Refining questions:\n1. Which queue?"]}
     )
-    sent: list[GroomingJobRequest] = []
+    sent: list[RefiningJobRequest] = []
 
-    def send(job: GroomingJobRequest) -> bool:
+    def send(job: RefiningJobRequest) -> bool:
         sent.append(job)
         return True
 
@@ -1138,7 +1138,7 @@ def test_a_task_waiting_on_its_owner_is_never_sent() -> None:
     # Edited while the question is out: changed, and still not sent.
     board._replace("1", notes=f"{READY}\nEdited while the question is out.")
     records = {
-        w.task_gid: GroomingRecord(**w.model_dump(), updated_at=dt.datetime.now(dt.UTC))
+        w.task_gid: RefiningRecord(**w.model_dump(), updated_at=dt.datetime.now(dt.UTC))
         for w in first.writes
     }
     again = sweep(board, repos=REPOS, move=True, records=records, send=send, limit=5)
@@ -1150,21 +1150,21 @@ def test_a_task_waiting_on_its_owner_is_never_sent() -> None:
 # ── Ready re-linted ───────────────────────────────────────────────────────
 
 
-def _moved_record(task: AsanaTaskRecord) -> GroomingRecord:
+def _moved_record(task: AsanaTaskRecord) -> RefiningRecord:
     """The record of a task this cog moved to Ready when it passed."""
-    return GroomingRecord(
+    return RefiningRecord(
         task_gid=task.gid,
         task_id=task.name.split(" ")[0],
         fingerprint=fingerprint(task),
-        groomed_fingerprint=fingerprint(task),
+        refined_fingerprint=fingerprint(task),
         outcome="ready",
         moved_to_ready_at=dt.datetime(2026, 10, 23, tzinfo=dt.UTC),
         updated_at=dt.datetime(2026, 10, 23, tzinfo=dt.UTC),
     )
 
 
-def _stored(write: GroomingRecordWrite) -> GroomingRecord:
-    return GroomingRecord(**write.model_dump(), updated_at=dt.datetime.now(dt.UTC))
+def _stored(write: RefiningRecordWrite) -> RefiningRecord:
+    return RefiningRecord(**write.model_dump(), updated_at=dt.datetime.now(dt.UTC))
 
 
 def test_a_passing_ready_task_is_left_alone() -> None:
@@ -1182,9 +1182,9 @@ def test_a_failing_ready_task_goes_back_to_refining_and_is_counted() -> None:
     passed = _task("1", "TASK-1 · Edited", section="Ready")
     task = _task("1", "TASK-1 · Edited", notes="look into this", section="Ready")
     board = FakeBoard([task])
-    sent: list[GroomingJobRequest] = []
+    sent: list[RefiningJobRequest] = []
 
-    def send(job: GroomingJobRequest) -> bool:
+    def send(job: RefiningJobRequest) -> bool:
         sent.append(job)
         return True
 
@@ -1207,7 +1207,7 @@ def test_a_failing_ready_task_goes_back_to_refining_and_is_counted() -> None:
     assert write.moved_to_ready_at is None
     assert write.outcome == "not_ready"
     # Moving it back is not a change: it is not sent, now or next sweep.
-    assert write.groomed_fingerprint == fingerprint(task)
+    assert write.refined_fingerprint == fingerprint(task)
     assert sent == []
     after = sweep(
         board,
@@ -1236,9 +1236,9 @@ def test_a_failing_ready_task_goes_back_to_refining_and_is_counted() -> None:
 def test_a_task_the_budget_stopped_is_sent_again_once_a_sweep() -> None:
     task = _task("2", "TASK-2 · Vague idea", notes="look into this")
     other = _task("3", "TASK-3 · Another vague idea", notes="look into this")
-    sent: list[GroomingJobRequest] = []
+    sent: list[RefiningJobRequest] = []
 
-    def send(job: GroomingJobRequest) -> bool:
+    def send(job: RefiningJobRequest) -> bool:
         sent.append(job)
         return True
 
@@ -1265,11 +1265,11 @@ def test_a_task_the_budget_stopped_is_sent_again_once_a_sweep() -> None:
     assert len(capped.sent) == 1 and capped.waiting == 1
 
 
-def test_a_grooming_that_never_comes_back_is_sent_again_then_held() -> None:
+def test_a_refining_that_never_comes_back_is_sent_again_then_held() -> None:
     task = _task("2", "TASK-2 · Vague idea", notes="look into this")
-    sent: list[GroomingJobRequest] = []
+    sent: list[RefiningJobRequest] = []
 
-    def send(job: GroomingJobRequest) -> bool:
+    def send(job: RefiningJobRequest) -> bool:
         sent.append(job)
         return True
 
@@ -1277,33 +1277,33 @@ def test_a_grooming_that_never_comes_back_is_sent_again_then_held() -> None:
     start = dt.datetime(2026, 10, 28, 9, 15, tzinfo=dt.UTC)
     first = sweep(board, repos=REPOS, move=True, send=send, limit=5, now=start)
     records = {w.task_gid: _stored(w) for w in first.writes}
-    assert len(sent) == 1 and records["2"].groom_attempts == 1
+    assert len(sent) == 1 and records["2"].refine_attempts == 1
 
     # Nothing came back: awaited, not held, until it counts as lost.
     soon = start + dt.timedelta(hours=1)
     waiting = sweep(
         board, repos=REPOS, move=True, records=records, send=send, limit=5, now=soon
     )
-    assert len(sent) == 1 and waiting.awaiting_grooming == 1
+    assert len(sent) == 1 and waiting.awaiting_refining == 1
     assert waiting.held == [] and waiting.writes == []
 
     at = start
-    for attempt in range(2, GROOM_MAX_ATTEMPTS + 1):
-        at += GROOM_RETRY_AFTER
+    for attempt in range(2, REFINE_MAX_ATTEMPTS + 1):
+        at += REFINE_RETRY_AFTER
         again = sweep(
             board, repos=REPOS, move=True, records=records, send=send, limit=5, now=at
         )
         assert [t.gid for t in again.sent] == ["2"]
         records = {**records, **{w.task_gid: _stored(w) for w in again.writes}}
-        assert records["2"].groom_attempts == attempt
+        assert records["2"].refine_attempts == attempt
 
     # Out of attempts: held and named, and not sent again.
-    at += GROOM_RETRY_AFTER
+    at += REFINE_RETRY_AFTER
     spent = sweep(
         board, repos=REPOS, move=True, records=records, send=send, limit=5, now=at
     )
     assert spent.sent == [] and [t.gid for t in spent.newly_held] == ["2"]
-    assert len(sent) == GROOM_MAX_ATTEMPTS
+    assert len(sent) == REFINE_MAX_ATTEMPTS
 
 
 def test_a_ready_task_waiting_on_a_blocker_goes_to_blocked() -> None:
@@ -1364,7 +1364,7 @@ def test_a_task_failing_in_ready_is_never_dispatched(
 def test_the_run_report_counts_tasks_sent_back_from_ready(
     production, monkeypatch: pytest.MonkeyPatch, _no_outbound_reports
 ) -> None:
-    monkeypatch.setenv("GROOM_AUTO_READY", "true")
+    monkeypatch.setenv("REFINE_AUTO_READY", "true")
     board = FakeBoard(
         [_task("1", "TASK-1 · Vague", notes="look into this", section="Ready")]
     )
@@ -1384,13 +1384,13 @@ def test_the_run_report_counts_tasks_sent_back_from_ready(
 # ── held with nobody asked ────────────────────────────────────────────────
 
 
-def _groomed(task: AsanaTaskRecord, outcome: str = "not_ready") -> GroomingRecord:
-    """The record of a task groomed as it now reads."""
-    return GroomingRecord(
+def _refined(task: AsanaTaskRecord, outcome: str = "not_ready") -> RefiningRecord:
+    """The record of a task refined as it now reads."""
+    return RefiningRecord(
         task_gid=task.gid,
         task_id=task.name.split(" ")[0],
         fingerprint=fingerprint(task),
-        groomed_fingerprint=fingerprint(task),
+        refined_fingerprint=fingerprint(task),
         outcome=outcome,
         problems=["Effort is missing"],
         updated_at=dt.datetime(2026, 10, 23, tzinfo=dt.UTC),
@@ -1402,7 +1402,7 @@ def test_a_task_still_held_is_counted_but_not_named_again(
 ) -> None:
     held = _task("2", "TASK-2 · Held", notes="look into this", section="Refining")
     board = FakeBoard([held])
-    store = FakeRecords(stored={"2": _groomed(held)})
+    store = FakeRecords(stored={"2": _refined(held)})
     _sweep_sending(store, board, monkeypatch, "5")
     _sweep_sending(store, board, monkeypatch, "5")
 
@@ -1429,10 +1429,10 @@ def test_a_task_held_with_nobody_asked_is_counted_and_named(
     board = FakeBoard([held, asked, waits, OPEN_BLOCKER, new, unswept, template])
     store = FakeRecords(
         stored={
-            "2": _groomed(held),
-            "3": _groomed(asked, "questions"),
-            "9": _groomed(unswept),
-            "5": _groomed(template),
+            "2": _refined(held),
+            "3": _refined(asked, "questions"),
+            "9": _refined(unswept),
+            "5": _refined(template),
         }
     )
     _sweep_sending(store, board, monkeypatch, "5")
@@ -1450,13 +1450,13 @@ def test_a_task_held_with_nobody_asked_is_counted_and_named(
     assert board.moves == []
     assert board.comments("2") == []
     assert board.get("2") == held
-    assert store.stored["2"].groomed_fingerprint == fingerprint(held)
+    assert store.stored["2"].refined_fingerprint == fingerprint(held)
 
 
 def test_the_sweep_keeps_executors_in_step_before_it_judges_the_board(
     production, monkeypatch: pytest.MonkeyPatch, _no_outbound_reports
 ) -> None:
-    monkeypatch.setenv("GROOM_AUTO_READY", "true")
+    monkeypatch.setenv("REFINE_AUTO_READY", "true")
     no_line = READY.replace("Executor: agent\n", "")
     tagged = dataclasses.replace(
         _task("2", "TASK-2 · Rotate", section="Blocked", assignee=None),
@@ -1465,7 +1465,7 @@ def test_the_sweep_keeps_executors_in_step_before_it_judges_the_board(
         html_notes=f"<body>{no_line}</body>",
     )
     board = FakeBoard([tagged])
-    store = FakeRecords(stored={"2": _groomed(tagged)})
+    store = FakeRecords(stored={"2": _refined(tagged)})
 
     _sweep_sending(store, board, monkeypatch, "5")
 
@@ -1473,7 +1473,7 @@ def test_the_sweep_keeps_executors_in_step_before_it_judges_the_board(
     assert task is not None
     assert "\nExecutor: person\n" in task.notes
     assert task.assignee_gid == "owner"
-    assert store.jobs == []  # writing the line is not a change to groom
+    assert store.jobs == []  # writing the line is not a change to refine
     (args, kwargs), *_ = _no_outbound_reports
     assert "executor kept in step" in kwargs["text"]
     assert "Executor: person written, assigned to the owner" in kwargs["text"]
@@ -1502,9 +1502,9 @@ def _rendered(kwargs: dict) -> str:
     )
 
 
-def _rate(moved: int, returned: int) -> GroomingReturnRate:
+def _rate(moved: int, returned: int) -> RefiningReturnRate:
     now = dt.datetime.now(dt.UTC)
-    return GroomingReturnRate(
+    return RefiningReturnRate(
         days=30,
         since=now - dt.timedelta(days=30),
         counting_since=now - dt.timedelta(days=30),
@@ -1517,7 +1517,7 @@ def _rate(moved: int, returned: int) -> GroomingReturnRate:
 def test_a_report_with_moves_has_moved_board_and_no_glued_counters(
     production, monkeypatch: pytest.MonkeyPatch, _no_outbound_reports
 ) -> None:
-    monkeypatch.setenv("GROOM_AUTO_READY", "true")
+    monkeypatch.setenv("REFINE_AUTO_READY", "true")
     board = FakeBoard(list(BOARD_TASKS))
     store = FakeRecords(return_rate=_rate(40, 3))
     run_sweep(

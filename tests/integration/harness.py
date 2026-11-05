@@ -361,7 +361,7 @@ def _asana_error(status: int, message: str = "injected failure") -> httpx.Respon
 
 @dataclass
 class FakeApi:
-    """The grooming-record routes, keyed by task gid as the API keys them."""
+    """The refining-record routes, keyed by task gid as the API keys them."""
 
     records: dict[str, dict[str, Any]] = field(default_factory=dict)
     writes: list[dict[str, Any]] = field(default_factory=list)
@@ -378,18 +378,18 @@ class FakeApi:
             },
         )
 
-    def list_groomings(self, request: httpx.Request) -> httpx.Response:
+    def list_refinings(self, request: httpx.Request) -> httpx.Response:
         self.auth.add(request.headers.get("Authorization", ""))
         return self._ok(list(self.records.values()))
 
-    def record_grooming(self, request: httpx.Request) -> httpx.Response:
+    def record_refining(self, request: httpx.Request) -> httpx.Response:
         self.auth.add(request.headers.get("Authorization", ""))
         body = json.loads(request.content)
         self.writes.append(body)
         stored = {
             "moved_to_ready_at": None,
             "returned_count": 0,
-            "groomed_fingerprint": None,
+            "refined_fingerprint": None,
             "task_id": None,
             "problems": [],
             **body,

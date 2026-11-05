@@ -292,7 +292,7 @@ def test_the_executors_come_from_the_contract() -> None:
 
 
 def _proposal(task: AsanaTaskRecord, **overrides):
-    from mini_app_polis.api.contract import GroomingProposal
+    from mini_app_polis.api.contract import RefiningProposal
 
     base = {
         "task_gid": task.gid,
@@ -309,7 +309,7 @@ def _proposal(task: AsanaTaskRecord, **overrides):
         "cost_usd": 0.01,
     }
     base.update(overrides)
-    return GroomingProposal(**base)
+    return RefiningProposal(**base)
 
 
 @pytest.mark.parametrize(
@@ -321,20 +321,20 @@ def _proposal(task: AsanaTaskRecord, **overrides):
         ("cowork", (), "person", "cowork"),
     ],
 )
-def test_grooming_writes_the_executor_line(line, tags, proposed, expected) -> None:
-    from task_manager_cog.groom import groomed_text
+def test_refining_writes_the_executor_line(line, tags, proposed, expected) -> None:
+    from task_manager_cog.refine import refined_text
 
     task = _task(line=line, tags=tags)
-    block, _ = groomed_text(task, _proposal(task, executor=proposed))
+    block, _ = refined_text(task, _proposal(task, executor=proposed))
     assert block.splitlines()[-1] == f"Executor: {expected}"
 
 
 def test_a_split_child_carries_its_executor_line() -> None:
-    from mini_app_polis.api.contract import GroomingChild
+    from mini_app_polis.api.contract import RefiningChild
 
     from task_manager_cog.split import child_notes
 
-    child = GroomingChild(
+    child = RefiningChild(
         title="Set the key",
         done_when="the key is set",
         where="infra",

@@ -19,12 +19,12 @@ work is done.
 what it cost and where the run is. Nothing dispatches from In progress, so
 the task waits for a person and the run is never repeated.
 
-**Needs grooming.** The run found the task unclear or undetermined, changed
+**Needs refining.** The run found the task unclear or undetermined, changed
 nothing and asked its questions. The task goes back to Refining
 (``REFINING_SECTION``) with the questions as one comment starting
-``Grooming questions:``, and its grooming record says it has questions. It
-is not a retry: the task reaches Ready again only through grooming, once a
-grooming that reads the owner's answers comes back with none. The record
+``Refining questions:``, and its refining record says it has questions. It
+is not a retry: the task reaches Ready again only through refining, once a
+refining that reads the owner's answers comes back with none. The record
 keeps when the task was moved to Ready, so the next sweep counts it as sent
 back from Ready: the task was not as ready as it looked.
 
@@ -33,7 +33,7 @@ run started is left where it is, with the comment.
 
 **Once.** Every comment names the run, so a redelivered result finds its own
 comment and posts no second one, and a step already done is not redone. A
-run that needs grooming posts its comment last, so a redelivery after it
+run that needs refining posts its comment last, so a redelivery after it
 changes nothing.
 
   REVIEW_SECTION       default Review
@@ -47,7 +47,7 @@ import os
 from collections.abc import Callable
 
 from mini_app_polis import logger as logger_mod
-from mini_app_polis.api.contract import AgentRun, GroomingRecordWrite
+from mini_app_polis.api.contract import NEEDS_REFINING, AgentRun, RefiningRecordWrite
 from mini_app_polis.asana import AsanaTaskRecord
 from mini_app_polis.environment import Effect, effect_enabled
 from mini_app_polis.pipeline_status import RunReport, run_report
@@ -56,15 +56,15 @@ from ._version import __version__
 from .board import Board
 from .compose import TEMPLATE_FIELDS
 from .dispatch import in_progress_section
-from .groom import (
+from .lint import parse, task_id_of
+from .records import fingerprint
+from .refine import (
     DEFAULT_REFINING_SECTION,
     _field_lines,
     _section_setting,
-    groomed_html,
     questions_comment,
+    refined_html,
 )
-from .lint import parse, task_id_of
-from .records import fingerprint
 from .sweep import OPEN_QUESTIONS, Records, _api, _section_named
 
 log = logger_mod.get_logger()
@@ -97,13 +97,13 @@ def _ours(run: AgentRun, comments: list[str]) -> bool:
     return any(marker(run) in c for c in comments)
 
 
-def grooming_comment(run: AgentRun, *, moved_away: bool = False) -> str:
-    """The comment a run that needs grooming leaves: its questions, first."""
+def refining_comment(run: AgentRun, *, moved_away: bool = False) -> str:
+    """The comment a run that needs refining leaves: its questions, first."""
     where = f" ({run.actions_run_url})" if run.actions_run_url else ""
     text = (
         f"{questions_comment(run.questions)}\n\n"
         f"Asked by {marker(run)}{where}, which changed nothing. "
-        f"Cost: {_cost(run)}. The task is back in grooming, not retried."
+        f"Cost: {_cost(run)}. The task is back in refining, not retried."
     )
     if moved_away:
         text += (
@@ -181,8 +181,8 @@ def apply_result(
 
         sections = board.sections()
         in_progress = _section_named(sections, in_progress_section())
-        if run.status == "needs_grooming":
-            _back_to_grooming(run, task, board, records_factory, report)
+        if run.status in NEEDS_REFINING:
+            _back_to_refining(run, task, board, records_factory, report)
             return
 
         review = _section_named(sections, review_section())
@@ -197,7 +197,7 @@ def apply_result(
             if pr_line != run.pr_url:
                 block, body = with_pr(task, run.pr_url or "")
                 board.update(
-                    task.gid, name=task.name, html_notes=groomed_html(block, body)
+                    task.gid, name=task.name, html_notes=refined_html(block, body)
                 )
             if task.section_gid != review.gid:
                 board.move(task.gid, review.gid)
@@ -217,25 +217,25 @@ def apply_result(
         log.info("results: run %s (%s) applied to %s", run.id, run.status, task.name)
 
 
-def _back_to_grooming(
+def _back_to_refining(
     run: AgentRun,
     task: AsanaTaskRecord,
     board: Board,
     records_factory: Callable[[], Records],
     report: RunReport,
 ) -> None:
-    """Send a task whose run needs grooming back to Refining, once."""
+    """Send a task whose run needs refining back to Refining, once."""
     label = run.task_id or task.name
     if _ours(run, board.comments(task.gid)):
         report.note("result already applied", label)
         return
 
     store = records_factory()
-    previous = {r.task_gid: r for r in store.list_groomings()}.get(task.gid)
+    previous = {r.task_gid: r for r in store.list_refinings()}.get(task.gid)
     current = fingerprint(task)
-    # Groomed as it reads now: only the owner's answers send it again.
-    store.record_grooming(
-        GroomingRecordWrite(
+    # Refined as it reads now: only the owner's answers send it again.
+    store.record_refining(
+        RefiningRecordWrite(
             task_gid=task.gid,
             task_id=task_id_of(task.name),
             fingerprint=current,
@@ -243,7 +243,7 @@ def _back_to_grooming(
             problems=[OPEN_QUESTIONS],
             moved_to_ready_at=previous.moved_to_ready_at if previous else None,
             returned_count=previous.returned_count if previous else 0,
-            groomed_fingerprint=current,
+            refined_fingerprint=current,
         )
     )
 
@@ -255,13 +255,13 @@ def _back_to_grooming(
             sections, _section_setting("REFINING_SECTION", DEFAULT_REFINING_SECTION)
         )
         board.move(task.gid, refining.gid)
-    board.comment(task.gid, grooming_comment(run, moved_away=moved_away))
+    board.comment(task.gid, refining_comment(run, moved_away=moved_away))
 
     report.count("questions", len(run.questions))
     if moved_away:
         report.note("task was moved out of In progress; left where it is", label)
     else:
         report.updated(
-            "task sent back to grooming", task.name, link=board.url(task.gid)
+            "task sent back to refining", task.name, link=board.url(task.gid)
         )
-    log.info("results: run %s needs grooming; %s back to Refining", run.id, task.name)
+    log.info("results: run %s needs refining; %s back to Refining", run.id, task.name)

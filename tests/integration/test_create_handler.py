@@ -47,10 +47,10 @@ def test_a_job_puts_one_composed_task_on_the_board(
     # a prefix this cog does not own.
     assert created["name"] == "VN-4 · Call the venue"
     assert created["external"] == {"gid": "voicenote.file-1"}
-    # No executor label: the agent's until grooming says otherwise, and
+    # No executor label: the agent's until refining says otherwise, and
     # assigned to the owner like every task (executor.py).
     assert created["assignee"] == "me"
-    # The board's template heads the body, so a groomer fills it in place.
+    # The board's template heads the body, so a refiner fills it in place.
     assert created["html_notes"].startswith("<body>Done when:\nWhere:\n")
     assert "\nExecutor: agent" in created["html_notes"]
     # Placed in the inbox column by the create itself, not by a second call.

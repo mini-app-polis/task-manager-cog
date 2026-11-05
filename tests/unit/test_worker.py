@@ -121,7 +121,7 @@ def test_a_proposal_message_is_applied(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     body = json.dumps(
         {
-            "type": "task.groom-proposal",
+            "type": "task.refine-proposal",
             "version": 1,
             "payload": {
                 "task_gid": "7",
@@ -132,15 +132,15 @@ def test_a_proposal_message_is_applied(monkeypatch: pytest.MonkeyPatch) -> None:
             },
         }
     )
-    assert worker._source_label(body) == "grooming"
+    assert worker._source_label(body) == "refining"
     worker.process_message(body, run_id="m-3")
     assert applied == ["7"]
 
 
 def test_a_malformed_proposal_is_refused() -> None:
-    body = json.dumps({"type": "task.groom-proposal", "version": 1, "payload": {}})
+    body = json.dumps({"type": "task.refine-proposal", "version": 1, "payload": {}})
     with pytest.raises(
-        worker.UnprocessableMessage, match="not a valid task.groom-proposal"
+        worker.UnprocessableMessage, match="not a valid task.refine-proposal"
     ):
         worker.parse_message(body)
 
@@ -150,8 +150,8 @@ def test_a_sweep_message_runs_the_sweep(monkeypatch: pytest.MonkeyPatch) -> None
     monkeypatch.setattr(
         worker,
         "run_sweep",
-        lambda *, run_id, board_factory, groom, agents: runs.append(
-            (run_id, groom, agents)
+        lambda *, run_id, board_factory, refine, agents: runs.append(
+            (run_id, refine, agents)
         ),
     )
     worker.process_message(
@@ -166,29 +166,29 @@ def test_a_sweep_with_an_empty_payload_is_a_scheduled_sweep() -> None:
 
 
 @pytest.mark.parametrize(
-    ("groom", "agents"), [(True, False), (False, True), (True, True)]
+    ("refine", "agents"), [(True, False), (False, True), (True, True)]
 )
 def test_a_flagged_sweep_carries_its_flags_to_the_sweep(
-    monkeypatch: pytest.MonkeyPatch, groom: bool, agents: bool
+    monkeypatch: pytest.MonkeyPatch, refine: bool, agents: bool
 ) -> None:
-    message = TaskSweepMessage(payload=TaskSweepPayload(groom=groom, agents=agents))
+    message = TaskSweepMessage(payload=TaskSweepPayload(refine=refine, agents=agents))
     job = worker._sweep_job(message)
-    assert job == worker.SweepJob(groom=groom, agents=agents)
+    assert job == worker.SweepJob(refine=refine, agents=agents)
 
     runs: list[tuple[bool, bool]] = []
     monkeypatch.setattr(worker, "parse_message", lambda body: job)
     monkeypatch.setattr(
         worker,
         "run_sweep",
-        lambda *, run_id, board_factory, groom, agents: runs.append((groom, agents)),
+        lambda *, run_id, board_factory, refine, agents: runs.append((refine, agents)),
     )
     worker.process_message("{}", run_id="m-10")
-    assert runs == [(groom, agents)]
+    assert runs == [(refine, agents)]
 
 
 def test_a_flagged_sweep_message_parses_to_its_flags() -> None:
-    body = json.dumps({"type": "task.sweep", "version": 1, "payload": {"groom": True}})
-    assert worker.parse_message(body) == worker.SweepJob(groom=True, agents=False)
+    body = json.dumps({"type": "task.sweep", "version": 1, "payload": {"refine": True}})
+    assert worker.parse_message(body) == worker.SweepJob(refine=True, agents=False)
 
 
 # --- creating ----------------------------------------------------------------
@@ -512,9 +512,9 @@ def test_effective_settings_show_values_only_for_allowlisted_names(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     secret = "asana-secret-token-value"
-    monkeypatch.setenv("SETTINGS_ALLOWLIST", "AGENT_MODEL,GROOM_SPLIT_MAX_CHILDREN")
+    monkeypatch.setenv("SETTINGS_ALLOWLIST", "AGENT_MODEL,REFINE_SPLIT_MAX_CHILDREN")
     monkeypatch.delenv("AGENT_MODEL", raising=False)
-    monkeypatch.setenv("GROOM_SPLIT_MAX_CHILDREN", "7")
+    monkeypatch.setenv("REFINE_SPLIT_MAX_CHILDREN", "7")
     monkeypatch.setenv("ASANA_ACCESS_TOKEN", secret)
     monkeypatch.delenv("AGENT_APP_PRIVATE_KEY", raising=False)
 
@@ -523,7 +523,7 @@ def test_effective_settings_show_values_only_for_allowlisted_names(
 
     lines = [r.getMessage() for r in caplog.records]
     assert f"AGENT_MODEL={worker.dispatch.DEFAULT_MODEL} (default)" in lines
-    assert "GROOM_SPLIT_MAX_CHILDREN=7 (set)" in lines
+    assert "REFINE_SPLIT_MAX_CHILDREN=7 (set)" in lines
     assert "ASANA_ACCESS_TOKEN (set)" in lines
     assert "AGENT_APP_PRIVATE_KEY (unset)" in lines
     assert all(secret not in r.getMessage() for r in caplog.records)
@@ -533,5 +533,5 @@ def test_effective_settings_show_values_only_for_allowlisted_names(
 def test_effective_settings_report_an_unparsable_value_as_given(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("GROOM_DISPATCH_LIMIT", "lots")
-    assert worker.effective_settings()["GROOM_DISPATCH_LIMIT"] == "lots"
+    monkeypatch.setenv("REFINE_DISPATCH_LIMIT", "lots")
+    assert worker.effective_settings()["REFINE_DISPATCH_LIMIT"] == "lots"
