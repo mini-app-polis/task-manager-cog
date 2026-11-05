@@ -1,9 +1,4 @@
-"""Comments already on the board that say grooming.
-
-Grooming was renamed refining. Tasks still held by a ``Grooming questions:``
-comment stay held until someone answers it. This test goes when no open
-task depends on that.
-"""
+"""A ``Grooming questions:`` comment holds its task like a refining one."""
 
 from __future__ import annotations
 
