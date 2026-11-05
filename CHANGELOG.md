@@ -1,3 +1,10 @@
+## [1.31.3](https://github.com/mini-app-polis/task-manager-cog/compare/v1.31.2...v1.31.3) (2026-11-05)
+
+
+### Bug Fixes
+
+* **update:** post a rotation as its task's handoff, and land it when verified and retired ([4b856dc](https://github.com/mini-app-polis/task-manager-cog/commit/4b856dc10dd48a02adeb9629239441a12fd6a5a4))
+
 ## [1.31.2](https://github.com/mini-app-polis/task-manager-cog/compare/v1.31.1...v1.31.2) (2026-11-05)
 
 
