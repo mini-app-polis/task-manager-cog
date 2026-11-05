@@ -1,3 +1,11 @@
+## [1.31.4](https://github.com/mini-app-polis/task-manager-cog/compare/v1.31.3...v1.31.4) (2026-11-05)
+
+
+### Bug Fixes
+
+* **deps:** bump miniapppolis-common-utils to 7.19.0 ([6300a38](https://github.com/mini-app-polis/task-manager-cog/commit/6300a38f8c2a9fc43207e903ab4a5f4a2a83dff0))
+* **deps:** bump oauthlib to 4.0.1 and miniapppolis-common-utils to 7.20.0 ([c00581a](https://github.com/mini-app-polis/task-manager-cog/commit/c00581a8bb9f032130c80ed98d1cb8436f3ff700))
+
 ## [1.31.3](https://github.com/mini-app-polis/task-manager-cog/compare/v1.31.2...v1.31.3) (2026-11-05)
 
 
