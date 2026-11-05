@@ -359,6 +359,13 @@ def test_only_a_task_for_another_executor_may_name_no_repository(where: str) -> 
     assert _shaped(_notes_with(Where=where)) != []
 
 
+@pytest.mark.parametrize("where", ["None", "n/a", "-"])
+def test_an_agent_task_naming_no_repository_says_so(where: str) -> None:
+    problems = _shaped(_notes_with(Where=where))
+    assert "An agent task names no repository in Where" in problems
+    assert not any("no repository called" in p for p in problems)
+
+
 def test_a_compound_task_lists_every_child_in_blocked_by() -> None:
     notes = _notes_with(
         **{
