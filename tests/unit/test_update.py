@@ -8,10 +8,13 @@ import pytest
 from mini_app_polis.api.contract import TaskUpdateRequest
 from mini_app_polis.asana import AsanaSection, AsanaTaskRecord
 
+from task_manager_cog.review import unanswered
 from task_manager_cog.update import (
     apply_update,
     is_rotation_prefix,
     rotated_at,
+    rotation_handoff,
+    rotation_landed,
     section_name,
 )
 
@@ -244,6 +247,16 @@ ROT_COMMENT = (
     "Rotated by hand; the new key is in Doppler."
 )
 CREATED = datetime(2026, 10, 1, 9, 0, tzinfo=UTC)
+ROT_HANDOFF = (
+    "Handed off: rotator-cog recorded the rotation.\n"
+    "- Rotated 2026-10-30T12:00:00Z; verification ok; "
+    "Rotated by hand; the new key is in Doppler."
+)
+ROT_DONE_WHEN = (
+    "Done when: `uv run scripts/rotate.py rotate BREVO_API_KEY --reason "
+    "scheduled` has recorded a rotation of BREVO_API_KEY in prd, and the old "
+    "value is revoked.\nWhere: rotator-cog\nExecutor: person"
+)
 
 
 @dataclass
@@ -329,7 +342,7 @@ def test_a_newer_rotation_comments_on_the_open_task_and_moves_it_to_review(
         _rot_task("3", "secret-rotation.prd.OTHER_KEY.never"),
     )
     _apply(_rot_request(), board)
-    assert board.commented == [("2", ROT_COMMENT)]
+    assert board.commented == [("2", ROT_HANDOFF)]
     assert board.moved == [("2", "s-review")]
 
 
@@ -343,7 +356,7 @@ def test_a_redelivered_rotation_changes_nothing(production) -> None:
     board = _rot_board(_rot_task("2", ROT_PREFIX + "never"))
     _apply(_rot_request(), board)
     _apply(_rot_request(), board)
-    assert board.commented == [("2", ROT_COMMENT)]
+    assert board.commented == [("2", ROT_HANDOFF)]
     assert board.moved == [("2", "s-review")]
 
 
@@ -407,3 +420,66 @@ def test_an_exact_rotation_key_keeps_the_exact_lookup(production) -> None:
     _apply(_request(external_id=ROT_PREFIX + "never"), board)
     assert board.looked_up == [ROT_PREFIX + "never"]
     assert board.moves == ["s-review"]
+
+
+# A rotation's handoff, and its Landed: when nothing is left for a person.
+
+RETIRED_COMMENT = (
+    "Rotated 2026-10-30T12:00:00Z; verification ok\n"
+    "Old value retired 2026-10-30T12:05:00Z"
+)
+
+
+def test_the_handoff_answers_each_done_when_item_with_the_rotation() -> None:
+    task = dataclasses.replace(
+        _rot_task("2", ROT_PREFIX + "never"), notes=ROT_DONE_WHEN
+    )
+    handoff = rotation_handoff(task, RETIRED_COMMENT)
+    assert handoff.startswith("Handed off:")
+    item = (
+        "- Rotated 2026-10-30T12:00:00Z; verification ok; "
+        "Old value retired 2026-10-30T12:05:00Z"
+    )
+    assert handoff.splitlines()[1:] == [item]
+    assert unanswered(task, handoff) == []
+
+
+def test_a_verified_and_retired_rotation_lands_after_the_move(production) -> None:
+    board = _rot_board(_rot_task("2", ROT_PREFIX + "never"))
+    _apply(_rot_request(RETIRED_COMMENT), board)
+    assert [text.split(" ", 2)[:2] for _, text in board.commented] == [
+        ["Handed", "off:"],
+        ["Landed:", "the"],
+    ]
+    assert "retired 2026-10-30T12:05:00Z" in board.commented[1][1]
+    assert board.moved == [("2", "s-review")]
+
+
+def test_a_redelivered_landed_rotation_changes_nothing(production) -> None:
+    board = _rot_board(_rot_task("2", ROT_PREFIX + "never"))
+    _apply(_rot_request(RETIRED_COMMENT), board)
+    _apply(_rot_request(RETIRED_COMMENT), board)
+    assert len(board.commented) == 2
+
+
+@pytest.mark.parametrize(
+    "comment",
+    [
+        # The old value is still valid: a person revokes it.
+        "Rotated 2026-10-30T12:00:00Z; verification ok",
+        # Not verified, or failed: a person looks.
+        "Rotated 2026-10-30T12:00:00Z; verification unchecked\n"
+        "Old value retired 2026-10-30T12:05:00Z",
+        "Rotated 2026-10-30T12:00:00Z; verification failed\n"
+        "Old value retired 2026-10-30T12:05:00Z",
+    ],
+)
+def test_a_rotation_with_anything_left_to_confirm_does_not_land(comment: str) -> None:
+    assert rotation_landed(comment) is None
+
+
+def test_a_verified_and_retired_rotation_lands() -> None:
+    assert rotation_landed(RETIRED_COMMENT) == (
+        "Landed: the new value verified ok and the old value was retired "
+        "2026-10-30T12:05:00Z, as rotator-cog recorded."
+    )

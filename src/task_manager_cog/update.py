@@ -42,8 +42,14 @@ under its own key. The update goes to the one open task whose external id
 starts with the prefix, and only when the comment's first line,
 ``Rotated <ISO timestamp>; verification <ok|failed|unchecked>``, gives a time
 after that task was created: the rotation answers that task, not an earlier
-one. The task gets the comment and moves to Review, whatever column the
-request names. A prefix with no open task, a first line that does not parse,
+one. The task moves to Review, whatever column the request names, with the
+rotation as its handoff: a ``Handed off:`` comment answering each Done when
+item with the rotator's record (when it was rotated, its verification, and
+``Old value retired <ISO timestamp>`` once the old value is gone). A rotation
+verified ``ok`` whose old value is retired has nothing left for a person to
+confirm, so a ``Landed:`` comment follows the move, and the sweep's Review
+check closes the task (review.py). Anything less waits in Review for a
+person, as any task does. A prefix with no open task, a first line that does not parse,
 a time not after the task's creation and a task already in Review are each
 left alone and noted in the run; more than one open task is left alone and
 reported as an issue. Any other ``external_id`` is an exact key, as above.
@@ -64,7 +70,9 @@ from mini_app_polis.pipeline_status import RunReport, run_report
 from ._version import __version__
 from .board import Board, find_or_scan
 from .dispatch import in_progress_section
+from .lint import parse
 from .results import DEFAULT_REVIEW_SECTION, review_section
+from .review import HANDED_OFF_PREFIX, LANDED_PREFIX, done_when_items
 from .sweep import SweepMisconfigured, _section_named
 
 log = logger_mod.get_logger()
@@ -74,7 +82,10 @@ FLOW_NAME = "update-task"
 
 ROTATION_KEY_PREFIX = "secret-rotation."
 
-_ROTATED = re.compile(r"Rotated (\S+); verification (?:ok|failed|unchecked)")
+_ROTATED = re.compile(r"Rotated (\S+); verification (ok|failed|unchecked)")
+
+#: A rotation comment's line saying when the old value was retired.
+_RETIRED = re.compile(r"Old value retired (\S+)")
 
 
 def section_name(requested: str) -> str:
@@ -120,6 +131,45 @@ def rotated_at(comment: str) -> datetime | None:
     return when if when.tzinfo is not None else when.replace(tzinfo=UTC)
 
 
+def _rotation_evidence(comment: str) -> str:
+    """The rotator's comment on one line: what the handoff gives as evidence."""
+    return "; ".join(line.strip() for line in comment.splitlines() if line.strip())
+
+
+def rotation_handoff(task: AsanaTaskRecord, comment: str) -> str:
+    """The ``Handed off:`` comment a rotated secret's task gets.
+
+    One list item per Done when item, each the rotator's record, so the
+    Review check finds every item answered with its evidence.
+    """
+    items = done_when_items(parse(task.notes).fields.get("Done when", "")) or [""]
+    evidence = _rotation_evidence(comment)
+    return "\n".join(
+        [f"{HANDED_OFF_PREFIX} rotator-cog recorded the rotation."]
+        + [f"- {evidence}" for _ in items]
+    )
+
+
+def rotation_landed(comment: str) -> str | None:
+    """The ``Landed:`` comment for a rotation that needs no person, or None.
+
+    Only a rotation verified ``ok`` whose old value is recorded as retired:
+    the new value works and the old one is gone, which is all its Done when
+    asks.
+    """
+    lines = [line.strip() for line in comment.strip().splitlines()]
+    first = _ROTATED.fullmatch(lines[0]) if lines else None
+    if first is None or first.group(2) != "ok":
+        return None
+    retired = next((m for line in lines[1:] if (m := _RETIRED.fullmatch(line))), None)
+    if retired is None:
+        return None
+    return (
+        f"{LANDED_PREFIX} the new value verified ok and the old value was "
+        f"retired {retired.group(1)}, as rotator-cog recorded."
+    )
+
+
 def _apply_rotation(
     request: TaskUpdateRequest, board: Board, report: RunReport
 ) -> None:
@@ -161,11 +211,17 @@ def _apply_rotation(
         report.note(f"already in {review.name}", prefix)
         return
 
-    if not _posted(request.comment, board.comments(task.gid)):
-        board.comment(task.gid, request.comment)
+    handoff = rotation_handoff(task, request.comment)
+    if not _posted(handoff, board.comments(task.gid)):
+        board.comment(task.gid, handoff)
     board.move(task.gid, review.gid)
+    # After the move: the Review check reads Landed: only once the task is in
+    # Review.
+    landed = rotation_landed(request.comment)
+    if landed is not None and not _posted(landed, board.comments(task.gid)):
+        board.comment(task.gid, landed)
     report.updated(
-        f"task commented and moved to {review.name}",
+        f"task handed off{' and landed' if landed else ''}, moved to {review.name}",
         task.name,
         link=board.url(task.gid),
     )
