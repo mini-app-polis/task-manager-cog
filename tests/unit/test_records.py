@@ -2,17 +2,17 @@ from __future__ import annotations
 
 import datetime as dt
 
-from mini_app_polis.api.contract import GroomingRecord
+from mini_app_polis.api.contract import RefiningRecord
 from mini_app_polis.asana import AsanaTaskRecord
 
 from task_manager_cog.records import (
-    GROOM_MAX_ATTEMPTS,
-    GROOM_RETRY_AFTER,
+    REFINE_MAX_ATTEMPTS,
+    REFINE_RETRY_AFTER,
     answers,
-    awaiting_grooming,
+    awaiting_refining,
     changed,
     fingerprint,
-    needs_grooming,
+    needs_refining,
     next_record,
     unanswered,
 )
@@ -34,7 +34,7 @@ def _task(**overrides) -> AsanaTaskRecord:
     return AsanaTaskRecord(**base)
 
 
-def _stored(task: AsanaTaskRecord, **overrides) -> GroomingRecord:
+def _stored(task: AsanaTaskRecord, **overrides) -> RefiningRecord:
     base = {
         "task_gid": task.gid,
         "task_id": "TASK-9",
@@ -44,7 +44,7 @@ def _stored(task: AsanaTaskRecord, **overrides) -> GroomingRecord:
         "updated_at": NOW,
     }
     base.update(overrides)
-    return GroomingRecord(**base)
+    return RefiningRecord(**base)
 
 
 def test_the_fingerprint_follows_content_not_column_or_tag_order() -> None:
@@ -101,7 +101,7 @@ def test_a_task_with_no_id_has_none() -> None:
 
 
 def test_unanswered_questions_are_the_last_questions_with_nothing_after() -> None:
-    asked = "Grooming questions:\n1. Which queue?"
+    asked = "Refining questions:\n1. Which queue?"
     assert unanswered([asked])
     assert unanswered(["An earlier note.", asked])
     assert not unanswered([asked, "The FIFO one."])
@@ -111,25 +111,25 @@ def test_unanswered_questions_are_the_last_questions_with_nothing_after() -> Non
 
 
 def test_a_reported_split_is_asked_like_questions() -> None:
-    reported = "Proposed split (not created: GROOM_SPLIT_DRY_RUN is on; content abc)"
+    reported = "Proposed split (not created: REFINE_SPLIT_DRY_RUN is on; content abc)"
     assert unanswered([reported])
     assert not unanswered([reported, "Create it."])
     assert answers([reported, "Create it."]) == ["Create it."]
     # Only what follows the last asking comment answers it.
-    asked = "Grooming questions:\n1. Which queue?"
+    asked = "Refining questions:\n1. Which queue?"
     assert answers([asked, "The FIFO one.", reported, "Swap 1 and 2."]) == [
         "Swap 1 and 2."
     ]
     assert answers([reported, "Create it.", asked]) == []
 
 
-def test_a_task_whose_grooming_the_budget_stopped_is_sent_again() -> None:
+def test_a_task_whose_refining_the_budget_stopped_is_sent_again() -> None:
     task = _task()
     current = fingerprint(task)
     stopped = _stored(
-        task, groomed_fingerprint=current, budget_spent_fingerprint=current
+        task, refined_fingerprint=current, budget_spent_fingerprint=current
     )
-    assert needs_grooming(task, stopped)
+    assert needs_refining(task, stopped)
     # The stop is not written back: sending again leaves the record as it is.
     assert (
         next_record(task, tuple(stopped.problems), stopped, moved_at=None, sent=True)
@@ -141,26 +141,29 @@ def test_a_stop_for_older_content_sends_nothing() -> None:
     task = _task()
     older = fingerprint(_task(notes="Done when: before"))
     stopped = _stored(
-        task, groomed_fingerprint=fingerprint(task), budget_spent_fingerprint=older
+        task, refined_fingerprint=fingerprint(task), budget_spent_fingerprint=older
     )
-    assert not needs_grooming(task, stopped)
+    assert not needs_refining(task, stopped)
 
 
-def test_a_groomed_task_with_no_stop_is_not_sent_again() -> None:
+def test_a_refined_task_with_no_stop_is_not_sent_again() -> None:
     task = _task()
-    groomed = _stored(task, groomed_fingerprint=fingerprint(task))
-    assert not needs_grooming(task, groomed)
-    assert needs_grooming(_task(notes="Done when: edited"), groomed)
+    refined = _stored(task, refined_fingerprint=fingerprint(task))
+    assert not needs_refining(task, refined)
+    assert needs_refining(_task(notes="Done when: edited"), refined)
 
 
 def test_a_send_is_stamped_and_counted() -> None:
     task = _task()
     write = next_record(task, ("x",), None, moved_at=None, sent=True, now=NOW)
     assert write is not None
-    assert (write.groom_sent_at, write.groom_attempts) == (NOW, 1)
+    assert (write.refine_sent_at, write.refine_attempts) == (NOW, 1)
     # Not sent: the stamp is carried as it was.
     stored = _stored(
-        task, groomed_fingerprint=fingerprint(task), groom_sent_at=NOW, groom_attempts=1
+        task,
+        refined_fingerprint=fingerprint(task),
+        refine_sent_at=NOW,
+        refine_attempts=1,
     )
     later = NOW + dt.timedelta(hours=1)
     assert (
@@ -169,51 +172,57 @@ def test_a_send_is_stamped_and_counted() -> None:
     )
 
 
-def test_a_send_with_no_grooming_back_is_awaited_then_sent_again() -> None:
+def test_a_send_with_no_refining_back_is_awaited_then_sent_again() -> None:
     task = _task()
     sent = _stored(
-        task, groomed_fingerprint=fingerprint(task), groom_sent_at=NOW, groom_attempts=1
+        task,
+        refined_fingerprint=fingerprint(task),
+        refine_sent_at=NOW,
+        refine_attempts=1,
     )
-    soon = NOW + GROOM_RETRY_AFTER - dt.timedelta(minutes=1)
-    assert awaiting_grooming(task, sent, now=soon)
-    assert not needs_grooming(task, sent, now=soon)
+    soon = NOW + REFINE_RETRY_AFTER - dt.timedelta(minutes=1)
+    assert awaiting_refining(task, sent, now=soon)
+    assert not needs_refining(task, sent, now=soon)
 
-    lost = NOW + GROOM_RETRY_AFTER
-    assert not awaiting_grooming(task, sent, now=lost)
-    assert needs_grooming(task, sent, now=lost)
+    lost = NOW + REFINE_RETRY_AFTER
+    assert not awaiting_refining(task, sent, now=lost)
+    assert needs_refining(task, sent, now=lost)
     again = next_record(
         task, tuple(sent.problems), sent, moved_at=None, sent=True, now=lost
     )
     assert again is not None
-    assert (again.groom_sent_at, again.groom_attempts) == (lost, 2)
+    assert (again.refine_sent_at, again.refine_attempts) == (lost, 2)
 
 
-def test_a_lost_grooming_is_sent_at_most_the_most_attempts() -> None:
+def test_a_lost_refining_is_sent_at_most_the_most_attempts() -> None:
     task = _task()
     spent = _stored(
         task,
-        groomed_fingerprint=fingerprint(task),
-        groom_sent_at=NOW,
-        groom_attempts=GROOM_MAX_ATTEMPTS,
+        refined_fingerprint=fingerprint(task),
+        refine_sent_at=NOW,
+        refine_attempts=REFINE_MAX_ATTEMPTS,
     )
-    later = NOW + 2 * GROOM_RETRY_AFTER
-    assert not needs_grooming(task, spent, now=later)
-    assert not awaiting_grooming(task, spent, now=later)
+    later = NOW + 2 * REFINE_RETRY_AFTER
+    assert not needs_refining(task, spent, now=later)
+    assert not awaiting_refining(task, spent, now=later)
 
 
-def test_a_grooming_that_came_back_is_neither_awaited_nor_sent() -> None:
+def test_a_refining_that_came_back_is_neither_awaited_nor_sent() -> None:
     task = _task()
-    groomed = _stored(task, groomed_fingerprint=fingerprint(task))
-    later = NOW + 2 * GROOM_RETRY_AFTER
-    assert not awaiting_grooming(task, groomed, now=later)
-    assert not needs_grooming(task, groomed, now=later)
+    refined = _stored(task, refined_fingerprint=fingerprint(task))
+    later = NOW + 2 * REFINE_RETRY_AFTER
+    assert not awaiting_refining(task, refined, now=later)
+    assert not needs_refining(task, refined, now=later)
     # Changed content starts a new count.
     edited = _task(notes="Done when: edited")
     stamped = _stored(
-        task, groomed_fingerprint=fingerprint(task), groom_sent_at=NOW, groom_attempts=3
+        task,
+        refined_fingerprint=fingerprint(task),
+        refine_sent_at=NOW,
+        refine_attempts=3,
     )
     write = next_record(edited, ("x",), stamped, moved_at=None, sent=True, now=later)
-    assert write is not None and write.groom_attempts == 1
+    assert write is not None and write.refine_attempts == 1
 
 
 def test_sending_again_for_the_budget_is_not_an_attempt() -> None:
@@ -221,13 +230,13 @@ def test_sending_again_for_the_budget_is_not_an_attempt() -> None:
     current = fingerprint(task)
     stopped = _stored(
         task,
-        groomed_fingerprint=current,
+        refined_fingerprint=current,
         budget_spent_fingerprint=current,
-        groom_sent_at=NOW,
-        groom_attempts=2,
+        refine_sent_at=NOW,
+        refine_attempts=2,
     )
     later = NOW + dt.timedelta(hours=1)
-    assert needs_grooming(task, stopped, now=later)
+    assert needs_refining(task, stopped, now=later)
     assert (
         next_record(
             task, tuple(stopped.problems), stopped, moved_at=None, sent=True, now=later

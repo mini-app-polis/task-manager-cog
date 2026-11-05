@@ -2,7 +2,7 @@
 
 What happens here is the same for every source, which is why it happens in
 one place: the board's template block heads every task, so a
-groomer fills the blanks in place whatever the task came from.
+refiner fills the blanks in place whatever the task came from.
 
 Everything the draft carries is escaped on the way in. Asana's
 ``html_notes`` is a restricted HTML subset that answers 400 on malformed

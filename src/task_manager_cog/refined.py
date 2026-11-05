@@ -1,21 +1,21 @@
-"""Record tasks groomed by hand, in a working session, as groomed.
+"""Record tasks refined by hand, in a working session, as refined.
 
-A task whose last grooming asked questions is sent to the paid groomer as
-soon as its content changes, so a session that grooms a task by hand needs
+A task whose last refining asked questions is sent to the paid refiner as
+soon as its content changes, so a session that refines a task by hand needs
 a way to say it did. This records each task as it now reads: linted as the
 sweep lints it, with its problems, and with its content as both what was
-judged and what was groomed. Its open questions are cleared, and the sweep
-does not send it to be groomed again until it changes.
+judged and what was refined. Its open questions are cleared, and the sweep
+does not send it to be refined again until it changes.
 
-It writes grooming records only, never the board, and makes no paid call.
+It writes refining records only, never the board, and makes no paid call.
 It reads the board and the API with the same settings as the sweep:
 
-    doppler run --config prd -- uv run python -m task_manager_cog.groomed <gid> ...
+    doppler run --config prd -- uv run python -m task_manager_cog.refined <gid> ...
 
 ``--awaiting-owner`` records each task as waiting on its owner instead, as
-if its grooming had asked questions: it is held, and the comments after its
-last ``Grooming questions:`` comment or reported split are read as answers,
-so an answer sends it to be groomed again. Use it for a task a session
+if its refining had asked questions: it is held, and the comments after its
+last ``Refining questions:`` comment or reported split are read as answers,
+so an answer sends it to be refined again. Use it for a task a session
 leaves with a question for its owner.
 
 ``--dry-run`` prints what it would record and writes nothing.
@@ -27,7 +27,7 @@ import argparse
 import sys
 from collections.abc import Callable, Collection, Sequence
 
-from mini_app_polis.api.contract import GroomingOutcome, GroomingRecordWrite
+from mini_app_polis.api.contract import RefiningOutcome, RefiningRecordWrite
 
 from .board import Board
 from .lint import lint, task_id_of
@@ -36,7 +36,7 @@ from .registry import load_repos
 from .sweep import Records, _api, task_shapes
 
 
-def record_groomed(
+def record_refined(
     gids: Sequence[str],
     *,
     board: Board,
@@ -46,11 +46,11 @@ def record_groomed(
     awaiting_owner: bool = False,
     out: Callable[[str], None] = print,
 ) -> int:
-    """Record each task as groomed. Returns the number of gids refused.
+    """Record each task as refined. Returns the number of gids refused.
 
     With ``awaiting_owner``, each is recorded as having questions instead.
     """
-    previous = {r.task_gid: r for r in store.list_groomings()}
+    previous = {r.task_gid: r for r in store.list_refinings()}
     tasks = board.tasks()
     open_tasks = {t.gid: t for t in tasks if not t.completed}
     completed_by_id = {
@@ -73,29 +73,29 @@ def record_groomed(
         )
         current = fingerprint(task)
         prior = previous.get(gid)
-        outcome: GroomingOutcome = "ready" if not problems else "not_ready"
+        outcome: RefiningOutcome = "ready" if not problems else "not_ready"
         if awaiting_owner:
             outcome = "questions"
-        record = GroomingRecordWrite(
+        record = RefiningRecordWrite(
             task_gid=gid,
             task_id=task_id_of(task.name),
             fingerprint=current,
             outcome=outcome,
             problems=problems,
             returned_count=prior.returned_count if prior else 0,
-            groomed_fingerprint=current,
+            refined_fingerprint=current,
         )
         if write:
-            store.record_grooming(record)
-        what = "waiting on its owner" if awaiting_owner else "groomed"
+            store.record_refining(record)
+        what = "waiting on its owner" if awaiting_owner else "refined"
         verb = f"recorded as {what}" if write else f"would record as {what}"
         out(f"{task.name}\n  {verb}; problems: {'; '.join(problems) or 'none'}")
     return refused
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Record the tasks named by gid as groomed by hand."""
-    parser = argparse.ArgumentParser(prog="python -m task_manager_cog.groomed")
+    """Record the tasks named by gid as refined by hand."""
+    parser = argparse.ArgumentParser(prog="python -m task_manager_cog.refined")
     parser.add_argument("gids", nargs="+", help="the tasks' gids on the board")
     parser.add_argument(
         "--awaiting-owner",
@@ -106,7 +106,7 @@ def main(argv: list[str] | None = None) -> int:
         "--dry-run", action="store_true", help="print only; write nothing"
     )
     args = parser.parse_args(argv)
-    refused = record_groomed(
+    refused = record_refined(
         args.gids,
         board=Board.from_env(),
         store=_api(),

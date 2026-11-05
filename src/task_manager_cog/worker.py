@@ -20,19 +20,19 @@ same queue every half hour (sweep.py):
     {"type": "task.sweep", "version": 1}
 
 The API sends the same message when a sweep is asked for on demand
-(``POST /v1/tasks/sweeps``), with a payload when it was asked to groom or
+(``POST /v1/tasks/sweeps``), with a payload when it was asked to refine or
 dispatch agents whatever the time of day:
 
     {"type": "task.sweep", "version": 1,
-     "payload": {"groom": true, "agents": false}}
+     "payload": {"refine": true, "agents": false}}
 
 On the queue rather than invoking the function directly, so a sweep never
 runs beside a job that is creating a task.
 
-A groomer's proposal for a task comes back through the API onto the same
-queue, and is applied in line with everything else (groom.py):
+A refiner's proposal for a task comes back through the API onto the same
+queue, and is applied in line with everything else (refine.py):
 
-    {"type": "task.groom-proposal", "version": 1, "payload": <GroomingProposal>}
+    {"type": "task.refine-proposal", "version": 1, "payload": <RefiningProposal>}
 
 So does an agent run's result, which is applied by results.py:
 
@@ -71,11 +71,12 @@ from mini_app_polis import load_secrets, timing
 from mini_app_polis import logger as logger_mod
 from mini_app_polis.api.contract import (
     AgentRun,
-    GroomingProposal,
+    RefiningProposal,
     TaskAgentResultMessage,
     TaskCreateMessage,
     TaskCreateRequest,
     TaskGroomProposalMessage,
+    TaskRefineProposalMessage,
     TaskSweepMessage,
     TaskUpdateMessage,
     TaskUpdateRequest,
@@ -95,8 +96,8 @@ from . import dispatch, github, landed, review, split, sweep
 from ._version import __version__
 from .board import Board, find_or_scan
 from .compose import compose
-from .groom import apply_proposal
 from .ids import next_id, task_name
+from .refine import apply_proposal
 from .registry import DEFAULT_URL as DEFAULT_ECOSYSTEM_YAML_URL
 from .results import apply_result
 from .sources import SOURCES
@@ -169,16 +170,16 @@ def effective_settings() -> dict[str, Any]:
         "IN_PROGRESS_SECTION": dispatch.in_progress_section,
         "AGENT_WORKFLOW": github.workflow,
         "GITHUB_ORG": github.org,
-        "GROOM_AUTO_READY": sweep.auto_ready,
-        "GROOM_TASK_SHAPES": sweep.task_shapes,
-        "GROOM_DISPATCH": lambda: (
-            (os.environ.get("GROOM_DISPATCH") or "").strip().lower() == "true"
+        "REFINE_AUTO_READY": sweep.auto_ready,
+        "REFINE_TASK_SHAPES": sweep.task_shapes,
+        "REFINE_DISPATCH": lambda: (
+            (os.environ.get("REFINE_DISPATCH") or "").strip().lower() == "true"
         ),
-        "GROOM_DISPATCH_LIMIT": lambda: _number(
-            "GROOM_DISPATCH_LIMIT", sweep.DEFAULT_DISPATCH_LIMIT
+        "REFINE_DISPATCH_LIMIT": lambda: _number(
+            "REFINE_DISPATCH_LIMIT", sweep.DEFAULT_DISPATCH_LIMIT
         ),
-        "GROOM_TIMES": lambda: sweep.times_of_day("GROOM_TIMES"),
-        "GROOM_SECTIONS": lambda: ",".join(sweep.groom_sections()),
+        "REFINE_TIMES": lambda: sweep.times_of_day("REFINE_TIMES"),
+        "REFINE_SECTIONS": lambda: ",".join(sweep.refine_sections()),
         "SWEEP_TIMEZONE": lambda: str(sweep.sweep_timezone()),
         "READY_SECTION": sweep.ready_section,
         "REFINING_SECTION": sweep.refining_section,
@@ -189,8 +190,8 @@ def effective_settings() -> dict[str, Any]:
         "REVIEW_UNVERIFIED_HOURS": lambda: (
             review.unverified_after().total_seconds() / 3600
         ),
-        "GROOM_SPLIT_DRY_RUN": split.dry_run,
-        "GROOM_SPLIT_MAX_CHILDREN": split.max_children,
+        "REFINE_SPLIT_DRY_RUN": split.dry_run,
+        "REFINE_SPLIT_MAX_CHILDREN": split.max_children,
         "LANDED_CI_WORKFLOW": landed.ci_workflow,
         "ECOSYSTEM_YAML_URL": lambda: (
             (os.environ.get("ECOSYSTEM_YAML_URL") or "").strip()
@@ -218,11 +219,11 @@ class SweepJob:
     """A sweep of the board.
 
     A scheduled sweep carries no flags. One asked for on demand through the
-    API may set ``groom``, to count as the sweep for ``GROOM_TIMES``, and
+    API may set ``refine``, to count as the sweep for ``REFINE_TIMES``, and
     ``agents``, to count as the one for ``AGENT_TIMES`` (sweep.py).
     """
 
-    groom: bool = False
+    refine: bool = False
     agents: bool = False
 
 
@@ -232,17 +233,20 @@ def _sweep_job(message: TaskSweepMessage) -> SweepJob:
     A message with no payload parses to one with both flags false: the
     scheduled sweep.
     """
-    return SweepJob(groom=message.payload.groom, agents=message.payload.agents)
+    return SweepJob(refine=message.payload.refine, agents=message.payload.agents)
 
 
 def parse_message(
     body: str,
-) -> TaskCreateRequest | SweepJob | GroomingProposal | AgentRun | TaskUpdateRequest:
+) -> TaskCreateRequest | SweepJob | RefiningProposal | AgentRun | TaskUpdateRequest:
     """The job a message carries. Raises UnprocessableMessage otherwise."""
     message = parse_queue_message(
         body,
         TaskCreateMessage,
         TaskSweepMessage,
+        TaskRefineProposalMessage,
+        # The grooming name of a proposal, from the groomer still running
+        # until every cog has moved to refining.
         TaskGroomProposalMessage,
         TaskAgentResultMessage,
         TaskUpdateMessage,
@@ -310,20 +314,20 @@ def process_message(
     request = parse_message(body)
     if isinstance(request, SweepJob):
         log.info(
-            "worker: run %s sweep (groom=%s, agents=%s)",
+            "worker: run %s sweep (refine=%s, agents=%s)",
             run_id,
-            request.groom,
+            request.refine,
             request.agents,
         )
         run_sweep(
             run_id=run_id,
             board_factory=board_factory,
-            groom=request.groom,
+            refine=request.refine,
             agents=request.agents,
         )
         return
-    if isinstance(request, GroomingProposal):
-        log.info("worker: run %s applies grooming of %s", run_id, request.task_gid)
+    if isinstance(request, RefiningProposal):
+        log.info("worker: run %s applies refining of %s", run_id, request.task_gid)
         apply_proposal(request, run_id=run_id, board_factory=board_factory)
         return
     if isinstance(request, AgentRun):
@@ -365,8 +369,8 @@ def _source_label(body: str) -> str:
         job = parse_message(body)
         if isinstance(job, SweepJob):
             return "sweep"
-        if isinstance(job, GroomingProposal):
-            return "grooming"
+        if isinstance(job, RefiningProposal):
+            return "refining"
         if isinstance(job, AgentRun):
             return "agent-result"
         if isinstance(job, TaskUpdateRequest):

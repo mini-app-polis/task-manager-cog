@@ -4,15 +4,8 @@ import dataclasses
 import datetime as dt
 
 import pytest
-from mini_app_polis.api.contract import GroomingProposal, GroomingRecord
+from mini_app_polis.api.contract import RefiningProposal, RefiningRecord
 
-from task_manager_cog.groom import (
-    MANUAL_PREFIX,
-    NOT_READY_PREFIX,
-    ORIGINAL_MARKER,
-    apply_proposal,
-    groomed_text,
-)
 from task_manager_cog.lint import parse
 from task_manager_cog.records import (
     QUESTIONS_PREFIX,
@@ -20,13 +13,20 @@ from task_manager_cog.records import (
     answers,
     fingerprint,
 )
+from task_manager_cog.refine import (
+    MANUAL_PREFIX,
+    NOT_READY_PREFIX,
+    ORIGINAL_MARKER,
+    apply_proposal,
+    refined_text,
+)
 
 from .test_sweep import REPOS, FakeBoard, FakeRecords, _task
 
 VAGUE = _task("7", "Look into the runners", notes="ubuntu-latest is moving")
 
 
-def _proposal(task=VAGUE, **overrides) -> GroomingProposal:
+def _proposal(task=VAGUE, **overrides) -> RefiningProposal:
     base = {
         "task_gid": task.gid,
         "fingerprint": fingerprint(task),
@@ -42,7 +42,7 @@ def _proposal(task=VAGUE, **overrides) -> GroomingProposal:
         "cost_usd": 0.09,
     }
     base.update(overrides)
-    return GroomingProposal(**base)
+    return RefiningProposal(**base)
 
 
 @pytest.fixture
@@ -62,7 +62,7 @@ def _apply(proposal, board, store, _reports=None) -> None:
 
 
 def test_the_text_fills_the_template_and_keeps_the_original_below() -> None:
-    block, body = groomed_text(VAGUE, _proposal())
+    block, body = refined_text(VAGUE, _proposal())
     fields = parse(f"{block}\n\n{body}").fields
     assert (
         fields["Done when"] == "No workflow uses ubuntu-latest.\n- Note: CI is green."
@@ -75,16 +75,16 @@ def test_the_text_fills_the_template_and_keeps_the_original_below() -> None:
     )
 
 
-def test_a_second_grooming_keeps_the_first_original() -> None:
-    block, body = groomed_text(VAGUE, _proposal())
+def test_a_second_refining_keeps_the_first_original() -> None:
+    block, body = refined_text(VAGUE, _proposal())
     once = _task("7", "TASK-9 · Pin", notes=f"{block}\n\n{body}")
-    _, again = groomed_text(once, _proposal(once, body="Second reading."))
+    _, again = refined_text(once, _proposal(once, body="Second reading."))
     assert again == f"Second reading.\n\n{ORIGINAL_MARKER}\nubuntu-latest is moving"
 
 
 def test_what_the_proposal_leaves_out_keeps_the_tasks_own_value() -> None:
     task = _task("7", "TASK-9 · Pin")  # the ready template, from test_sweep
-    block, body = groomed_text(
+    block, body = refined_text(
         task, _proposal(task, where=None, effort=None, body=None)
     )
     fields = parse(f"{block}\n\n{body}").fields
@@ -95,7 +95,7 @@ def test_what_the_proposal_leaves_out_keeps_the_tasks_own_value() -> None:
 def test_a_ready_proposal_lands_in_ready_with_an_id(
     production, monkeypatch: pytest.MonkeyPatch, _no_outbound_reports
 ) -> None:
-    monkeypatch.setenv("GROOM_AUTO_READY", "true")
+    monkeypatch.setenv("REFINE_AUTO_READY", "true")
     board = FakeBoard([VAGUE, _task("1", f"{MANUAL_PREFIX}-41 · Other")])
     store = FakeRecords()
     _apply(_proposal(), board, store)
@@ -107,7 +107,7 @@ def test_a_ready_proposal_lands_in_ready_with_an_id(
     record = store.stored["7"]
     assert record.outcome == "ready"
     assert record.moved_to_ready_at is not None
-    assert record.fingerprint == record.groomed_fingerprint == fingerprint(task)
+    assert record.fingerprint == record.refined_fingerprint == fingerprint(task)
 
 
 def test_questions_go_up_as_a_comment_and_the_task_waits_in_refining(
@@ -143,7 +143,7 @@ def test_not_yet_ready_goes_to_refining_and_loses_its_review_tag(
     )
 
 
-def test_a_not_ready_grooming_comments_its_problems_once(
+def test_a_not_ready_refining_comments_its_problems_once(
     production, _no_outbound_reports
 ) -> None:
     board = FakeBoard([VAGUE])
@@ -160,16 +160,16 @@ def test_a_not_ready_grooming_comments_its_problems_once(
     assert answers([comment]) == []
     record = store.stored["7"]
     assert record.outcome == "not_ready"
-    assert record.groomed_fingerprint == fingerprint(board.get("7"))
+    assert record.refined_fingerprint == fingerprint(board.get("7"))
     ((_, kwargs),) = _no_outbound_reports
     assert "Where names no repository called somewhere-else" in kwargs["text"]
 
 
 @pytest.mark.parametrize("auto_ready", ["true", "false"])
-def test_a_passing_grooming_posts_no_comment(
+def test_a_passing_refining_posts_no_comment(
     production, monkeypatch: pytest.MonkeyPatch, _no_outbound_reports, auto_ready
 ) -> None:
-    monkeypatch.setenv("GROOM_AUTO_READY", auto_ready)
+    monkeypatch.setenv("REFINE_AUTO_READY", auto_ready)
     board = FakeBoard([VAGUE])
     store = FakeRecords()
     _apply(_proposal(), board, store)
@@ -177,7 +177,7 @@ def test_a_passing_grooming_posts_no_comment(
     assert board.comments("7") == []
 
 
-def test_a_not_ready_grooming_with_questions_posts_only_its_questions(
+def test_a_not_ready_refining_with_questions_posts_only_its_questions(
     production, _no_outbound_reports
 ) -> None:
     board = FakeBoard([VAGUE])
@@ -193,7 +193,7 @@ def test_a_split_is_applied_without_a_not_ready_comment(
 ) -> None:
     from .test_split import _apply_split, _board, _split
 
-    monkeypatch.setenv("GROOM_SPLIT_DRY_RUN", "false")
+    monkeypatch.setenv("REFINE_SPLIT_DRY_RUN", "false")
     board = _board()
     _apply_split(_split(), board, FakeRecords())
     assert len(board.created) == 2
@@ -218,14 +218,14 @@ def test_answers_are_part_of_the_content_a_proposal_was_made_for(
         [VAGUE], comments_={"7": [f"{QUESTIONS_PREFIX}\n1. Why?", "Because."]}
     )
     store = FakeRecords()
-    store.stored["7"] = GroomingRecord(
+    store.stored["7"] = RefiningRecord(
         task_gid="7",
         fingerprint="0" * 64,
         outcome="questions",
         updated_at=dt.datetime.now(dt.UTC),
     )
     _apply(_proposal(fingerprint=fingerprint(VAGUE, ["Because."])), board, store)
-    # Applied: ready, and left in Refining while GROOM_AUTO_READY is off.
+    # Applied: ready, and left in Refining while REFINE_AUTO_READY is off.
     assert store.stored["7"].outcome == "ready"
     task = board.get("7")
     assert task is not None and task.section_name == "Refining"

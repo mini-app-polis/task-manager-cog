@@ -4,7 +4,7 @@ in step with it.
 Every task names its executor in its template: ``Executor: agent``,
 ``Executor: cowork`` or ``Executor: person``. The line is the source of
 truth because anyone who can write a task's body can set it: a working
-session, the groomer, a source filing a task. Tags and assignments are
+session, the refiner, a source filing a task. Tags and assignments are
 derived from it, and this cog is the only thing that writes them:
 
 - a cowork or person task carries that tag; an agent task carries neither;
@@ -25,7 +25,7 @@ from collections.abc import Collection
 from dataclasses import dataclass, field
 from typing import Protocol, get_args
 
-from mini_app_polis.api.contract import GroomingExecutor
+from mini_app_polis.api.contract import RefiningExecutor
 from mini_app_polis.asana import AsanaTaskRecord
 
 #: The template label.
@@ -35,7 +35,7 @@ LABEL = "Executor"
 AGENT = "agent"
 
 #: The executors that are tags, and that need the owner.
-TAGGED: tuple[str, ...] = get_args(GroomingExecutor)
+TAGGED: tuple[str, ...] = get_args(RefiningExecutor)
 
 #: Every value the line may hold.
 EXECUTORS: tuple[str, ...] = (AGENT, *TAGGED)

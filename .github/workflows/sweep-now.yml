@@ -3,9 +3,9 @@
 # POST /v1/tasks/sweeps, which puts a task.sweep on this cog's queue, so the
 # sweep runs in line with every other job there.
 #
-# `groom` makes the sweep the one for GROOM_TIMES and `agents` the one for
+# `refine` makes the sweep the one for REFINE_TIMES and `agents` the one for
 # AGENT_TIMES, whatever the time of day. Neither turns on what is off or
-# raises a cap: GROOM_DISPATCH, GROOM_DISPATCH_LIMIT, the groomer's monthly
+# raises a cap: REFINE_DISPATCH, REFINE_DISPATCH_LIMIT, the refiner's monthly
 # cap, AGENT_DISPATCH, AGENT_DRY_RUN and the agent's per-task and monthly
 # caps all hold. With neither checked it is the scheduled sweep, run now.
 #
@@ -17,8 +17,8 @@ name: sweep-now
 on:
   workflow_dispatch:
     inputs:
-      groom:
-        description: "Send tasks for grooming in this sweep, whatever the time"
+      refine:
+        description: "Send tasks for refining in this sweep, whatever the time"
         required: false
         type: boolean
         default: false
@@ -38,7 +38,7 @@ jobs:
       - name: Ask for a sweep
         env:
           API_KEY: ${{ secrets.TASK_MANAGER_SWEEP_API_KEY }}
-          GROOM: ${{ inputs.groom }}
+          REFINE: ${{ inputs.refine }}
           AGENTS: ${{ inputs.agents }}
         run: |
           set -euo pipefail
@@ -46,8 +46,8 @@ jobs:
             echo "FATAL: the repository secret TASK_MANAGER_SWEEP_API_KEY is not set." >&2
             exit 1
           fi
-          body=$(jq -cn --argjson groom "${GROOM}" --argjson agents "${AGENTS}" \
-            '{groom: $groom, agents: $agents}')
+          body=$(jq -cn --argjson refine "${REFINE}" --argjson agents "${AGENTS}" \
+            '{refine: $refine, agents: $agents}')
           echo "Asking for a sweep: ${body}"
           # A named User-Agent: the API sits behind Cloudflare, which rejects
           # unidentified automation (see the shared evaluate.yml). No retry:

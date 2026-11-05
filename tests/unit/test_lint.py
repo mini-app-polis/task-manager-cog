@@ -143,7 +143,7 @@ def test_a_question_mark_in_a_url_is_not_a_question() -> None:
 
 
 def test_where_must_name_registered_repositories() -> None:
-    problems = _lint(notes=_with("Where", "new groomer cog repo, infra"))
+    problems = _lint(notes=_with("Where", "new refiner cog repo, infra"))
     assert "Where names no repository called new" in problems
 
 
@@ -304,7 +304,7 @@ def _shaped(
     completed: dict[str, bool] | None = None,
 ) -> list[str]:
     return lint(
-        name="TASK-171 · Grooming splits tasks",
+        name="TASK-171 · Refining splits tasks",
         notes=notes,
         tags=tags,
         repos=REPOS,
@@ -436,13 +436,13 @@ def test_a_body_without_an_open_section_passes() -> None:
 
 
 def test_an_open_section_under_the_original_text_is_not_read() -> None:
-    notes = f"{READY_NOTES}\n\nBefore grooming:\nOpen questions:\n- Which queue?"
+    notes = f"{READY_NOTES}\n\nBefore refining:\nOpen questions:\n- Which queue?"
     assert _lint(notes=notes) == []
 
 
 def test_an_open_section_above_the_original_text_still_counts() -> None:
     notes = (
         f"{READY_NOTES}\n\nOpen questions:\n- Which queue?\n\n"
-        "Before grooming:\nOpen questions:\n- Which queue?"
+        "Before refining:\nOpen questions:\n- Which queue?"
     )
     assert _lint(notes=notes) == ["body lists open questions (Open questions)"]

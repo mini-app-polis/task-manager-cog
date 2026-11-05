@@ -1,18 +1,18 @@
 from __future__ import annotations
 
 import pytest
-from mini_app_polis.api.contract import GroomingChild, GroomingProposal
+from mini_app_polis.api.contract import RefiningChild, RefiningProposal
 
-from task_manager_cog.groom import MANUAL_PREFIX
 from task_manager_cog.lint import parse
 from task_manager_cog.records import QUESTIONS_PREFIX, fingerprint
+from task_manager_cog.refine import MANUAL_PREFIX
 from task_manager_cog.split import DRY_RUN_MARKER, external_id, unblocked_waits
 
-from .test_groom import VAGUE, _proposal
+from .test_refine import VAGUE, _proposal
 from .test_sweep import SECTIONS, FakeBoard, FakeRecords, _sweep_sending, _task
 
 CHILDREN = [
-    GroomingChild(
+    RefiningChild(
         title="common-python-utils: the shared contract",
         done_when="It is released.",
         where="common-python-utils",
@@ -20,7 +20,7 @@ CHILDREN = [
         effort="S",
         body="The shared shape comes first.",
     ),
-    GroomingChild(
+    RefiningChild(
         title="infra: apply it",
         done_when="The plan is clean.",
         where="infra (the cog definitions)",
@@ -36,7 +36,7 @@ CHILDREN = [
 REPOS_WITH_LIB = frozenset({"infra", "common-python-utils"})
 
 
-def _split(**overrides) -> GroomingProposal:
+def _split(**overrides) -> RefiningProposal:
     return _proposal(
         **{
             "title": "Ship the contract and apply it",
@@ -60,7 +60,7 @@ def production(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture
 def live(production, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("GROOM_SPLIT_DRY_RUN", "false")
+    monkeypatch.setenv("REFINE_SPLIT_DRY_RUN", "false")
 
 
 def _board() -> FakeBoard:
@@ -68,9 +68,9 @@ def _board() -> FakeBoard:
 
 
 def _apply_split(proposal, board, store) -> None:
-    from task_manager_cog import groom
+    from task_manager_cog import refine
 
-    groom.apply_proposal(
+    refine.apply_proposal(
         proposal,
         run_id="r",
         board_factory=lambda: board,
@@ -111,19 +111,19 @@ def test_a_split_creates_its_children_and_rewrites_the_task(
     assert fields["Effort"] == "M"
     assert parent.section_name == "Blocked"
 
-    # Children are recorded as groomed, so the sweep does not send them again.
+    # Children are recorded as refined, so the sweep does not send them again.
     for gid in ("91", "92"):
         record = store.stored[gid]
         task = board.get(gid)
         assert task is not None
-        assert record.groomed_fingerprint == fingerprint(task)
-    assert store.stored["7"].groomed_fingerprint == fingerprint(parent)
+        assert record.refined_fingerprint == fingerprint(task)
+    assert store.stored["7"].refined_fingerprint == fingerprint(parent)
 
 
 def test_with_task_shapes_on_the_split_passes_as_leaves_and_a_compound(
     live, monkeypatch: pytest.MonkeyPatch, _no_outbound_reports
 ) -> None:
-    monkeypatch.setenv("GROOM_TASK_SHAPES", "true")
+    monkeypatch.setenv("REFINE_TASK_SHAPES", "true")
     board, store = _board(), FakeRecords()
     _apply_split(_split(), board, store)
     assert store.stored["91"].problems == []
@@ -136,7 +136,7 @@ def test_with_task_shapes_on_the_split_passes_as_leaves_and_a_compound(
 def test_a_dry_run_reports_the_split_and_creates_nothing(
     production, monkeypatch: pytest.MonkeyPatch, _no_outbound_reports
 ) -> None:
-    monkeypatch.delenv("GROOM_SPLIT_DRY_RUN", raising=False)
+    monkeypatch.delenv("REFINE_SPLIT_DRY_RUN", raising=False)
     board, store = _board(), FakeRecords()
     proposal = _split()
     _apply_split(proposal, board, store)
@@ -148,30 +148,30 @@ def test_a_dry_run_reports_the_split_and_creates_nothing(
     assert comment.startswith(DRY_RUN_MARKER)
     assert "0. common-python-utils: the shared contract" in comment
     assert "executor cowork; waits on children 0; blocked by 2026-11-02" in comment
-    # Held until it changes: not sent to be groomed (and paid for) again.
-    assert store.stored["7"].groomed_fingerprint == fingerprint(VAGUE)
+    # Held until it changes: not sent to be refined (and paid for) again.
+    assert store.stored["7"].refined_fingerprint == fingerprint(VAGUE)
 
 
 def test_a_dry_run_split_posts_a_run_report(
     production, monkeypatch: pytest.MonkeyPatch, _no_outbound_reports
 ) -> None:
-    monkeypatch.delenv("GROOM_SPLIT_DRY_RUN", raising=False)
+    monkeypatch.delenv("REFINE_SPLIT_DRY_RUN", raising=False)
     named = _task("7", "TASK-140 · Look into the runners", notes=VAGUE.notes)
     board = FakeBoard([named], sections_=[*SECTIONS])
     _apply_split(_split(fingerprint=fingerprint(named)), board, FakeRecords())
 
     ((args, kwargs),) = _no_outbound_reports
-    assert args[:2] == ("apply-grooming", "SUCCESS")
+    assert args[:2] == ("apply-refining", "SUCCESS")
     assert kwargs["notable"] is True
     assert "split proposed (dry run)\n  ~ [TASK-140 children=2]" in kwargs["text"]
     assert kwargs["cost_usd"] == "0.0900"
     assert kwargs["children_proposed"] == 2
 
 
-def test_a_dry_run_split_is_not_sent_for_grooming_again_until_it_changes(
+def test_a_dry_run_split_is_not_sent_for_refining_again_until_it_changes(
     production, monkeypatch: pytest.MonkeyPatch, _no_outbound_reports
 ) -> None:
-    monkeypatch.delenv("GROOM_SPLIT_DRY_RUN", raising=False)
+    monkeypatch.delenv("REFINE_SPLIT_DRY_RUN", raising=False)
     board, store = _board(), FakeRecords()
 
     _sweep_sending(store, board, monkeypatch, "5")
@@ -190,13 +190,13 @@ def test_a_dry_run_split_is_not_sent_for_grooming_again_until_it_changes(
 def test_a_split_over_the_cap_is_not_applied(
     live, monkeypatch: pytest.MonkeyPatch, _no_outbound_reports
 ) -> None:
-    monkeypatch.setenv("GROOM_SPLIT_MAX_CHILDREN", "1")
+    monkeypatch.setenv("REFINE_SPLIT_MAX_CHILDREN", "1")
     board, store = _board(), FakeRecords()
     _apply_split(_split(), board, store)
     assert board.created == []
     (comment,) = board.comments_["7"]
-    assert "2 children is over GROOM_SPLIT_MAX_CHILDREN (1)" in comment
-    assert store.stored["7"].groomed_fingerprint == fingerprint(VAGUE)
+    assert "2 children is over REFINE_SPLIT_MAX_CHILDREN (1)" in comment
+    assert store.stored["7"].refined_fingerprint == fingerprint(VAGUE)
 
 
 def test_a_redelivered_split_creates_no_second_set(live, _no_outbound_reports) -> None:
@@ -237,7 +237,7 @@ def test_a_split_cut_short_finishes_without_duplicates(
 def test_a_reported_split_waits_on_its_owner_and_an_answer_sends_it_again(
     production, monkeypatch: pytest.MonkeyPatch, _no_outbound_reports
 ) -> None:
-    monkeypatch.delenv("GROOM_SPLIT_DRY_RUN", raising=False)
+    monkeypatch.delenv("REFINE_SPLIT_DRY_RUN", raising=False)
     board, store = _board(), FakeRecords()
 
     _sweep_sending(store, board, monkeypatch, "5")
@@ -249,14 +249,14 @@ def test_a_reported_split_waits_on_its_owner_and_an_answer_sends_it_again(
     _sweep_sending(store, board, monkeypatch, "5")
     assert len(store.jobs) == 1
 
-    # An answer is read like an answer to grooming questions.
+    # An answer is read like an answer to refining questions.
     board.comment("7", "Approved as written: create it.")
     _sweep_sending(store, board, monkeypatch, "5")
     assert len(store.jobs) == 2
     assert store.jobs[1].task.comments == ["Approved as written: create it."]
 
     # With dry run off, the answered split is created, and is then done with.
-    monkeypatch.setenv("GROOM_SPLIT_DRY_RUN", "false")
+    monkeypatch.setenv("REFINE_SPLIT_DRY_RUN", "false")
     _apply_split(_split(fingerprint=store.jobs[1].task.fingerprint), board, store)
     assert [name for name, _ in board.created] == [
         f"{MANUAL_PREFIX}-2 · common-python-utils: the shared contract",
@@ -270,7 +270,7 @@ def test_a_reported_split_waits_on_its_owner_and_an_answer_sends_it_again(
 def test_a_split_over_the_cap_waits_on_its_owner_too(
     live, monkeypatch: pytest.MonkeyPatch, _no_outbound_reports
 ) -> None:
-    monkeypatch.setenv("GROOM_SPLIT_MAX_CHILDREN", "1")
+    monkeypatch.setenv("REFINE_SPLIT_MAX_CHILDREN", "1")
     board, store = _board(), FakeRecords()
     _apply_split(_split(), board, store)
     assert store.stored["7"].outcome == "questions"
@@ -279,7 +279,7 @@ def test_a_split_over_the_cap_waits_on_its_owner_too(
 # ── a child that says it waits names its blocker ─────────────────────────
 
 
-WAITS_UNSAID = GroomingChild(
+WAITS_UNSAID = RefiningChild(
     title="docs: describe it",
     done_when="The README says it.",
     where="infra",
@@ -430,7 +430,7 @@ def test_a_split_with_questions_asks_them_and_creates_nothing(
     assert "0. common-python-utils: the shared contract" in children
     assert "1. infra: apply it" in children
     assert store.stored["7"].outcome == "questions"
-    assert store.stored["7"].groomed_fingerprint == fingerprint(VAGUE)
+    assert store.stored["7"].refined_fingerprint == fingerprint(VAGUE)
 
 
 def test_a_split_with_questions_names_a_child_that_waits_on_nothing(
@@ -449,7 +449,7 @@ def test_a_split_with_questions_names_a_child_that_waits_on_nothing(
     assert '- child 2 (docs: describe it) says "Waits on"' in comment
 
 
-def test_an_answer_to_a_split_with_questions_grooms_it_again_and_may_split_it(
+def test_an_answer_to_a_split_with_questions_refines_it_again_and_may_split_it(
     live, monkeypatch: pytest.MonkeyPatch, _no_outbound_reports
 ) -> None:
     board, store = _board(), FakeRecords()

@@ -7,7 +7,7 @@ id twice.
 
 A source that already has an id of its own — an issue's ``repo#n`` — brings
 it, and nothing is minted. A task filed by hand (``manual``) takes the
-board's own ``MINI`` prefix, which this cog also mints when grooming a task
+board's own ``MINI`` prefix, which this cog also mints when refining a task
 that has no id; both run on the same one-at-a-time queue. The request contract
 (:data:`mini_app_polis.api.contract.GIVEN_ID_SOURCES`) says which sources must
 carry an id; this table says what to do with the rest. A test holds the two
@@ -26,10 +26,10 @@ class Source:
     ``prefix`` is the id prefix this cog mints for the source, or ``None``
     for a source that brings its own id.
 
-    ``swept`` is whether the sweep grooms the source's tasks and
+    ``swept`` is whether the sweep refines the source's tasks and
     moves them to Ready. A detected problem is not: it is for a person to
     look at until fixing one automatically is decided on, so it is neither
-    sent for paid grooming nor put where an agent would pick it up.
+    sent for paid refining nor put where an agent would pick it up.
     """
 
     name: str
@@ -41,15 +41,15 @@ SOURCES: dict[str, Source] = {
     "voicenote": Source("voicenote", prefix="VN"),
     "github-issue": Source("github-issue", prefix=None),
     # A manual secret that is due. The secrets rotator fills in the whole
-    # template and tags the task for a person, so it is neither groomed nor
+    # template and tags the task for a person, so it is neither refined nor
     # dispatched to an agent.
     "secret-rotation": Source("secret-rotation", prefix="ROT", swept=False),
     # A step only a person can finish, filed by the infra apply job: a new
-    # alert subscription whose email must be confirmed. Neither groomed nor
+    # alert subscription whose email must be confirmed. Neither refined nor
     # dispatched, for the same reason.
     "infra-apply": Source("infra-apply", prefix="INF", swept=False),
     # A task filed by hand from a working session. It is minted from the
-    # board's own prefix, as grooming mints a task with no id, and groomed
+    # board's own prefix, as refining mints a task with no id, and refined
     # and dispatched like any other.
     "manual": Source("manual", prefix="MINI"),
 }

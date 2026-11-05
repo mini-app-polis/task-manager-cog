@@ -1,6 +1,6 @@
 """The hourly sweep through the Lambda handler, end to end on an SQS event.
 
-A ``task.sweep`` reads the board, the registry and the grooming records,
+A ``task.sweep`` reads the board, the registry and the refining records,
 moves ready tasks to Ready and writes the records that changed. These tests
 look at the stubbed Asana's columns and the stubbed API's records after the
 handler returns.
@@ -21,7 +21,7 @@ from .harness import (
 
 @pytest.fixture
 def auto_ready(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("GROOM_AUTO_READY", "true")
+    monkeypatch.setenv("REFINE_AUTO_READY", "true")
 
 
 def test_a_sweep_moves_the_ready_task_and_records_both_verdicts(
@@ -85,12 +85,12 @@ def test_without_auto_ready_the_sweep_only_reports(world, handler) -> None:
     assert api.records[ready]["moved_to_ready_at"] is None
 
 
-def test_unanswered_grooming_questions_hold_a_task_out_of_ready(
+def test_unanswered_refining_questions_hold_a_task_out_of_ready(
     world, handler, auto_ready
 ) -> None:
     asana, _api = world
     held = asana.add_task("TASK-1 · Pin runners")
-    asana.comments[held] = ["Grooming questions: which runner image?"]
+    asana.comments[held] = ["Refining questions: which runner image?"]
 
     result = handler(sqs_event(sqs_record(sweep_body(), "s-1")))
 

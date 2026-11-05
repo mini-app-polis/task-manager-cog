@@ -2,41 +2,41 @@
 
 A schedule puts one ``task.sweep`` message on this cog's queue every half hour,
 so a sweep runs in line with task creation and never beside it. A sweep
-reads the board once, checks each open task in the grooming columns with
+reads the board once, checks each open task in the refining columns with
 the linter (lint.py), and moves each task that passes to the ready column.
 Nothing here calls a model: a task that is already ready costs nothing to
 find, and a task that is not is only logged.
 
-Each swept task's verdict is kept as its grooming record in the API
+Each swept task's verdict is kept as its refining record in the API
 (records.py), written only when it changed. The record is what tells a later
 sweep whether a task was edited since it was judged, and whether a task this
 cog moved to Ready was sent back.
 
 A task that is not ready, and whose content differs from what was last sent
-for grooming, is sent to task-groomer-cog through the API: at most
-``GROOM_DISPATCH_LIMIT`` a sweep, in board order, and only when
-``GROOM_DISPATCH`` is on. The groomer's proposal comes back on this cog's
-queue and is applied by groom.py. A job the API refuses is not marked as
+for refining, is sent to task-refiner-cog through the API: at most
+``REFINE_DISPATCH_LIMIT`` a sweep, in board order, and only when
+``REFINE_DISPATCH`` is on. The refiner's proposal comes back on this cog's
+queue and is applied by refine.py. A job the API refuses is not marked as
 sent, so the next sweep sends it again.
 
 A task whose only problems are blockers that are not done, or a date in
-Blocked by still ahead, is never sent: grooming cannot finish another task
+Blocked by still ahead, is never sent: refining cannot finish another task
 or bring a date closer. It waits in the blocked column, moved there from
 the column it was in, and moves to Ready on the first sweep after its
 blockers are done and on or after its date (a UTC day). Moving it changes
-nothing in its content, so it is not sent for grooming either way.
+nothing in its content, so it is not sent for refining either way.
 
 The ready column is linted too, so a task put there by hand, or edited
 after it got there, is checked again. One that passes is left alone. One
 that fails moves to the refining column with one comment listing its
 problems, or to the blocked column when blockers are its only problem, and
 counts as sent back from Ready. Moving it back does not send it for
-grooming: it waits for a person to change it. The agent dispatch at the end
+refining: it waits for a person to change it. The agent dispatch at the end
 of the sweep never takes a task the sweep found failing in Ready.
 
-A task that is not ready, has no grooming questions out, is not waiting
+A task that is not ready, has no refining questions out, is not waiting
 only on blockers, and is not sent because it is unchanged since it was last
-groomed is held with nobody asked: nothing will happen to it until a person
+refined is held with nobody asked: nothing will happen to it until a person
 changes it. The sweep leaves it as it is and counts it in the run report
 (``held_without_questions``). Its record carries ``HELD`` among its
 problems, so the record changes, and is written, on the one sweep that
@@ -44,29 +44,29 @@ finds it newly held; that sweep names it as a notice, which does not make
 the run WARN. A task that stays held is counted, not named again.
 
 Moving, to Ready, back from it, or to the blocked column, is a setting,
-``GROOM_AUTO_READY``, off unless set, so the sweep can run and say what it
+``REFINE_AUTO_READY``, off unless set, so the sweep can run and say what it
 would move before it moves anything. The columns are named, not configured
 by gid, so they read the same in Doppler as on the board:
 
-  GROOM_SECTIONS    the columns swept (default: Inbox, Refining, Blocked)
+  REFINE_SECTIONS    the columns swept (default: Inbox, Refining, Blocked)
   READY_SECTION     the column a ready task moves to, and is checked in
                     again (default: Ready)
   REFINING_SECTION  the column a task failing in Ready moves back to
                     (default: Refining)
   BLOCKED_SECTION   the column a task waiting on blockers moves to
                     (default: Blocked)
-  GROOM_AUTO_READY  true to move tasks; anything else only reports
-  GROOM_DISPATCH    true to send tasks for grooming, which is paid; off
+  REFINE_AUTO_READY  true to move tasks; anything else only reports
+  REFINE_DISPATCH    true to send tasks for refining, which is paid; off
                     unless set
-  GROOM_DISPATCH_LIMIT  tasks sent a sweep (default: 5)
-  GROOM_TIMES       the times of day tasks are sent at, comma-separated
+  REFINE_DISPATCH_LIMIT  tasks sent a sweep (default: 5)
+  REFINE_TIMES       the times of day tasks are sent at, comma-separated
                     HH:MM (e.g. 04:15,05:15); every sweep unless set
-  SWEEP_TIMEZONE    the time zone GROOM_TIMES and AGENT_TIMES are read in
+  SWEEP_TIMEZONE    the time zone REFINE_TIMES and AGENT_TIMES are read in
                     (default: UTC)
 
-A sweep is the one for a time in GROOM_TIMES or AGENT_TIMES when it starts
+A sweep is the one for a time in REFINE_TIMES or AGENT_TIMES when it starts
 within half an hour after it, the interval the schedule runs the sweep at.
-  GROOM_TASK_SHAPES true to hold tasks to the leaf or compound shape
+  REFINE_TASK_SHAPES true to hold tasks to the leaf or compound shape
                     (lint.py); off unless set
 
 The board's template task says so in its name ("do not work") and is never
@@ -79,14 +79,14 @@ Review check (review.py): a task whose ``Handed off:`` answers every Done when
 item and whose latest comment is ``Landed:`` moves to Complete and is marked
 complete; one that falls short gets ``Rejected:`` and moves to In progress.
 
-After grooming, the sweep dispatches an agent for each Ready task it can
+After refining, the sweep dispatches an agent for each Ready task it can
 take, when ``AGENT_DISPATCH`` or ``AGENT_DRY_RUN`` is on (dispatch.py), and
 only in the sweeps for ``AGENT_TIMES`` when that is set.
 
-A sweep asked for on demand (``POST /v1/tasks/sweeps``) may carry ``groom``,
-which makes it the sweep for ``GROOM_TIMES``, and ``agents``, which makes it
+A sweep asked for on demand (``POST /v1/tasks/sweeps``) may carry ``refine``,
+which makes it the sweep for ``REFINE_TIMES``, and ``agents``, which makes it
 the one for ``AGENT_TIMES``, whatever the time. Nothing else changes:
-``GROOM_DISPATCH``, ``GROOM_DISPATCH_LIMIT``, ``AGENT_DISPATCH``,
+``REFINE_DISPATCH``, ``REFINE_DISPATCH_LIMIT``, ``AGENT_DISPATCH``,
 ``AGENT_DRY_RUN`` and the agent's caps apply as they do to any sweep. Its
 run report says it was requested on demand, and for which.
 
@@ -113,12 +113,12 @@ from mini_app_polis.api.contract import (
     AgentRunCreate,
     AgentRunFailure,
     AgentSpend,
-    GroomingJobAccepted,
-    GroomingJobRequest,
-    GroomingRecord,
-    GroomingRecordWrite,
-    GroomingReturnRate,
-    GroomingTask,
+    RefiningJobAccepted,
+    RefiningJobRequest,
+    RefiningRecord,
+    RefiningRecordWrite,
+    RefiningReturnRate,
+    RefiningTask,
 )
 from mini_app_polis.asana import AsanaSection, AsanaTaskRecord
 from mini_app_polis.environment import Effect, effect_enabled
@@ -132,11 +132,11 @@ from .github import AgentApp
 from .lint import lint, mentioned_ids, only_blocked, task_id_of
 from .records import (
     answers,
-    awaiting_grooming,
+    awaiting_refining,
     changed,
-    edited_since_grooming,
+    edited_since_refining,
     fingerprint,
-    needs_grooming,
+    needs_refining,
     next_record,
     sent_back_record,
     unanswered,
@@ -147,12 +147,12 @@ from .sources import UNSWEPT_PREFIXES
 log = logger_mod.get_logger()
 
 REPO = "task-manager-cog"
-FLOW_NAME = "groom-sweep"
+FLOW_NAME = "refine-sweep"
 
 #: This cog's name to the API, which picks its key.
 MACHINE_NAME = "task-manager-cog"
 
-DEFAULT_GROOM_SECTIONS: tuple[str, ...] = ("Inbox", "Refining", "Blocked")
+DEFAULT_REFINE_SECTIONS: tuple[str, ...] = ("Inbox", "Refining", "Blocked")
 DEFAULT_READY_SECTION = "Ready"
 DEFAULT_REFINING_SECTION = "Refining"
 DEFAULT_BLOCKED_SECTION = "Blocked"
@@ -160,7 +160,7 @@ DEFAULT_DISPATCH_LIMIT = 5
 DEFAULT_SWEEP_TIMEZONE = "UTC"
 
 #: How often the schedule runs a sweep: a sweep is the one for a time in
-#: GROOM_TIMES or AGENT_TIMES when it starts within this after it.
+#: REFINE_TIMES or AGENT_TIMES when it starts within this after it.
 SWEEP_INTERVAL = dt.timedelta(minutes=30)
 
 #: Starts the comment on a task the sweep moved back out of Ready.
@@ -169,13 +169,13 @@ SENT_BACK_PREFIX = "Sent back from Ready:"
 #: In the template task's name. A task saying this is never swept.
 DO_NOT_WORK = "do not work"
 
-#: The problem a task has while its grooming questions are unanswered. The
-#: linter only sees the template, and a groomer that asked questions may
+#: The problem a task has while its refining questions are unanswered. The
+#: linter only sees the template, and a refiner that asked questions may
 #: still have filled every field; a task waiting on its owner is not ready.
-OPEN_QUESTIONS = "its grooming questions are not answered yet"
+OPEN_QUESTIONS = "its refining questions are not answered yet"
 #: Kept among a held task's recorded problems, so its record changes on the
 #: sweep that first finds it held and on no other.
-HELD = "held: groomed as it reads, and nobody is asked"
+HELD = "held: refined as it reads, and nobody is asked"
 
 #: The run report's sections: what the sweep moved or sent, what it found on
 #: the board, and what the agent dispatch did.
@@ -184,7 +184,7 @@ BOARD = "Board"
 AGENT = "Agent"
 
 #: The notice a sweep asked for on demand opens with, naming what it was
-#: asked to do whatever the time (``groom``, ``agents``).
+#: asked to do whatever the time (``refine``, ``agents``).
 ON_DEMAND = "sweep requested on demand"
 
 #: Each Board counter's words in the report. The counter names posted to
@@ -193,16 +193,16 @@ BOARD_LABELS: dict[str, str] = {
     "tasks_checked": "tasks checked",
     "not_ready": "not ready",
     "changed": "changed since they were last judged",
-    "records_written": "grooming records written",
-    "waiting_for_grooming": "waiting to be sent for grooming",
+    "records_written": "refining records written",
+    "waiting_for_refining": "waiting to be sent for refining",
     "waiting_on_blockers": "waiting on blockers",
     "waiting_on_owner": "waiting on the owner's answers",
-    "awaiting_grooming": "sent for grooming, not back yet",
+    "awaiting_refining": "sent for refining, not back yet",
     "held_without_questions": "held without questions",
     "sent_back_from_ready": "sent back from Ready",
-    "ready_not_moved": "ready, not moved (GROOM_AUTO_READY is off)",
-    "blocked_not_moved": "waiting on blockers, not moved (GROOM_AUTO_READY is off)",
-    "failing_in_ready_not_moved": "failing in Ready, not moved (GROOM_AUTO_READY is off)",
+    "ready_not_moved": "ready, not moved (REFINE_AUTO_READY is off)",
+    "blocked_not_moved": "waiting on blockers, not moved (REFINE_AUTO_READY is off)",
+    "failing_in_ready_not_moved": "failing in Ready, not moved (REFINE_AUTO_READY is off)",
     "moved_by_comment": "tasks moved by a Started: or Handed off: comment",
     "review_landed": "Review tasks given Landed:, merged with CI on dev green",
     "review_closed": "Review tasks passed the check, moved to Complete",
@@ -224,18 +224,18 @@ class SweepMisconfigured(RuntimeError):
 
 
 class Records(Protocol):
-    """Where grooming and agent-run records are kept: the API, or a fake."""
+    """Where refining and agent-run records are kept: the API, or a fake."""
 
-    def list_groomings(self) -> list[GroomingRecord]:
+    def list_refinings(self) -> list[RefiningRecord]:
         """Every task's record."""
         ...
 
-    def record_grooming(self, payload: GroomingRecordWrite) -> GroomingRecord:
+    def record_refining(self, payload: RefiningRecordWrite) -> RefiningRecord:
         """Write one task's record."""
         ...
 
-    def request_grooming(self, payload: GroomingJobRequest) -> GroomingJobAccepted:
-        """Send one task to be groomed."""
+    def request_refining(self, payload: RefiningJobRequest) -> RefiningJobAccepted:
+        """Send one task to be refined."""
         ...
 
     def record_agent_run(self, payload: AgentRunCreate) -> AgentRun:
@@ -256,7 +256,7 @@ class Records(Protocol):
         """Mark a dispatched agent run failed."""
         ...
 
-    def grooming_return_rate(self, days: int | None = None) -> GroomingReturnRate:
+    def refining_return_rate(self, days: int | None = None) -> RefiningReturnRate:
         """How often a task moved to Ready came back out, over ``days``."""
         ...
 
@@ -269,10 +269,10 @@ class Verdict:
     problems: tuple[str, ...]
     #: New, or edited since its record was written.
     changed: bool = True
-    #: The owner's answers to the task's grooming questions, if it has any.
+    #: The owner's answers to the task's refining questions, if it has any.
     replies: tuple[str, ...] = ()
-    #: Ready but for a "Grooming questions:" comment nothing answers yet.
-    #: Such a task waits for its owner and is not sent for grooming.
+    #: Ready but for a "Refining questions:" comment nothing answers yet.
+    #: Such a task waits for its owner and is not sent for refining.
     awaiting_owner: bool = False
 
     @property
@@ -290,19 +290,19 @@ class SweepResult:
     #: Tasks this cog moved to Ready that a person moved back.
     returned: list[AsanaTaskRecord] = field(default_factory=list)
     #: The records this sweep changed, to be written.
-    writes: list[GroomingRecordWrite] = field(default_factory=list)
-    #: Tasks sent for grooming.
+    writes: list[RefiningRecordWrite] = field(default_factory=list)
+    #: Tasks sent for refining.
     sent: list[AsanaTaskRecord] = field(default_factory=list)
-    #: Tasks that needed grooming and were not sent: over the limit, off,
+    #: Tasks that needed refining and were not sent: over the limit, off,
     #: or refused.
     waiting: int = 0
-    #: Tasks held back by a "Grooming questions:" comment nothing answers.
+    #: Tasks held back by a "Refining questions:" comment nothing answers.
     awaiting_owner: int = 0
-    #: Tasks sent for grooming whose grooming has not come back yet.
-    awaiting_grooming: int = 0
+    #: Tasks sent for refining whose refining has not come back yet.
+    awaiting_refining: int = 0
     #: Tasks not ready only because a blocker is not done: never sent.
     blocked: int = 0
-    #: Tasks not ready, unchanged since they were groomed, and with no
+    #: Tasks not ready, unchanged since they were refined, and with no
     #: questions out: nobody is asked about them, and nothing is done.
     held: list[AsanaTaskRecord] = field(default_factory=list)
     #: Of those, the ones this sweep found held for the first time.
@@ -323,11 +323,11 @@ class SweepResult:
         return [v for v in self.verdicts if v.ready]
 
 
-def groom_sections() -> tuple[str, ...]:
-    """The columns swept: ``GROOM_SECTIONS``, or Inbox, Refining and Blocked."""
-    raw = os.environ.get("GROOM_SECTIONS") or ""
+def refine_sections() -> tuple[str, ...]:
+    """The columns swept: ``REFINE_SECTIONS``, or Inbox, Refining and Blocked."""
+    raw = os.environ.get("REFINE_SECTIONS") or ""
     names = tuple(n.strip() for n in raw.split(",") if n.strip())
-    return names or DEFAULT_GROOM_SECTIONS
+    return names or DEFAULT_REFINE_SECTIONS
 
 
 def ready_section() -> str:
@@ -348,13 +348,13 @@ def blocked_section() -> str:
 
 
 def auto_ready() -> bool:
-    """Whether ready tasks are moved (``GROOM_AUTO_READY``), not only reported."""
-    return (os.environ.get("GROOM_AUTO_READY") or "").strip().lower() == "true"
+    """Whether ready tasks are moved (``REFINE_AUTO_READY``), not only reported."""
+    return (os.environ.get("REFINE_AUTO_READY") or "").strip().lower() == "true"
 
 
 def task_shapes() -> bool:
-    """Whether a task must be a leaf or a compound task (``GROOM_TASK_SHAPES``)."""
-    return (os.environ.get("GROOM_TASK_SHAPES") or "").strip().lower() == "true"
+    """Whether a task must be a leaf or a compound task (``REFINE_TASK_SHAPES``)."""
+    return (os.environ.get("REFINE_TASK_SHAPES") or "").strip().lower() == "true"
 
 
 def sweep_timezone() -> ZoneInfo:
@@ -393,17 +393,17 @@ def due(name: str, now: dt.datetime | None = None) -> bool:
 
 
 def dispatch_limit(now: dt.datetime | None = None, *, on_demand: bool = False) -> int:
-    """How many tasks a sweep may send for grooming.
+    """How many tasks a sweep may send for refining.
 
-    0 when sending is off, or when the sweep is not one for ``GROOM_TIMES``.
+    0 when sending is off, or when the sweep is not one for ``REFINE_TIMES``.
     ``on_demand`` makes it one whatever the time; sending must still be on,
     and the limit is the same.
     """
-    if (os.environ.get("GROOM_DISPATCH") or "").strip().lower() != "true":
+    if (os.environ.get("REFINE_DISPATCH") or "").strip().lower() != "true":
         return 0
-    if not on_demand and not due("GROOM_TIMES", now):
+    if not on_demand and not due("REFINE_TIMES", now):
         return 0
-    raw = (os.environ.get("GROOM_DISPATCH_LIMIT") or "").strip()
+    raw = (os.environ.get("REFINE_DISPATCH_LIMIT") or "").strip()
     return max(0, int(raw)) if raw else DEFAULT_DISPATCH_LIMIT
 
 
@@ -418,16 +418,16 @@ def assess(
     *,
     swept: Collection[str],
     repos: Collection[str],
-    records: Mapping[str, GroomingRecord] | None = None,
+    records: Mapping[str, RefiningRecord] | None = None,
     replies: Mapping[str, tuple[str, ...]] | None = None,
     comments: Callable[[str], list[str]] | None = None,
 ) -> list[Verdict]:
     """A verdict for every open task in a swept column, in board order.
 
-    A task whose last grooming asked questions is not ready until a
-    grooming answers them, whatever the linter says, unless a person has
+    A task whose last refining asked questions is not ready until a
+    refining answers them, whatever the linter says, unless a person has
     since edited it and it passes, or waits only on blockers. So is a task that
-    would otherwise be ready while a "Grooming questions:" comment on it,
+    would otherwise be ready while a "Refining questions:" comment on it,
     from anyone, has nothing after it; ``comments`` reads a task's comments,
     and is called only for such a task.
     """
@@ -459,8 +459,8 @@ def assess(
         awaiting_owner = False
         if previous is not None and previous.outcome == "questions":
             # A person's edit is their answer: a task they edited that now
-            # passes, or waits only on blockers, needs no grooming to move on.
-            released = edited_since_grooming(task, previous) and (
+            # passes, or waits only on blockers, needs no refining to move on.
+            released = edited_since_refining(task, previous) and (
                 not problems or only_blocked(problems)
             )
             if not released:
@@ -490,22 +490,22 @@ def _section_named(sections: list[AsanaSection], name: str) -> AsanaSection:
     )
 
 
-#: How a done task the groomed task mentions is marked in the board list.
+#: How a done task the refined task mentions is marked in the board list.
 DONE_MARK = " (done)"
 
 
-def grooming_job(
+def refining_job(
     verdict: Verdict,
     board_names: list[str],
     done_by_id: Mapping[str, str] | None = None,
-) -> GroomingJobRequest:
-    """What the groomer is sent for one task.
+) -> RefiningJobRequest:
+    """What the refiner is sent for one task.
 
     ``board_names`` are the open tasks. ``done_by_id`` maps each completed
     task's id to its name; the ones this task mentions are listed too,
     marked :data:`DONE_MARK`, so a reference to finished work reads as
     finished rather than missing. Done tasks it does not mention are left
-    out: they are only noise to the groomer.
+    out: they are only noise to the refiner.
     """
     task = verdict.task
     text = "\n".join([task.name, task.notes, *verdict.replies])
@@ -515,8 +515,8 @@ def grooming_job(
         if done_by_id and task_id in done_by_id and task_id != task_id_of(task.name)
     ]
     others = [name for name in board_names if name != task.name]
-    return GroomingJobRequest(
-        task=GroomingTask(
+    return RefiningJobRequest(
+        task=RefiningTask(
             task_gid=task.gid,
             task_id=task_id_of(task.name),
             name=task.name,
@@ -525,7 +525,7 @@ def grooming_job(
             section=task.section_name,
             fingerprint=fingerprint(task, verdict.replies),
             # The open-questions marker is the sweep's, not the linter's: the
-            # groomer is given the answers instead.
+            # refiner is given the answers instead.
             problems=[p for p in verdict.problems if p != OPEN_QUESTIONS],
             comments=list(verdict.replies),
         ),
@@ -553,16 +553,16 @@ def sweep(
     *,
     repos: Collection[str],
     move: bool,
-    records: Mapping[str, GroomingRecord] | None = None,
-    send: Callable[[GroomingJobRequest], bool] | None = None,
+    records: Mapping[str, RefiningRecord] | None = None,
+    send: Callable[[RefiningJobRequest], bool] | None = None,
     limit: int = 0,
     now: dt.datetime | None = None,
 ) -> SweepResult:
     """Check the board, and move what is ready when ``move`` is set.
 
-    ``records`` are the tasks' grooming records by task gid. The records
+    ``records`` are the tasks' refining records by task gid. The records
     this sweep changes are returned in ``writes``, not written: writing is
-    the caller's. ``send`` sends one task for grooming and says whether it
+    the caller's. ``send`` sends one task for refining and says whether it
     landed; at most ``limit`` are sent. ``now`` is when the sweep runs.
     """
     records = records or {}
@@ -582,7 +582,7 @@ def sweep(
     result = SweepResult(
         verdicts=assess(
             tasks,
-            swept=(*groom_sections(), ready.name),
+            swept=(*refine_sections(), ready.name),
             repos=repos,
             records=records,
             replies=replies,
@@ -605,7 +605,7 @@ def sweep(
             result.failed_ready.append(task)
             if not move:
                 log.info(
-                    "sweep: %s in %s no longer passes (GROOM_AUTO_READY is off): %s",
+                    "sweep: %s in %s no longer passes (REFINE_AUTO_READY is off): %s",
                     task.name,
                     ready.name,
                     "; ".join(verdict.problems),
@@ -650,7 +650,7 @@ def sweep(
             result.moved.append(task)
             log.info("sweep: %s moved to %s", task.name, ready.name)
         else:
-            log.info("sweep: %s is ready (GROOM_AUTO_READY is off)", task.name)
+            log.info("sweep: %s is ready (REFINE_AUTO_READY is off)", task.name)
 
         sent = False
         held = False
@@ -666,28 +666,28 @@ def sweep(
             else:
                 result.blocked_not_moved += 1
                 log.info(
-                    "sweep: %s waits on blockers (GROOM_AUTO_READY is off)", task.name
+                    "sweep: %s waits on blockers (REFINE_AUTO_READY is off)", task.name
                 )
         elif verdict.awaiting_owner:
             result.awaiting_owner += 1
             log.info("sweep: %s waits on its owner's answers", task.name)
-        elif not verdict.ready and needs_grooming(task, previous, verdict.replies, now):
+        elif not verdict.ready and needs_refining(task, previous, verdict.replies, now):
             if send is not None and len(result.sent) < limit:
-                sent = send(grooming_job(verdict, open_names, done_by_id))
+                sent = send(refining_job(verdict, open_names, done_by_id))
             if sent:
                 result.sent.append(task)
-                log.info("sweep: %s sent for grooming", task.name)
+                log.info("sweep: %s sent for refining", task.name)
             else:
                 result.waiting += 1
-        elif not verdict.ready and awaiting_grooming(
+        elif not verdict.ready and awaiting_refining(
             task, previous, verdict.replies, now
         ):
-            result.awaiting_grooming += 1
-            log.info("sweep: %s waits for its grooming to come back", task.name)
+            result.awaiting_refining += 1
+            log.info("sweep: %s waits for its refining to come back", task.name)
         elif not verdict.ready and OPEN_QUESTIONS not in verdict.problems:
             held = True
             result.held.append(task)
-            log.info("sweep: %s held, groomed as it reads; nobody is asked", task.name)
+            log.info("sweep: %s held, refined as it reads; nobody is asked", task.name)
 
         record = next_record(
             task,
@@ -717,18 +717,20 @@ def run_sweep(
     records_factory: Callable[[], Records] = _api,
     starter_factory: Callable[[], agent.Starter] = AgentApp.from_env,
     reader_factory: Callable[[], landed.Reader] = AgentApp.from_env,
-    groom: bool = False,
+    refine: bool = False,
     agents: bool = False,
 ) -> None:
     """One sweep, with its run report. Raises to be redelivered.
 
-    ``groom`` and ``agents`` are a sweep asked for on demand: it counts as
-    the sweep for ``GROOM_TIMES``, or for ``AGENT_TIMES``, whatever the
+    ``refine`` and ``agents`` are a sweep asked for on demand: it counts as
+    the sweep for ``REFINE_TIMES``, or for ``AGENT_TIMES``, whatever the
     time. Every switch and cap still applies.
     """
     with run_report(FLOW_NAME, repo=REPO, run_id=run_id, version=__version__) as report:
-        if groom or agents:
-            parts = [name for name, on in (("groom", groom), ("agents", agents)) if on]
+        if refine or agents:
+            parts = [
+                name for name, on in (("refine", refine), ("agents", agents)) if on
+            ]
             report.notice(ON_DEMAND, ", ".join(parts))
         if not effect_enabled(Effect.ASANA):
             # One board, and no development copy of it.
@@ -738,7 +740,7 @@ def run_sweep(
 
         board = (board_factory or Board.from_env)()
         store = records_factory()
-        records = {r.task_gid: r for r in store.list_groomings()}
+        records = {r.task_gid: r for r in store.list_refinings()}
 
         # Executor lines, tags and assignments first, so what follows reads
         # the board as it will stay. With moving off, only reported.
@@ -756,12 +758,12 @@ def run_sweep(
                 link=board.url(change.task.gid),
             )
 
-        def send(job: GroomingJobRequest) -> bool:
+        def send(job: RefiningJobRequest) -> bool:
             try:
-                store.request_grooming(job)
+                store.request_refining(job)
             except Exception as exc:  # noqa: BLE001 — sent again next sweep
                 log.warning("sweep: %s not sent: %s", job.task.name, exc)
-                report.issue("grooming not sent", job.task.task_id or job.task.task_gid)
+                report.issue("refining not sent", job.task.task_id or job.task.task_gid)
                 return False
             return True
 
@@ -771,10 +773,10 @@ def run_sweep(
             move=auto_ready(),
             records=records,
             send=send,
-            limit=dispatch_limit(on_demand=groom),
+            limit=dispatch_limit(on_demand=refine),
         )
         for record in result.writes:
-            store.record_grooming(record)
+            store.record_refining(record)
 
         def board_count(key: str, value: Any) -> None:
             report.count(key, value, label=BOARD_LABELS[key], section=BOARD)
@@ -783,10 +785,10 @@ def run_sweep(
         board_count("not_ready", len(result.verdicts) - len(result.ready))
         board_count("changed", sum(v.changed for v in result.verdicts))
         board_count("records_written", len(result.writes))
-        board_count("waiting_for_grooming", result.waiting)
+        board_count("waiting_for_refining", result.waiting)
         board_count("waiting_on_blockers", result.blocked)
         board_count("waiting_on_owner", result.awaiting_owner)
-        board_count("awaiting_grooming", result.awaiting_grooming)
+        board_count("awaiting_refining", result.awaiting_refining)
         board_count("held_without_questions", len(result.held))
         board_count("sent_back_from_ready", len(result.sent_back))
         if not auto_ready():
@@ -832,7 +834,7 @@ def run_sweep(
         for task in result.returned:
             moved("came back out of Ready", task)
         for task in result.sent:
-            moved("sent for grooming", task)
+            moved("sent for refining", task)
         if commented is not None:
             for task, column in commented.moved:
                 moved(f"{column}, by its comment", task)
@@ -847,7 +849,7 @@ def run_sweep(
             )
 
 
-def return_rate_line(rate: GroomingReturnRate) -> str:
+def return_rate_line(rate: RefiningReturnRate) -> str:
     """``3 of 40 (8%)``: tasks back out of Ready of those moved there.
 
     ``0 of 0`` when nothing moved to Ready in the window, which has no ratio.
@@ -863,7 +865,7 @@ def _report_return_rate(store: Records, report: Any) -> None:
     never fails the sweep.
     """
     try:
-        rate = store.grooming_return_rate(RETURN_RATE_DAYS)
+        rate = store.refining_return_rate(RETURN_RATE_DAYS)
     except Exception as exc:  # noqa: BLE001 — the sweep's own work is done
         log.warning("sweep: return-from-Ready ratio not read: %s", exc)
         report.note("return-from-Ready ratio not read")
@@ -999,7 +1001,7 @@ def main(argv: list[str] | None = None) -> int:
         "%d of %d tasks ready in %s.",
         len(result.ready),
         len(result.verdicts),
-        ", ".join((*groom_sections(), ready_section())),
+        ", ".join((*refine_sections(), ready_section())),
     )
     return 0
 

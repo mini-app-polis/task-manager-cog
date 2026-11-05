@@ -1,10 +1,10 @@
-"""Applying a groomer's proposal to the board.
+"""Applying a refiner's proposal to the board.
 
-task-groomer-cog reads a task and the code it names, and proposes what the
+task-refiner-cog reads a task and the code it names, and proposes what the
 task should say. The proposal comes back through the API onto this cog's
 queue:
 
-    {"type": "task.groom-proposal", "version": 1, "payload": <GroomingProposal>}
+    {"type": "task.refine-proposal", "version": 1, "payload": <RefiningProposal>}
 
 and is applied here, in line with every other write to the board.
 
@@ -17,8 +17,8 @@ takes the next :data:`MANUAL_PREFIX` id. The template block is filled from the
 proposal, keeping the task's own value for any part the proposal left out,
 and its PR line. The proposal's body follows, and then the task's original
 text under :data:`ORIGINAL_MARKER`, added the first time only, so a task
-groomed twice keeps what its author first wrote. The ``review`` tag comes
-off: grooming is the review. A proposed executor goes on as its tag, unless
+refined twice keeps what its author first wrote. The ``review`` tag comes
+off: refining is the review. A proposed executor goes on as its tag, unless
 the task already has one: the tag a task carries is never replaced.
 
 **A split.** A proposal with children divides its task: split.py creates
@@ -26,21 +26,21 @@ them and rewrites the task as their compound task, behind a dry run and a
 cap. A proposal with children and questions is not split: its questions are
 posted as below, with the children listed under them so the owner sees what
 the answers decide, and the task is left as it reads. Answering sends it to
-be groomed again, and that grooming may split it.
+be refined again, and that refining may split it.
 
 **Where it goes.** The task is linted again as it now reads.
 
 - The proposal has questions: they are posted as one comment starting
-  ``Grooming questions:`` and the task moves to Refining. Answering in a
-  comment sends it to be groomed again. Blocked is for a task waiting on
-  another task or an event, which grooming does not decide.
-- It passes and ``GROOM_AUTO_READY`` is on: it moves to Ready.
+  ``Refining questions:`` and the task moves to Refining. Answering in a
+  comment sends it to be refined again. Blocked is for a task waiting on
+  another task or an event, which refining does not decide.
+- It passes and ``REFINE_AUTO_READY`` is on: it moves to Ready.
 - Otherwise it moves to Refining. If it still has problems, they are
-  posted as one comment starting ``Grooming left this task not ready:``,
+  posted as one comment starting ``Refining left this task not ready:``,
   one ``- `` line each, so the owner sees what is left to fix.
 
-Its grooming record is written with the new content as both what was judged
-and what was groomed, so a groomed task is not sent again until someone
+Its refining record is written with the new content as both what was judged
+and what was refined, so a refined task is not sent again until someone
 changes it.
 
   REFINING_SECTION  default Refining
@@ -54,9 +54,9 @@ from collections.abc import Callable, Collection, Sequence
 
 from mini_app_polis import logger as logger_mod
 from mini_app_polis.api.contract import (
-    GroomingOutcome,
-    GroomingProposal,
-    GroomingRecordWrite,
+    RefiningOutcome,
+    RefiningProposal,
+    RefiningRecordWrite,
 )
 from mini_app_polis.asana import AsanaTaskRecord, escape_rich_text, rich_text_body
 from mini_app_polis.environment import Effect, effect_enabled
@@ -70,6 +70,7 @@ from .executor import LABEL as EXECUTOR_LABEL
 from .ids import next_id, task_name
 from .lint import (
     ORIGINAL_MARKER,
+    ORIGINAL_MARKERS,
     executor_of,
     lint,
     looks_like_label,
@@ -90,15 +91,15 @@ from .sweep import (
 log = logger_mod.get_logger()
 
 REPO = "task-manager-cog"
-FLOW_NAME = "apply-grooming"
+FLOW_NAME = "apply-refining"
 
-#: The prefix a task gets when grooming finds it has no id.
+#: The prefix a task gets when refining finds it has no id.
 MANUAL_PREFIX = "MINI"
 
 DEFAULT_REFINING_SECTION = "Refining"
 
-#: How the comment on a groomed task that is still not ready starts.
-NOT_READY_PREFIX = "Grooming left this task not ready:"
+#: How the comment on a refined task that is still not ready starts.
+NOT_READY_PREFIX = "Refining left this task not ready:"
 
 _FIELDS_FROM_PROPOSAL = {
     "Done when": "done_when",
@@ -134,7 +135,7 @@ def _field_lines(value: str) -> list[str]:
     )
 
 
-def groomed_text(task: AsanaTaskRecord, proposal: GroomingProposal) -> tuple[str, str]:
+def refined_text(task: AsanaTaskRecord, proposal: RefiningProposal) -> tuple[str, str]:
     """The task's new template block and body, as plain text."""
     current = parse(task.notes)
     block: list[str] = []
@@ -157,23 +158,25 @@ def groomed_text(task: AsanaTaskRecord, proposal: GroomingProposal) -> tuple[str
     if not proposal.body:
         return "\n".join(block), current.body
     original = current.body
-    if ORIGINAL_MARKER in original:
-        original = original.split(ORIGINAL_MARKER, 1)[1].strip()
+    for marker in ORIGINAL_MARKERS:
+        if marker in original:
+            original = original.split(marker, 1)[1].strip()
+            break
     body = proposal.body.strip()
     if original:
         body = f"{body}\n\n{ORIGINAL_MARKER}\n{original}"
     return "\n".join(block), body
 
 
-def groomed_html(block: str, body: str) -> str:
+def refined_html(block: str, body: str) -> str:
     """The task's new body: the template block, then the body, escaped."""
     return rich_text_body(escape_rich_text(block), escape_rich_text(body))
 
 
 def questions_comment(questions: list[str], split: Sequence[str] = ()) -> str:
-    """The comment that asks the owner a grooming's questions, numbered.
+    """The comment that asks the owner a refining's questions, numbered.
 
-    ``split`` is the split the grooming proposed, one child a line, listed
+    ``split`` is the split the refining proposed, one child a line, listed
     under the questions: what the answers decide. Nothing in it is created.
     """
     numbered = "\n".join(f"{i}. {q}" for i, q in enumerate(questions, start=1))
@@ -186,18 +189,18 @@ def questions_comment(questions: list[str], split: Sequence[str] = ()) -> str:
     )
     return (
         f"{QUESTIONS_PREFIX}\n{numbered}\n\n{proposed}"
-        "Answer in a comment below; the task is groomed again with your answers."
+        "Answer in a comment below; the task is refined again with your answers."
     )
 
 
 def not_ready_comment(problems: Collection[str]) -> str:
-    """The one comment on a groomed task that is still not ready: its problems."""
+    """The one comment on a refined task that is still not ready: its problems."""
     lines = "\n".join(f"- {p}" for p in problems)
     return f"{NOT_READY_PREFIX}\n{lines}"
 
 
 def apply_proposal(
-    proposal: GroomingProposal,
+    proposal: RefiningProposal,
     *,
     run_id: str,
     board_factory: Callable[[], Board] | None = None,
@@ -207,7 +210,7 @@ def apply_proposal(
     """Apply one proposal to the board, once. Raises to be redelivered."""
     with run_report(FLOW_NAME, repo=REPO, run_id=run_id, version=__version__) as report:
         if not effect_enabled(Effect.ASANA):
-            log.info("groom: board writes are off here; not applied")
+            log.info("refine: board writes are off here; not applied")
             report.note("board writes off outside production")
             return
 
@@ -218,12 +221,12 @@ def apply_proposal(
             return
 
         store = records_factory()
-        previous = {r.task_gid: r for r in store.list_groomings()}.get(task.gid)
+        previous = {r.task_gid: r for r in store.list_refinings()}.get(task.gid)
         asked = previous is not None and previous.outcome == "questions"
         replies = answers(board.comments(task.gid)) if asked else []
         if fingerprint(task, replies) != proposal.fingerprint:
             # Changed since it was sent: the next sweep sends it again.
-            log.info("groom: %s changed since it was sent; not applied", task.name)
+            log.info("refine: %s changed since it was sent; not applied", task.name)
             report.note("task changed since it was sent", task.name)
             return
 
@@ -259,29 +262,29 @@ def apply_proposal(
         names = board.names()
         task_id = task_id_of(task.name) or next_id(MANUAL_PREFIX, names)
         name = task_name(task_id, proposal.title)
-        block, body = groomed_text(task, proposal)
-        board.update(task.gid, name=name, html_notes=groomed_html(block, body))
+        block, body = refined_text(task, proposal)
+        board.update(task.gid, name=name, html_notes=refined_html(block, body))
         if REVIEW_TAG in {t.lower() for t in task.tag_names}:
             board.untag(task.gid, REVIEW_TAG)
         if proposal.executor and executor_of(task.tag_names) is None:
             board.tag(task.gid, proposal.executor)
 
-        groomed = board.get(task.gid) or task
+        refined = board.get(task.gid) or task
         tasks = board.tasks()
         completed_by_id = {
             tid: t.completed for t in tasks if (tid := task_id_of(t.name)) is not None
         }
         problems = lint(
-            name=groomed.name,
-            notes=groomed.notes,
-            tags=groomed.tag_names,
+            name=refined.name,
+            notes=refined.notes,
+            tags=refined.tag_names,
             repos=repos_loader(),
             completed_by_id=completed_by_id,
             shapes=task_shapes(),
         )
 
         sections = board.sections()
-        outcome: GroomingOutcome
+        outcome: RefiningOutcome
         moved_at: dt.datetime | None = None
         if proposal.questions:
             board.comment(task.gid, questions_comment(proposal.questions))
@@ -300,12 +303,12 @@ def apply_proposal(
             outcome = "ready" if not problems else "not_ready"
             if problems:
                 board.comment(task.gid, not_ready_comment(problems))
-        if groomed.section_gid != column.gid:
+        if refined.section_gid != column.gid:
             board.move(task.gid, column.gid)
 
-        current = fingerprint(groomed)
-        store.record_grooming(
-            GroomingRecordWrite(
+        current = fingerprint(refined)
+        store.record_refining(
+            RefiningRecordWrite(
                 task_gid=task.gid,
                 task_id=task_id,
                 fingerprint=current,
@@ -313,14 +316,14 @@ def apply_proposal(
                 problems=problems,
                 moved_to_ready_at=moved_at,
                 returned_count=previous.returned_count if previous else 0,
-                groomed_fingerprint=current,
+                refined_fingerprint=current,
             )
         )
-        log.info("groom: %s groomed, now in %s", name, column.name)
+        log.info("refine: %s refined, now in %s", name, column.name)
         report.count("questions", len(proposal.questions))
         report.count("cost_usd", f"{proposal.cost_usd:.4f}")
         report.updated(
-            f"task groomed into {column.name}",
+            f"task refined into {column.name}",
             f"{name} (not ready: {'; '.join(problems)})"
             if outcome == "not_ready"
             else name,

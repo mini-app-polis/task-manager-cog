@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import datetime as dt
 
-from mini_app_polis.api.contract import GroomingRecord
+from mini_app_polis.api.contract import RefiningRecord
 
-from task_manager_cog.groomed import record_groomed
 from task_manager_cog.records import fingerprint
+from task_manager_cog.refined import record_refined
 from task_manager_cog.sweep import assess, sweep
 
 from .test_sweep import REPOS, FakeBoard, FakeRecords, _task
@@ -17,7 +17,7 @@ DONE_TASK = _task("3", "TASK-3 · Finished", completed=True)
 
 def _record(store: FakeRecords, gids: list[str], *, write: bool = True) -> list[str]:
     lines: list[str] = []
-    refused = record_groomed(
+    refused = record_refined(
         gids,
         board=FakeBoard([READY_TASK, VAGUE_TASK, DONE_TASK]),
         store=store,
@@ -29,13 +29,13 @@ def _record(store: FakeRecords, gids: list[str], *, write: bool = True) -> list[
     return lines
 
 
-def test_a_ready_task_is_recorded_ready_and_groomed() -> None:
+def test_a_ready_task_is_recorded_ready_and_refined() -> None:
     store = FakeRecords()
     lines = _record(store, ["1"])
     record = store.stored["1"]
     assert record.outcome == "ready" and record.problems == []
-    assert record.groomed_fingerprint == record.fingerprint == fingerprint(READY_TASK)
-    assert "recorded as groomed; problems: none" in lines[0]
+    assert record.refined_fingerprint == record.fingerprint == fingerprint(READY_TASK)
+    assert "recorded as refined; problems: none" in lines[0]
 
 
 def test_a_task_not_ready_is_recorded_with_its_problems() -> None:
@@ -44,18 +44,18 @@ def test_a_task_not_ready_is_recorded_with_its_problems() -> None:
     record = store.stored["2"]
     assert record.outcome == "not_ready"
     assert record.problems
-    assert record.groomed_fingerprint == fingerprint(VAGUE_TASK)
+    assert record.refined_fingerprint == fingerprint(VAGUE_TASK)
 
 
 def test_open_questions_are_cleared_and_the_count_kept() -> None:
     store = FakeRecords()
-    store.stored["1"] = GroomingRecord(
+    store.stored["1"] = RefiningRecord(
         task_gid="1",
         task_id="TASK-1",
         fingerprint="a" * 64,
         outcome="questions",
         returned_count=2,
-        groomed_fingerprint="a" * 64,
+        refined_fingerprint="a" * 64,
         updated_at=dt.datetime(2026, 10, 23, tzinfo=dt.UTC),
     )
     _record(store, ["1"])
@@ -73,7 +73,7 @@ def test_a_dry_run_writes_nothing() -> None:
     store = FakeRecords()
     lines = _record(store, ["1", "2"], write=False)
     assert store.written == []
-    assert "would record as groomed" in lines[0]
+    assert "would record as refined" in lines[0]
 
 
 def test_an_unknown_or_finished_task_is_refused() -> None:
@@ -88,7 +88,7 @@ def test_an_unknown_or_finished_task_is_refused() -> None:
 def test_awaiting_owner_holds_a_task_until_its_owner_answers() -> None:
     store = FakeRecords()
     lines: list[str] = []
-    record_groomed(
+    record_refined(
         ["2"],
         board=FakeBoard([VAGUE_TASK]),
         store=store,
@@ -99,11 +99,11 @@ def test_awaiting_owner_holds_a_task_until_its_owner_answers() -> None:
     )
     record = store.stored["2"]
     assert record.outcome == "questions"
-    assert record.groomed_fingerprint == fingerprint(VAGUE_TASK)
+    assert record.refined_fingerprint == fingerprint(VAGUE_TASK)
     assert "recorded as waiting on its owner" in lines[0]
 
     # Held while nothing answers it, and sent once something does.
-    reported = "Proposed split (not created: GROOM_SPLIT_DRY_RUN is on; content abc)"
+    reported = "Proposed split (not created: REFINE_SPLIT_DRY_RUN is on; content abc)"
     sent: list[object] = []
 
     def send(job: object) -> bool:

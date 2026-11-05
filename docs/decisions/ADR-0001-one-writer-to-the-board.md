@@ -11,7 +11,7 @@ and later others. Each source used to be expected to write to Asana itself.
 That spreads three things across every source:
 
 - **The board's shape.** Every task starts with the same six-line template
-  block so it can be groomed in place. A copy of that block in each source
+  block so it can be refined in place. A copy of that block in each source
   drifts.
 - **Ids.** A task's name leads with an id (`VN-12 · …`). On the free tier
   Asana has no id field and no search, so the next id is the highest one on
