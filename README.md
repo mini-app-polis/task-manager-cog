@@ -197,7 +197,7 @@ linter (`lint.py`) checks what can be checked without a model:
 |---|---|
 | Title | It starts with an id (`MINI-12 · …`) and says something. It is not `[Needs review]`. |
 | Done when | Filled in, with no `TBD` or open question. |
-| Where | Names repositories in the ecosystem registry (`ecosystem.yaml`), optionally with paths. |
+| Where | Names repositories in the ecosystem registry (`ecosystem.yaml`), optionally with paths. An agent task always names one. With `REFINE_TASK_SHAPES` on, `None` is accepted for a `cowork` or `person` task with no repository. |
 | Constraints | Filled in. `None` is an answer; blank is not. |
 | Effort | `S`, `M` or `L`. An `L` task is ready: its implementation creates its subtasks. |
 | PR | Blank. It belongs to whoever works the task. |

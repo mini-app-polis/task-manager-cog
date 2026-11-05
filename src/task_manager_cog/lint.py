@@ -373,6 +373,8 @@ def lint(
         where = ""
     elif not where:
         problems.append("Where is blank")
+    elif no_repository and executor_of_task(notes, tags) == AGENT:
+        problems.append("An agent task names no repository in Where")
     else:
         unknown = [r for r in where_repos(where) if r not in repos]
         if unknown:
