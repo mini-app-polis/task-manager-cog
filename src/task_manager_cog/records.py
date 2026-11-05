@@ -75,8 +75,8 @@ from .lint import task_id_of
 #: Starts the comment a refining's questions are posted as.
 QUESTIONS_PREFIX = "Refining questions:"
 
-#: What :data:`QUESTIONS_PREFIX` was before grooming was renamed refining.
-#: Comments already on the board start with it and still hold their tasks.
+#: The other prefix a questions comment may start with. A comment starting
+#: with it holds its task the way :data:`QUESTIONS_PREFIX` does.
 GROOMING_QUESTIONS_PREFIX = "Grooming questions:"
 
 #: Starts the comment a split reported but not created is posted as.
