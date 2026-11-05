@@ -181,8 +181,15 @@ Rotated <ISO timestamp>; verification <ok|failed|unchecked>
 
 (a timestamp without an offset is read as UTC). The update goes to the one
 open task whose external id starts with the prefix: when the timestamp is
-after that task's creation and the task is not already in Review, it gets the
-comment and moves to Review, whatever column the request names. Each of these
+after that task's creation and the task is not already in Review, it moves
+to Review, whatever column the request names, with the rotation as its
+handoff: a `Handed off:` comment answering each Done when item with the
+rotator's record. A later line `Old value retired <ISO timestamp>` says the
+old value is gone. When the rotation verified `ok` and its old value is
+retired, nothing is left for a person to confirm, so a `Landed:` comment
+follows the move and the next sweep's Review check closes the task. Anything
+less (unverified, failed, or not yet revoked) waits in Review for a person,
+as any task does. Each of these
 is left alone and noted in the run, not reported as a missing task: no open
 task under the prefix, a first line that does not parse, a timestamp not
 after the task's creation, a task already in Review. More than one open task
