@@ -1,3 +1,17 @@
+# [1.31.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.30.0...v1.31.0) (2026-11-05)
+
+
+### Bug Fixes
+
+* **deps:** bump miniapppolis-common-utils to 7.16.0 ([4e4adbc](https://github.com/mini-app-polis/task-manager-cog/commit/4e4adbc1dcf1168c363bd51b82128b56d76cf6a7))
+* **deps:** bump miniapppolis-common-utils to 7.18.0 ([883f1db](https://github.com/mini-app-polis/task-manager-cog/commit/883f1db8e3715ac4b83268d084acb83d4072bf45))
+
+
+### Features
+
+* **facts:** publish the test-function count ([80db923](https://github.com/mini-app-polis/task-manager-cog/commit/80db923d664e680e95ff16c169be8424e5a2ab14))
+* rename grooming to refining ([dc42737](https://github.com/mini-app-polis/task-manager-cog/commit/dc42737d8fad5f56cc367b247c434490e96be64b))
+
 # [1.30.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.29.0...v1.30.0) (2026-11-04)
 
 
