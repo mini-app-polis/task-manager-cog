@@ -96,9 +96,11 @@ is assigned to the owner, whoever does the work.
 
 ### Detected problems
 
-Failed CI on `main`, cog run reports at ERROR or worse, bursts of API 5xx
-answers and conformance findings at WARN or worse open a GitHub Issue in the
-affected repository, one per streak, closed when the streak clears. Nothing
+Failed CI on `main`, cog run reports at ERROR or worse, every API 5xx answer
+and conformance findings at WARN or worse open a GitHub Issue in the
+affected repository, one per streak, closed when the streak clears. An API
+500 is the exception: its Issue closes only through a pull request that
+fixes it. Nothing
 reaches the board automatically; the owner files a task from an Issue when it
 warrants planned work.
 Secret-rotation tasks are not detected problems: they are scheduled work for
