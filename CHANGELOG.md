@@ -1,3 +1,10 @@
+## [1.31.7](https://github.com/mini-app-polis/task-manager-cog/compare/v1.31.6...v1.31.7) (2026-11-06)
+
+
+### Bug Fixes
+
+* **update:** land a rotation task already in Review once its old value is retired ([5ab197a](https://github.com/mini-app-polis/task-manager-cog/commit/5ab197a87def705a53be154ad7485d2250fe386f))
+
 ## [1.31.6](https://github.com/mini-app-polis/task-manager-cog/compare/v1.31.5...v1.31.6) (2026-11-06)
 
 
