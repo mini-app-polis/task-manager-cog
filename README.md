@@ -189,10 +189,13 @@ old value is gone. When the rotation verified `ok` and its old value is
 retired, nothing is left for a person to confirm, so a `Landed:` comment
 follows the move and the next sweep's Review check closes the task. Anything
 less (unverified, failed, or not yet revoked) waits in Review for a person,
-as any task does. Each of these
-is left alone and noted in the run, not reported as a missing task: no open
-task under the prefix, a first line that does not parse, a timestamp not
-after the task's creation, a task already in Review. More than one open task
+as any task does. A routine rotation's old value is retired a day after it,
+so that update finds the task already in Review: a task there that carries
+the rotator's `Handed off:` gets a new handoff with the retired line and its
+`Landed:`, once, and is not moved. Each of these is left alone and noted in
+the run, not reported as a missing task: no open task under the prefix, a
+first line that does not parse, a timestamp not after the task's creation,
+a task already in Review with nothing to land. More than one open task
 under the prefix is left alone and reported as an issue. Any other
 `external_id` is matched exactly, as above.
 

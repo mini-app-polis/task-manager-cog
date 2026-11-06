@@ -49,9 +49,13 @@ item with the rotator's record (when it was rotated, its verification, and
 verified ``ok`` whose old value is retired has nothing left for a person to
 confirm, so a ``Landed:`` comment follows the move, and the sweep's Review
 check closes the task (review.py). Anything less waits in Review for a
-person, as any task does. A prefix with no open task, a first line that does not parse,
-a time not after the task's creation and a task already in Review are each
-left alone and noted in the run; more than one open task is left alone and
+person, as any task does. A task already in Review that carries the
+rotator's handoff is not moved again, but when a later update brings the
+retired line (a routine rotation's old value is retired a day after it),
+it gets a handoff with that record and its ``Landed:``. A prefix with no
+open task, a first line that does not parse, a time not after the task's
+creation and a task already in Review with nothing to land are each left
+alone and noted in the run; more than one open task is left alone and
 reported as an issue. Any other ``external_id`` is an exact key, as above.
 """
 
@@ -83,6 +87,9 @@ FLOW_NAME = "update-task"
 ROTATION_KEY_PREFIX = "secret-rotation."
 
 _ROTATED = re.compile(r"Rotated (\S+); verification (ok|failed|unchecked)")
+
+#: The first line of the handoff a rotated secret's task gets.
+ROTATION_HANDOFF_HEAD = f"{HANDED_OFF_PREFIX} rotator-cog recorded the rotation."
 
 #: A rotation comment's line saying when the old value was retired.
 _RETIRED = re.compile(r"Old value retired (\S+)")
@@ -144,10 +151,7 @@ def rotation_handoff(task: AsanaTaskRecord, comment: str) -> str:
     """
     items = done_when_items(parse(task.notes).fields.get("Done when", "")) or [""]
     evidence = _rotation_evidence(comment)
-    return "\n".join(
-        [f"{HANDED_OFF_PREFIX} rotator-cog recorded the rotation."]
-        + [f"- {evidence}" for _ in items]
-    )
+    return "\n".join([ROTATION_HANDOFF_HEAD] + [f"- {evidence}" for _ in items])
 
 
 def rotation_landed(comment: str) -> str | None:
@@ -168,6 +172,43 @@ def rotation_landed(comment: str) -> str | None:
         f"{LANDED_PREFIX} the new value verified ok and the old value was "
         f"retired {retired.group(1)}, as rotator-cog recorded."
     )
+
+
+def _land_in_review(
+    request: TaskUpdateRequest,
+    task: AsanaTaskRecord,
+    board: Board,
+    report: RunReport,
+    review_name: str,
+) -> None:
+    """Land a rotation task the rotator already handed off, once it can.
+
+    A routine rotation's old value is retired after the task moved to
+    Review, so the update that says so finds it there. A task with the
+    rotator's handoff gets a handoff with the full record and ``Landed:``;
+    any other task in Review is left alone.
+    """
+    prefix = request.external_id
+    landed = rotation_landed(request.comment)
+    comments = board.comments(task.gid)
+    handed_off = any(c.lstrip().startswith(ROTATION_HANDOFF_HEAD) for c in comments)
+    if landed is None or not handed_off:
+        report.note(f"already in {review_name}", prefix)
+        return
+    handoff = rotation_handoff(task, request.comment)
+    if _posted(handoff, comments) and _posted(landed, comments):
+        report.note(f"already landed in {review_name}", prefix)
+        return
+    if not _posted(handoff, comments):
+        board.comment(task.gid, handoff)
+    if not _posted(landed, comments):
+        board.comment(task.gid, landed)
+    report.updated(
+        f"task handed off and landed in {review_name}",
+        task.name,
+        link=board.url(task.gid),
+    )
+    log.info("update: %s (%s) landed in %s", task.name, prefix, review_name)
 
 
 def _apply_rotation(
@@ -208,7 +249,7 @@ def _apply_rotation(
 
     review = _section_named(board.sections(), review_section())
     if task.section_gid == review.gid:
-        report.note(f"already in {review.name}", prefix)
+        _land_in_review(request, task, board, report, review.name)
         return
 
     handoff = rotation_handoff(task, request.comment)
