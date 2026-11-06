@@ -558,7 +558,9 @@ After refining, the sweep takes Ready tasks in board order that:
 Each dispatch records the run in api-kaianolevine-com
 (`/v1/tasks/agent-runs`), whose record is the lock on the repository, moves
 the task to In progress, then starts the caller with a token for that one
-repository that can only start workflows. A run is never retried: one that
+repository that can only start workflows. The run starts on `dev`, or on
+the repository's default branch when it has no `dev` (`.github`, which has
+only `main`), and its pull request is based on that branch. A run is never retried: one that
 fails, hits its budget, cannot be started, or never reports (after
 `AGENT_RUN_TIMEOUT_MINUTES`) leaves its task in In progress with a comment,
 and nothing dispatches from In progress.
@@ -569,7 +571,8 @@ task to Review, and posts its `Handed off:` comment; one that needs
 refining goes back to Refining (below). **Applying a result never marks a
 task done:** a person reviews and merges the draft, and the task closes
 when a `Landed:` comment, which the sweep posts once the pull request is
-merged and CI on dev is green, confirms it (Review).
+merged and CI is green on the branch it merged into (`dev`, or `main` for
+`.github`), confirms it (Review).
 
 The trigger is the sweep, not Asana webhooks. Asana delivers webhook
 events at most once and recommends polling as a fallback, and this cog has

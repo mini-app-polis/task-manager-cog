@@ -3,7 +3,10 @@
 The agent's workflow is a caller in each repository the agent may change
 (``.github/workflows/<AGENT_WORKFLOW>``), so a repository without one is not
 a target. Dispatch asks GitHub two things, as the agent App: whether the
-repository has the caller, and to start it. Each request uses a token
+repository has the caller, and to start it. A run starts on ``dev``; a
+repository with no ``dev`` branch (``.github``, which has only ``main``) is
+started on its default branch instead, and the agent's workflow bases its
+pull request on the branch it was started on. Each request uses a token
 minted for that one repository with only Actions access, so this cog can
 start a workflow and nothing else; pushing and opening the pull request
 happen in the workflow, with a token of the workflow's own.
@@ -36,6 +39,8 @@ API = "https://api.github.com"
 TIMEOUT_SECONDS = 20.0
 DEFAULT_ORG = "mini-app-polis"
 DEFAULT_WORKFLOW = "agent.yml"
+#: How GitHub refuses a dispatch on a branch the repository does not have.
+_NO_REF = "No ref found for"
 
 #: The App token's lifetime GitHub allows is ten minutes; this stays under
 #: it, backdated a minute for clock drift.
@@ -61,16 +66,31 @@ class InstallationToken(BaseModel):
     token: str = Field(description="The installation token, valid for an hour.")
 
 
+class Repository(BaseModel):
+    """A repository, as far as it is read."""
+
+    default_branch: str = Field(description="The repository's default branch.")
+
+
 class Workflow(BaseModel):
     """A repository's workflow, as far as it is read."""
 
     state: str = Field(description="active, or why the workflow is disabled.")
 
 
+class PullRequestBase(BaseModel):
+    """The branch a pull request merges into."""
+
+    ref: str = Field(description="The base branch's name.")
+
+
 class PullRequest(BaseModel):
     """A pull request, as far as the Review pass reads it."""
 
     html_url: str = Field(description="The pull request's page.")
+    base: PullRequestBase | None = Field(
+        default=None, description="The branch it merges into."
+    )
     merged: bool = Field(default=False, description="Whether it was merged.")
     merge_commit_sha: str | None = Field(
         default=None, description="The commit its merge made on the base branch."
@@ -256,16 +276,24 @@ class AgentApp:
         return self._read(Workflow, found, f"caller in {repo}").state == "active"
 
     def dispatch(self, repo: str, *, ref: str, inputs: dict[str, str]) -> None:
-        """Start the caller in ``repo``. Raises GitHubError."""
+        """Start the caller in ``repo`` on ``ref``, or on the repository's
+        default branch when it has no ``ref``. Raises GitHubError."""
         token = self._token(repo)
         if token is None:
             raise GitHubError(f"the agent App is not installed on {repo}")
+        path = f"/repos/{org()}/{repo}/actions/workflows/{workflow()}/dispatches"
         started = self._request(
-            "POST",
-            f"/repos/{org()}/{repo}/actions/workflows/{workflow()}/dispatches",
-            token=token,
-            body={"ref": ref, "inputs": inputs},
+            "POST", path, token=token, body={"ref": ref, "inputs": inputs}
         )
+        if started.status_code == 422 and _NO_REF in started.text:
+            found = self._request("GET", f"/repos/{org()}/{repo}", token=token)
+            if found.status_code != 200:
+                raise GitHubError(f"repository {repo}: {found.status_code}")
+            default = self._read(Repository, found, f"repository {repo}").default_branch
+            if default != ref:
+                started = self._request(
+                    "POST", path, token=token, body={"ref": default, "inputs": inputs}
+                )
         if started.status_code not in (200, 204):
             raise GitHubError(
                 f"dispatch in {repo}: {started.status_code} {started.text[:200]}"
