@@ -462,6 +462,40 @@ def test_a_redelivered_landed_rotation_changes_nothing(production) -> None:
     assert len(board.commented) == 2
 
 
+def test_a_handed_off_task_in_review_lands_when_the_retired_line_arrives(
+    production,
+) -> None:
+    board = _rot_board(_rot_task("2", ROT_PREFIX + "never"))
+    _apply(_rot_request("Rotated 2026-10-30T12:00:00Z; verification ok"), board)
+    assert board.moved == [("2", "s-review")]
+    _apply(_rot_request(RETIRED_COMMENT), board)
+    texts = [text for _, text in board.commented]
+    assert len(texts) == 3
+    assert texts[1].startswith("Handed off:")
+    assert "Old value retired 2026-10-30T12:05:00Z" in texts[1]
+    assert texts[2].startswith("Landed:")
+    assert board.moved == [("2", "s-review")]
+
+
+def test_a_redelivered_late_landing_changes_nothing(production) -> None:
+    board = _rot_board(_rot_task("2", ROT_PREFIX + "never"))
+    _apply(_rot_request("Rotated 2026-10-30T12:00:00Z; verification ok"), board)
+    _apply(_rot_request(RETIRED_COMMENT), board)
+    _apply(_rot_request(RETIRED_COMMENT), board)
+    assert len(board.commented) == 3
+    assert board.moved == [("2", "s-review")]
+
+
+def test_a_task_in_review_without_the_rotators_handoff_is_not_landed(
+    production, _no_outbound_reports
+) -> None:
+    board = _rot_board(_rot_task("2", ROT_PREFIX + "never", section="s-review"))
+    _apply(_rot_request(RETIRED_COMMENT), board)
+    assert board.commented == [] and board.moved == []
+    ((_, kwargs),) = _no_outbound_reports
+    assert "already in Review" in str(kwargs)
+
+
 @pytest.mark.parametrize(
     "comment",
     [
