@@ -1,3 +1,10 @@
+# [1.32.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.31.7...v1.32.0) (2026-11-06)
+
+
+### Features
+
+* **dispatch:** start the agent on the default branch of a repository without dev ([18eb3e1](https://github.com/mini-app-polis/task-manager-cog/commit/18eb3e1723137906625bd261016daef77ca0dd2a))
+
 ## [1.31.7](https://github.com/mini-app-polis/task-manager-cog/compare/v1.31.6...v1.31.7) (2026-11-06)
 
 
