@@ -122,6 +122,25 @@ def test_merged_with_green_ci_on_dev_posts_landed() -> None:
     assert reader.asked == [("pr", "infra", 7), ("runs", "infra", SHA, "dev")]
 
 
+def test_a_pull_request_into_main_is_read_and_landed_on_main() -> None:
+    """.github has only main: its CI, named ci, is read there."""
+    pr = PullRequest.model_validate(
+        {
+            "html_url": PR_URL,
+            "merged": True,
+            "merge_commit_sha": SHA,
+            "base": {"ref": "main"},
+        }
+    )
+    board = FakeLandingBoard([_task()])
+    reader = FakeReader(pr=pr, runs=[_run("success", name="ci")])
+    result = land(board, lambda: reader)
+    assert result is not None and [t.gid for t in result.landed] == ["1"]
+    ((_, text),) = board.posted
+    assert "branch main" in text and "CI on main passed" in text
+    assert reader.asked[-1] == ("runs", "infra", SHA, "main")
+
+
 def test_merged_with_red_ci_on_dev_posts_nothing_and_is_failed() -> None:
     board = FakeLandingBoard([_task()])
     result = land(board, lambda: FakeReader(runs=[_run("failure")]))

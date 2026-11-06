@@ -118,6 +118,39 @@ def test_dispatch_starts_the_caller_on_the_ref_with_its_inputs() -> None:
 
 
 @respx.mock
+def test_a_repository_without_dev_is_started_on_its_default_branch() -> None:
+    _installed(respx.mock)
+    started = respx.post(
+        f"{API}/repos/mini-app-polis/{REPO}/actions/workflows/agent.yml/dispatches"
+    ).mock(
+        side_effect=[
+            httpx.Response(422, json={"message": "No ref found for: dev"}),
+            httpx.Response(204),
+        ]
+    )
+    respx.get(f"{API}/repos/mini-app-polis/{REPO}").respond(
+        200, json={"default_branch": "main"}
+    )
+    _app().dispatch(REPO, ref="dev", inputs={"run_id": "r"})
+    refs = [json.loads(c.request.content)["ref"] for c in started.calls]
+    assert refs == ["dev", "main"]
+
+
+@respx.mock
+def test_a_missing_ref_that_is_the_default_branch_still_raises() -> None:
+    _installed(respx.mock)
+    started = respx.post(
+        f"{API}/repos/mini-app-polis/{REPO}/actions/workflows/agent.yml/dispatches"
+    ).respond(422, json={"message": "No ref found for: main"})
+    respx.get(f"{API}/repos/mini-app-polis/{REPO}").respond(
+        200, json={"default_branch": "main"}
+    )
+    with pytest.raises(github.GitHubError, match="422"):
+        _app().dispatch(REPO, ref="main", inputs={})
+    assert len(started.calls) == 1
+
+
+@respx.mock
 def test_a_refused_dispatch_raises() -> None:
     _installed(respx.mock)
     respx.post(

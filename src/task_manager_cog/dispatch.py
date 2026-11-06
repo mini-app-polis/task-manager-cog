@@ -83,7 +83,8 @@ DEFAULT_MONTHLY_CAP_USD = 20.0
 DEFAULT_RUN_TIMEOUT_MINUTES = 90
 DEFAULT_IN_PROGRESS_SECTION = "In progress"
 
-#: The branch a run starts from, and its pull request's base.
+#: The branch a run starts from, and its pull request's base. A repository
+#: without it is started on its default branch (github.py).
 BASE_BRANCH = "dev"
 
 #: What a workflow_dispatch can carry is bounded; a task this long is for a

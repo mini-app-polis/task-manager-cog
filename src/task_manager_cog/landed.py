@@ -44,8 +44,15 @@ log = logger_mod.get_logger()
 
 DEFAULT_CI_WORKFLOW = "CI"
 
-#: The branch a pull request lands on, and CI is read on.
+#: The branch a pull request lands on, and CI is read on, unless the pull
+#: request says another (.github's, which has only main).
 LANDED_BRANCH = "dev"
+
+
+def landed_branch(pr: PullRequest) -> str:
+    """The branch ``pr`` merged into: its base, or LANDED_BRANCH."""
+    return pr.base.ref if pr.base is not None else LANDED_BRANCH
+
 
 #: Conclusions of a completed run that mean CI failed.
 FAILED = frozenset({"failure", "timed_out", "startup_failure"})
@@ -137,10 +144,11 @@ def pull_request_of(notes: str) -> PullRequestRef | None:
 
 def landed_comment(ref: PullRequestRef, pr: PullRequest, run: WorkflowRun) -> str:
     """The ``Landed:`` comment for a merged pull request with green CI."""
+    branch = landed_branch(pr)
     return (
-        f"{LANDED_PREFIX} {github.org()}/{ref.repo}, branch {LANDED_BRANCH}, "
+        f"{LANDED_PREFIX} {github.org()}/{ref.repo}, branch {branch}, "
         f"merge commit {pr.merge_commit_sha} from pull request {ref.label} "
-        f"({pr.html_url}). CI on {LANDED_BRANCH} passed: {ci_workflow()} run "
+        f"({pr.html_url}). CI on {branch} passed: {ci_workflow()} run "
         f"{run.id} ({run.html_url})."
     )
 
@@ -193,20 +201,25 @@ def land(
                     (task, ref, "the pull request could not be read")
                 )
                 continue
+            branch = landed_branch(pr)
             runs = reader.workflow_runs(
-                ref.repo, head_sha=pr.merge_commit_sha, branch=LANDED_BRANCH
+                ref.repo, head_sha=pr.merge_commit_sha, branch=branch
             )
         except github.GitHubError as exc:
             log.warning("landing: %s not checked: %s", task.name, exc)
             result.errors.append((task, str(exc)))
             continue
-        run = next((r for r in runs or [] if r.name == ci_workflow()), None)
+        # Named as each repository names it (.github's is ``ci``), ignoring case.
+        run = next(
+            (r for r in runs or [] if (r.name or "").lower() == ci_workflow().lower()),
+            None,
+        )
         if run is None:
             result.unverified.append(
-                (task, ref, f"no {ci_workflow()} run on {LANDED_BRANCH} for its merge")
+                (task, ref, f"no {ci_workflow()} run on {branch} for its merge")
             )
         elif run.status != "completed":
-            log.info("landing: %s waits for CI on %s", task.name, LANDED_BRANCH)
+            log.info("landing: %s waits for CI on %s", task.name, branch)
         elif run.conclusion == "success":
             board.comment(task.gid, landed_comment(ref, pr, run))
             result.landed.append(task)
@@ -215,6 +228,6 @@ def land(
             result.failed.append((task, ref, run.html_url))
         else:
             result.unverified.append(
-                (task, ref, f"{ci_workflow()} on {LANDED_BRANCH} {run.conclusion}")
+                (task, ref, f"{ci_workflow()} on {branch} {run.conclusion}")
             )
     return result
