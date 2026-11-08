@@ -1,3 +1,18 @@
+# [1.33.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.32.1...v1.33.0) (2026-11-08)
+
+
+### Bug Fixes
+
+* **deps:** bump miniapppolis-common-utils to 8.10.0 ([e521c4d](https://github.com/mini-app-polis/task-manager-cog/commit/e521c4db4ad3b5f6e2e6593365e28b7282af1b4e))
+* **deps:** bump miniapppolis-common-utils to 8.10.1 ([d7a378d](https://github.com/mini-app-polis/task-manager-cog/commit/d7a378d78119741a91882a216bb9d7f7567a14d7))
+* **deps:** bump miniapppolis-common-utils to 8.8.0 ([ff6c9c8](https://github.com/mini-app-polis/task-manager-cog/commit/ff6c9c83473783c619bf98678dfbf3fd702c9bb0))
+* **deps:** bump miniapppolis-common-utils to 8.9.0 ([cff5c14](https://github.com/mini-app-polis/task-manager-cog/commit/cff5c143b67a743c4efe10925700e133709b4bc6))
+
+
+### Features
+
+* run on Python 3.14 ([3357a56](https://github.com/mini-app-polis/task-manager-cog/commit/3357a5647ae13dd6f591ffe21c1857ef0db3c30c))
+
 ## [1.32.1](https://github.com/mini-app-polis/task-manager-cog/compare/v1.32.0...v1.32.1) (2026-11-07)
 
 
