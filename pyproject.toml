@@ -3,7 +3,7 @@ name = "task-manager-cog"
 dynamic = ["version"]
 description = "Puts tasks on the board and keeps them refined: turns each source's task draft into one task, with the board's template, an id, tags and section, and moves tasks that meet the definition of ready to Ready. Runs as a Lambda worker behind its own queue."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.14"
 dependencies = [
     "cryptography>=43,<51",
     "httpx>=0.27,<1.0",
@@ -55,7 +55,7 @@ testpaths = ["tests/unit", "tests/integration"]
 addopts = "--cov=task_manager_cog --cov-report=term-missing"
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.14"
 strict = false
 ignore_missing_imports = true
 
