@@ -1,3 +1,11 @@
+## [1.33.4](https://github.com/mini-app-polis/task-manager-cog/compare/v1.33.3...v1.33.4) (2026-11-10)
+
+
+### Bug Fixes
+
+* **deps:** bump miniapppolis-common-utils to 9.4.0 ([a7042dd](https://github.com/mini-app-polis/task-manager-cog/commit/a7042dd84a1dc4630003ee321cfb6fff8283dad0))
+* **deps:** bump miniapppolis-common-utils to 9.5.0 ([dac77dc](https://github.com/mini-app-polis/task-manager-cog/commit/dac77dc497e2b6351523c04bc3d1d6a2b6bc7d8f))
+
 ## [1.33.3](https://github.com/mini-app-polis/task-manager-cog/compare/v1.33.2...v1.33.3) (2026-11-10)
 
 
