@@ -1,3 +1,12 @@
+## [1.33.6](https://github.com/mini-app-polis/task-manager-cog/compare/v1.33.5...v1.33.6) (2026-11-11)
+
+
+### Bug Fixes
+
+* **deps:** bump miniapppolis-common-utils to 9.7.0 ([2548bab](https://github.com/mini-app-polis/task-manager-cog/commit/2548bab369a4c5a544e0a192a6a34ba8799a0589))
+* **deps:** bump miniapppolis-common-utils to 9.8.0 ([ae12bc9](https://github.com/mini-app-polis/task-manager-cog/commit/ae12bc9a9df1ce6b3a17c633877c984c8c108e39))
+* **readiness:** let a person or cowork task's Where name a place that is not a repository ([6940d92](https://github.com/mini-app-polis/task-manager-cog/commit/6940d9234d51f79a4c2e16dc397a86aa993684df))
+
 ## [1.33.5](https://github.com/mini-app-polis/task-manager-cog/compare/v1.33.4...v1.33.5) (2026-11-11)
 
 
