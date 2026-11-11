@@ -262,6 +262,37 @@ def test_a_proposed_executor_goes_on_as_a_tag(
     assert store.stored["7"].fingerprint == fingerprint(task)
 
 
+@pytest.mark.parametrize("executor", ["cowork", "person"])
+def test_a_task_for_another_executor_may_name_a_place_that_is_no_repository(
+    production, monkeypatch: pytest.MonkeyPatch, _no_outbound_reports, executor: str
+) -> None:
+    monkeypatch.setenv("REFINE_AUTO_READY", "true")
+    board = FakeBoard([VAGUE])
+    store = FakeRecords()
+    proposal = _proposal(executor=executor, where="Doppler, Google Drive")
+    _apply(proposal, board, store)
+
+    assert store.stored["7"].problems == []
+    assert store.stored["7"].outcome == "ready"
+    task = board.get("7")
+    assert task is not None and task.section_name == "Ready"
+
+
+def test_an_agent_task_naming_a_place_that_is_no_repository_is_not_ready(
+    production, monkeypatch: pytest.MonkeyPatch, _no_outbound_reports
+) -> None:
+    monkeypatch.setenv("REFINE_AUTO_READY", "true")
+    board = FakeBoard([VAGUE])
+    store = FakeRecords()
+    _apply(_proposal(where="Doppler, Google Drive"), board, store)
+
+    assert store.stored["7"].problems == [
+        "Where names no repository called Doppler, Google"
+    ]
+    task = board.get("7")
+    assert task is not None and task.section_name == "Refining"
+
+
 def test_a_task_already_tagged_keeps_its_executor(
     production, _no_outbound_reports
 ) -> None:

@@ -367,15 +367,18 @@ def lint(
         problems.append("Done when is undecided (TBD or ?)")
 
     where = fields.get("Where", "")
+    agent = executor_of_task(notes, tags) == AGENT
     no_repository = not where or where.lower() in NONE_WORDS
-    if shapes and no_repository and executor_of_task(notes, tags) != AGENT:
+    if shapes and no_repository and not agent:
         # Board or console work: a leaf with no repository.
         where = ""
     elif not where:
         problems.append("Where is blank")
-    elif no_repository and executor_of_task(notes, tags) == AGENT:
+    elif no_repository and agent:
         problems.append("An agent task names no repository in Where")
-    else:
+    elif agent:
+        # Only an agent runs in a repository; a person or cowork task's Where
+        # may name any place (a service, a drive, an app).
         unknown = [r for r in where_repos(where) if r not in repos]
         if unknown:
             problems.append(f"Where names no repository called {', '.join(unknown)}")
@@ -423,7 +426,7 @@ def lint(
                 done_when=done_when,
                 where=where,
                 blocked_ids=_TASK_ID.findall(blocked_by),
-                agent=executor_of_task(notes, tags) == AGENT,
+                agent=agent,
             )
         )
 

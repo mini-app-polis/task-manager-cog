@@ -147,6 +147,22 @@ def test_where_must_name_registered_repositories() -> None:
     assert "Where names no repository called new" in problems
 
 
+@pytest.mark.parametrize("executor", ["cowork", "person"])
+@pytest.mark.parametrize(
+    "where", ["Doppler, Google Drive", "the owner's music library, VirtualDJ"]
+)
+def test_a_task_for_another_executor_may_name_a_place_that_is_no_repository(
+    executor: str, where: str
+) -> None:
+    notes = _with("Where", where).replace("Executor: agent", f"Executor: {executor}")
+    assert _lint(notes=notes) == []
+
+
+def test_an_agent_task_still_needs_a_registered_repository() -> None:
+    problems = _lint(notes=_with("Where", "Doppler, Google Drive"))
+    assert "Where names no repository called Doppler, Google" in problems
+
+
 def test_where_reads_the_head_of_each_item() -> None:
     assert where_repos(
         "api-kaianolevine-com (a, b, c), task-manager-cog/src/x.py; infra: modules"
@@ -343,7 +359,12 @@ def test_a_task_for_another_executor_may_name_several_repositories(
     executor: str,
 ) -> None:
     assert _shaped(_notes_with(Executor=executor)) == []
-    unknown = _notes_with(Where="task-manager-cog, nowhere-cog", Executor=executor)
+    elsewhere = _notes_with(Where="task-manager-cog, Doppler", Executor=executor)
+    assert _shaped(elsewhere) == []
+
+
+def test_an_agent_leaf_still_needs_a_registered_repository() -> None:
+    unknown = _notes_with(Where="nowhere-cog")
     assert _shaped(unknown) == ["Where names no repository called nowhere-cog"]
 
 
