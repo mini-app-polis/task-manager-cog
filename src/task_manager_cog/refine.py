@@ -34,10 +34,17 @@ be refined again, and that refining may split it.
   ``Refining questions:`` and the task moves to Refining. Answering in a
   comment sends it to be refined again. Blocked is for a task waiting on
   another task or an event, which refining does not decide.
-- It passes and ``REFINE_AUTO_READY`` is on: it moves to Ready.
+- It passes and ``REFINE_AUTO_READY`` is on: it moves to Ready, unless
+  questions posted on it, by anyone, have nothing after them. That is the
+  sweep's own check (sweep.py), so the next sweep agrees with where the
+  task went.
 - Otherwise it moves to Refining. If it still has problems, they are
   posted as one comment starting ``Refining left this task not ready:``,
   one ``- `` line each, so the owner sees what is left to fix.
+
+The task is read again after the move, and the run report names the column
+it is in: a move that did not happen is an issue, and the task is not
+recorded as moved to Ready.
 
 Its refining record is written with the new content as both what was judged
 and what was refined, so a refined task is not sent again until someone
@@ -76,9 +83,16 @@ from .lint import (
     parse,
     task_id_of,
 )
-from .records import QUESTIONS_PREFIX, answers, fingerprint
+from .records import (
+    NOT_READY_PREFIX,
+    QUESTIONS_PREFIX,
+    answers,
+    fingerprint,
+    unanswered,
+)
 from .registry import load_repos
 from .sweep import (
+    OPEN_QUESTIONS,
     Records,
     _api,
     _section_named,
@@ -96,9 +110,6 @@ FLOW_NAME = "apply-refining"
 MANUAL_PREFIX = "MINI"
 
 DEFAULT_REFINING_SECTION = "Refining"
-
-#: How the comment on a refined task that is still not ready starts.
-NOT_READY_PREFIX = "Refining left this task not ready:"
 
 _FIELDS_FROM_PROPOSAL = {
     "Done when": "done_when",
@@ -280,6 +291,13 @@ def apply_proposal(
             shapes=task_shapes(),
         )
 
+        # Held the way a sweep holds it (sweep.assess): questions on the
+        # task, from anyone, with nothing after them keep it out of Ready.
+        awaiting_owner = (
+            not proposal.questions
+            and not problems
+            and unanswered(board.comments(task.gid))
+        )
         sections = board.sections()
         outcome: RefiningOutcome
         moved_at: dt.datetime | None = None
@@ -289,7 +307,7 @@ def apply_proposal(
                 sections, _section_setting("REFINING_SECTION", DEFAULT_REFINING_SECTION)
             )
             outcome = "questions"
-        elif not problems and auto_ready():
+        elif not problems and not awaiting_owner and auto_ready():
             column = _section_named(sections, ready_section())
             moved_at = dt.datetime.now(dt.UTC)
             outcome = "ready"
@@ -297,12 +315,19 @@ def apply_proposal(
             column = _section_named(
                 sections, _section_setting("REFINING_SECTION", DEFAULT_REFINING_SECTION)
             )
-            outcome = "ready" if not problems else "not_ready"
+            outcome = "ready" if not problems and not awaiting_owner else "not_ready"
             if problems:
                 board.comment(task.gid, not_ready_comment(problems))
+        where, landed = column.name, True
         if refined.section_gid != column.gid:
             board.move(task.gid, column.gid)
+            # Where it is, not where it was sent: a move can fail to happen.
+            after = board.get(task.gid)
+            if after is None or after.section_gid != column.gid:
+                moved_at, landed = None, False
+                where = (after.section_name if after else None) or "an unknown column"
 
+        recorded = [OPEN_QUESTIONS] if awaiting_owner else problems
         current = fingerprint(refined)
         store.record_refining(
             RefiningRecordWrite(
@@ -310,18 +335,22 @@ def apply_proposal(
                 task_id=task_id,
                 fingerprint=current,
                 outcome=outcome,
-                problems=problems,
+                problems=recorded,
                 moved_to_ready_at=moved_at,
                 returned_count=previous.returned_count if previous else 0,
                 refined_fingerprint=current,
             )
         )
-        log.info("refine: %s refined, now in %s", name, column.name)
+        log.info("refine: %s refined, now in %s", name, where)
+        if not landed:
+            report.issue(
+                f"refined task not moved to {column.name}", f"{name}: in {where}"
+            )
         report.count("questions", len(proposal.questions))
         report.count("cost_usd", f"{proposal.cost_usd:.4f}")
         report.updated(
-            f"task refined into {column.name}",
-            f"{name} (not ready: {'; '.join(problems)})"
+            f"task refined into {where}",
+            f"{name} (not ready: {'; '.join(recorded)})"
             if outcome == "not_ready"
             else name,
             link=board.url(task.gid),

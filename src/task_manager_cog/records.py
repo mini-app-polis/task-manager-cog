@@ -43,7 +43,9 @@ created (a dry run, or over the cap) is posted as one comment starting with
 :data:`SPLIT_REPORT_PREFIX`, and waits on its owner the same way. The
 comments after the last such comment are the owner's answers, and count as
 the task's content: answering changes the fingerprint, which sends the task
-to be refined again, answers included.
+to be refined again, answers included. This cog's own comments on whether a
+task is ready (:data:`OWN_PREFIXES`) answer nothing, so posting one never
+releases a task its questions hold.
 
 **Edited by hand.** A person who edits a task's name, body or tags after
 its refining asked questions has written the answer into the task itself.
@@ -85,6 +87,15 @@ SPLIT_REPORT_PREFIX = "Proposed split (not created"
 #: The comments that ask the owner something; what follows answers them.
 ASKING_PREFIXES = (QUESTIONS_PREFIX, GROOMING_QUESTIONS_PREFIX, SPLIT_REPORT_PREFIX)
 
+#: Starts the comment on a task the sweep moved back out of Ready.
+SENT_BACK_PREFIX = "Sent back from Ready:"
+
+#: Starts the comment on a refined task that is still not ready.
+NOT_READY_PREFIX = "Refining left this task not ready:"
+
+#: This cog's own comments on whether a task is ready: never an answer.
+OWN_PREFIXES = (SENT_BACK_PREFIX, NOT_READY_PREFIX)
+
 #: How long a send may go with no refining back before it counts as lost.
 REFINE_RETRY_AFTER = dt.timedelta(hours=12)
 
@@ -97,11 +108,16 @@ def answers(comments: Sequence[str]) -> list[str]:
 
     Those are the owner's answers. A task never asked anything has none: its
     comments are not answers to anything, and are not part of its content.
+    This cog's own comments on whether the task is ready are not answers.
     """
     asked = [i for i, c in enumerate(comments) if c.startswith(ASKING_PREFIXES)]
     if not asked:
         return []
-    return [c for c in comments[asked[-1] + 1 :] if c.strip()]
+    return [
+        c
+        for c in comments[asked[-1] + 1 :]
+        if c.strip() and not c.startswith(OWN_PREFIXES)
+    ]
 
 
 def unanswered(comments: Sequence[str]) -> bool:

@@ -53,7 +53,7 @@ This cog applies every move. Each move has one owner:
 | `Handed off:` | whoever finished the work | The next sweep moves it from In progress to Review, or straight from Ready when it also has a `Started:` comment; without one, a task in Ready stays and the run report names it. The comment answers every Done when item, point by point, with what was done and where; with no pull request, each answer carries evidence (a link, a commit, a run id, or a plain statement from the owner). |
 | `Rejected:` | the Review check | Names each Done when item not answered; the task goes back to In progress. |
 | `Landed:` | the sweep, for an agent's pull request | Records that the pull request merged with green CI on `dev`. The Review check still decides. |
-| `Refining questions:` | the refiner, or anyone | Holds the task in Refining until a later comment answers. `Grooming questions:` is still accepted. |
+| `Refining questions:` | the refiner, or anyone | Holds the task in Refining until a later comment answers. `Grooming questions:` is still accepted. The cog's own `Sent back from Ready:` and `Refining left this task not ready:` comments are not answers. |
 
 A comment counts only when it was posted after the task last entered its
 column, so it moves a task once (`moves.py`). The owner's parking column is
@@ -464,10 +464,13 @@ it was made for:
   `Refining questions:` and the task moves to Refining. **Answer in a
   comment:** the answers become part of the task's content, so the next
   sweep sends it to be refined again, answers included.
-- Without, it moves to Ready if it now passes and `REFINE_AUTO_READY` is on,
-  and to Refining otherwise. A task that still has problems gets one
+- Without, it moves to Ready if it now passes, no questions comment on it
+  is left unanswered (the sweep's own check), and `REFINE_AUTO_READY` is
+  on; to Refining otherwise. A task that still has problems gets one
   comment starting `Refining left this task not ready:` listing them, and
   the run report names them.
+- The task is read again after the move: the run report names the column
+  it is in, and a move that did not happen is an issue, not a move to Ready.
 
 A refined task is not sent again until someone changes it, so a task
 waiting on you costs nothing.

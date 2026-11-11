@@ -131,6 +131,7 @@ from .board import Board, on_hold_gid
 from .github import AgentApp
 from .lint import lint, mentioned_ids, only_blocked, task_id_of
 from .records import (
+    SENT_BACK_PREFIX,
     answers,
     awaiting_refining,
     changed,
@@ -162,9 +163,6 @@ DEFAULT_SWEEP_TIMEZONE = "UTC"
 #: How often the schedule runs a sweep: a sweep is the one for a time in
 #: REFINE_TIMES or AGENT_TIMES when it starts within this after it.
 SWEEP_INTERVAL = dt.timedelta(minutes=30)
-
-#: Starts the comment on a task the sweep moved back out of Ready.
-SENT_BACK_PREFIX = "Sent back from Ready:"
 
 #: In the template task's name. A task saying this is never swept.
 DO_NOT_WORK = "do not work"
@@ -427,9 +425,10 @@ def assess(
     A task whose last refining asked questions is not ready until a
     refining answers them, whatever the linter says, unless a person has
     since edited it and it passes, or waits only on blockers. So is a task that
-    would otherwise be ready while a "Refining questions:" comment on it,
-    from anyone, has nothing after it; ``comments`` reads a task's comments,
-    and is called only for such a task.
+    would otherwise be ready while a questions comment on it, from anyone,
+    has nothing after it (:func:`records.unanswered`, which apply-refining
+    checks too); ``comments`` reads a task's comments, and is called only
+    for such a task.
     """
     replies = replies or {}
     records = records or {}
