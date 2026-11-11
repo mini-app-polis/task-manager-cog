@@ -1178,6 +1178,32 @@ def test_a_passing_ready_task_is_left_alone() -> None:
     assert result.returned == [] and result.sent_back == []
 
 
+@pytest.mark.parametrize("executor", ["cowork", "person"])
+def test_a_ready_task_for_another_executor_may_name_no_repository(
+    executor: str,
+) -> None:
+    notes = READY.replace("Where: infra", "Where: Doppler, Google Drive").replace(
+        "Executor: agent", f"Executor: {executor}"
+    )
+    task = _task("1", "TASK-1 · Rotate the key", notes=notes, section="Ready")
+    board = FakeBoard([task])
+    result = sweep(board, repos=REPOS, move=True, records={"1": _moved_record(task)})
+    assert result.verdicts[0].ready
+    assert board.moves == []
+    assert result.sent_back == []
+
+
+def test_a_ready_agent_task_naming_no_repository_goes_back() -> None:
+    notes = READY.replace("Where: infra", "Where: Doppler, Google Drive")
+    task = _task("1", "TASK-1 · Rotate the key", notes=notes, section="Ready")
+    board = FakeBoard([task])
+    result = sweep(board, repos=REPOS, move=True, records={"1": _moved_record(task)})
+    assert result.verdicts[0].problems == (
+        "Where names no repository called Doppler, Google",
+    )
+    assert board.moves == [("1", "s-refining")]
+
+
 def test_a_failing_ready_task_goes_back_to_refining_and_is_counted() -> None:
     passed = _task("1", "TASK-1 · Edited", section="Ready")
     task = _task("1", "TASK-1 · Edited", notes="look into this", section="Ready")
