@@ -1,3 +1,18 @@
+# [1.34.0](https://github.com/mini-app-polis/task-manager-cog/compare/v1.33.8...v1.34.0) (2026-11-15)
+
+
+### Bug Fixes
+
+* **deps:** bump miniapppolis-common-utils to 9.11.0 ([3577ace](https://github.com/mini-app-polis/task-manager-cog/commit/3577ace56b222f35f3680cf952aa02154a762895))
+* **deps:** bump miniapppolis-common-utils to 9.12.0 ([a3bdde7](https://github.com/mini-app-polis/task-manager-cog/commit/a3bdde7e0f6cf476ca857df0ad05d58b4d34aa63))
+* **deps:** bump miniapppolis-common-utils to 9.13.0 ([5ccce44](https://github.com/mini-app-polis/task-manager-cog/commit/5ccce44e1638dd672edf67bf9de458cb1d73a5ca))
+* **review:** report a Review task missing a handoff once, and name a blank task ([a72818c](https://github.com/mini-app-polis/task-manager-cog/commit/a72818c4490452df48b66568aef683e6a89abc35))
+
+
+### Features
+
+* **results:** list an agent run's Done when answers in its Handed off: comment ([cbc05e2](https://github.com/mini-app-polis/task-manager-cog/commit/cbc05e210d5cf9c17812b1deec41bd6e4a23aafd))
+
 ## [1.33.8](https://github.com/mini-app-polis/task-manager-cog/compare/v1.33.7...v1.33.8) (2026-11-13)
 
 
