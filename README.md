@@ -334,8 +334,13 @@ from their body, comments and column changes only (`review.py`):
     from unfinished work: a person moves it to Refining when the task itself
     is the problem.
 - Any comment after the `Landed:` comment: left open.
-- No comment at all since it entered Review: listed in the run report as
-  missing a handoff, on the first sweep that sees it.
+- No comment at all since it entered Review (and no `Handed off:` as the last
+  comment before the move): missing a handoff. The first sweep to find it so
+  posts a `No handoff:` comment and reports it once; while the sweep's own
+  `No handoff:` and `Unverified:` comments are the only ones since it entered
+  Review, later sweeps only count it ("still awaiting one"). A comment of any
+  other kind, or a new move into Review, starts it over. A task whose name is
+  blank is reported as a task with no name, with a link to it, instead.
 - No `Landed:` comment more than `REVIEW_UNVERIFIED_HOURS` (default 24) after
   it entered Review: unverified. The first sweep to find it so posts an
   `Unverified:` comment and reports it once; while that comment is still the
@@ -343,9 +348,10 @@ from their body, comments and column changes only (`review.py`):
   comment of any kind starts it over.
 
 A task entered Review at its latest move into the column, or at its creation
-when it has none. Both lists give the task id and title, and make the run
-WARN. No model is called. A board missing the Review, Complete or In progress
-column skips the check, with a warning.
+when it has none. The lists give the task id and title, and make the run
+WARN; no report line prints a blank title. No model is called. A board
+missing the Review, Complete or In progress column skips the check, with a
+warning.
 
 ## Who does a task
 

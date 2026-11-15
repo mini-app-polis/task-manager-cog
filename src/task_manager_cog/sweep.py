@@ -207,6 +207,7 @@ BOARD_LABELS: dict[str, str] = {
     "review_rejected": "Review tasks rejected, moved to In progress",
     "review_moved_complete": "Review tasks already complete, moved to Complete",
     "review_awaiting_landed": "Review tasks flagged unverified, still awaiting Landed:",
+    "review_awaiting_handoff": "Review tasks flagged missing a handoff, still awaiting one",
 }
 
 #: The window the return-from-Ready ratio is read over.
@@ -753,7 +754,7 @@ def run_sweep(
         for change in stepped:
             report.updated(
                 "executor kept in step" if auto_ready() else "executor out of step",
-                f"{change.task.name}: {change.describe()}",
+                f"{review.task_title(change.task)}: {change.describe()}",
                 link=board.url(change.task.gid),
             )
 
@@ -810,19 +811,27 @@ def run_sweep(
             board_count("review_rejected", len(reviewed.rejected))
             board_count("review_moved_complete", len(reviewed.moved_complete))
             board_count("review_awaiting_landed", len(reviewed.awaiting_landed))
+            board_count("review_awaiting_handoff", len(reviewed.awaiting_handoff))
             for task in reviewed.missing_handoff:
                 report.issue("review task missing a handoff", review.task_label(task))
+            for task in reviewed.unnamed:
+                report.issue(
+                    "review task with no name",
+                    f"[{review.NO_NAME}]({board.url(task.gid)})",
+                )
             for task in reviewed.unverified:
                 report.issue("review task unverified", review.task_label(task))
         for task in result.newly_held:
             report.notice(
                 "task newly held with nobody asked",
-                f"[{task.name}]({board.url(task.gid)})",
+                f"[{review.task_title(task)}]({board.url(task.gid)})",
             )
 
         # One line per task moved or sent, saying where it went.
         def moved(where: str, task: AsanaTaskRecord) -> None:
-            report.updated(MOVED, f"{where}: {task.name}", link=board.url(task.gid))
+            report.updated(
+                MOVED, f"{where}: {review.task_title(task)}", link=board.url(task.gid)
+            )
 
         for task in result.moved:
             moved(ready_section(), task)
@@ -900,7 +909,9 @@ def _report_landings(
         section=BOARD,
     )
     for task in result.landed:
-        report.updated("Landed: posted", task.name, link=board.url(task.gid))
+        report.updated(
+            "Landed: posted", review.task_title(task), link=board.url(task.gid)
+        )
     for task, ref, run_url in result.failed:
         report.issue(
             "merged, CI on dev failed",
