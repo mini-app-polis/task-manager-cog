@@ -576,8 +576,12 @@ and nothing dispatches from In progress.
 
 The run's result comes back through the API, and `results.py` applies it. A
 run that succeeded puts its pull request on the task's PR line, moves the
-task to Review, and posts its `Handed off:` comment; one that needs
-refining goes back to Refining (below). **Applying a result never marks a
+task to Review, and posts its `Handed off:` comment: the pull request,
+the cost, then the agent's answer to each Done when item, numbered, one list
+item per item in the task's order, each with its evidence, which is what the
+Review check reads. A run that gave no answers gets the comment without the
+list, and the Review check rejects it until a new `Handed off:` answers
+each item. One that needs refining goes back to Refining (below). **Applying a result never marks a
 task done:** a person reviews and merges the draft, and the task closes
 when a `Landed:` comment, which the sweep posts once the pull request is
 merged and CI is green on the branch it merged into (`dev`, or `main` for

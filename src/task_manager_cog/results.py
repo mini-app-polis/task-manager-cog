@@ -10,7 +10,11 @@ and it is applied here, in line with every other write to the board.
 **Succeeded.** The run opened a draft pull request into ``dev``. Its link
 goes on the task's PR line, the task moves to Review (``REVIEW_SECTION``),
 and a comment starting ``Handed off:`` names the repository and the pull
-request and says what it cost. A person reviews and merges the draft, and
+request and says what it cost. When the agent answered the task's Done when,
+one answer per item in order with its evidence, the comment lists them after
+the cost, numbered, one list item per Done when item: the form the Review
+check reads (review.py). A run that gave no answers gets the comment
+without the list. A person reviews and merges the draft, and
 the task closes when a ``Landed:`` comment confirms green CI on dev: nothing
 here ever completes a task, because the agent's report is not proof the
 work is done.
@@ -112,10 +116,21 @@ def refining_comment(run: AgentRun, *, moved_away: bool = False) -> str:
     return text
 
 
+def done_when_list(answers: list[str]) -> str:
+    """The agent's Done when answers as a numbered list, one item per
+    answer, each on one line; empty when it gave none."""
+    if not answers:
+        return ""
+    lines = ["Done when, item by item:"]
+    lines += [f"{n}. {' '.join(a.split())}" for n, a in enumerate(answers, 1)]
+    return "\n".join(lines) + "\n"
+
+
 def result_comment(run: AgentRun, *, moved_away: bool = False) -> str:
     """The comment a run's result leaves on its task.
 
-    A succeeded run's starts with ``Handed off:``.
+    A succeeded run's starts with ``Handed off:`` and lists the agent's
+    Done when answers, when it gave them, after the cost.
     """
     where = f"\nRun: {run.actions_run_url}" if run.actions_run_url else ""
     if run.status == "succeeded":
@@ -124,6 +139,7 @@ def result_comment(run: AgentRun, *, moved_away: bool = False) -> str:
             f"dev in {run.repository}: {run.pr_url}\n"
             "The files and commit message are in the pull request; it is not "
             f"merged yet.\nCost: {_cost(run)}.{where}\n"
+            f"{done_when_list(run.done_when_answers)}"
             "Review and merge it. Whoever confirms green CI on dev posts a "
             'comment starting "Landed:" with the repo, branch, commit and CI '
             "result, and the sweep marks this task done."

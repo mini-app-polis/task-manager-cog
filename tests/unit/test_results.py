@@ -12,6 +12,7 @@ from mini_app_polis.asana import AsanaSection, AsanaTaskRecord
 from task_manager_cog.lint import parse
 from task_manager_cog.records import answers, fingerprint, needs_refining, next_record
 from task_manager_cog.results import apply_result
+from task_manager_cog.review import answers as review_answers
 from task_manager_cog.sweep import OPEN_QUESTIONS
 
 RUN_ID = "0b6f7f5e-3c1a-4c8e-9a51-6f0c2f3d4e5a"
@@ -129,6 +130,59 @@ def test_a_success_fills_the_pr_line_and_moves_to_review(
     assert board.task.completed is False
     ((_, kwargs),) = _no_outbound_reports
     assert kwargs["cost_usd"] == "0.8400"
+
+
+ANSWERS = [
+    "The watcher works: test_watcher_reads_the_folder in tests/unit/test_watch.py.",
+    "README's Settings section, in the pull request's commit.",
+]
+
+
+def test_a_success_lists_the_done_when_answers_numbered_after_the_cost(
+    production, _no_outbound_reports
+) -> None:
+    board = _board()
+    _apply(_run(done_when_answers=ANSWERS), board)
+
+    (comment,) = board.comments_
+    assert comment.startswith("Handed off: ")
+    lines = comment.splitlines()
+    first = lines.index(f"1. {ANSWERS[0]}")
+    assert lines[first + 1] == f"2. {ANSWERS[1]}"
+    assert lines[first - 1] == "Done when, item by item:"
+    cost = next(i for i, line in enumerate(lines) if line.startswith("Cost: $0.84"))
+    assert PR in lines[0]
+    assert 0 < cost < first
+    assert review_answers(comment) == ANSWERS
+
+
+def test_an_answer_over_several_lines_stays_one_list_item(
+    production, _no_outbound_reports
+) -> None:
+    board = _board()
+    _apply(_run(done_when_answers=["Done:\n- tests pass", "Docs."]), board)
+
+    (comment,) = board.comments_
+    assert review_answers(comment) == ["Done: - tests pass", "Docs."]
+
+
+def test_a_success_with_no_done_when_answers_keeps_its_comment(
+    production, _no_outbound_reports
+) -> None:
+    board = _board()
+    _apply(_run(), board)
+
+    (comment,) = board.comments_
+    assert comment == (
+        f"Handed off: Agent run {RUN_ID} opened a draft pull request into dev in "
+        f"watcher-cog: {PR}\n"
+        "The files and commit message are in the pull request; it is not "
+        f"merged yet.\nCost: $0.84.\nRun: {RUN_URL}\n"
+        "Review and merge it. Whoever confirms green CI on dev posts a "
+        'comment starting "Landed:" with the repo, branch, commit and CI '
+        "result, and the sweep marks this task done."
+    )
+    assert review_answers(comment) == []
 
 
 def test_a_success_links_its_report_line_to_the_draft_pr(
