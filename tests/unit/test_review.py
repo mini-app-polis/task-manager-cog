@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import dataclasses
 import datetime as dt
 from dataclasses import dataclass, field
 
 import pytest
+from mini_app_polis.api.contract import AgentRun
 from mini_app_polis.asana import AsanaSection, AsanaStory, AsanaTaskRecord
 
 from task_manager_cog import review as review_mod
+from task_manager_cog.results import result_comment
 from task_manager_cog.review import review
 
 NOW = dt.datetime(2026, 10, 30, 12, 0, tzinfo=dt.UTC)
@@ -107,6 +110,15 @@ class FakeAsanaBoard:
     def comment(self, task_gid: str, text: str) -> None:
         self.posted.append((task_gid, text))
         self.writes.append(f"comment {task_gid}")
+        # The comment is in the task's history for the next sweep to read.
+        self.history.setdefault(task_gid, []).append(
+            AsanaStory(
+                gid=f"posted-{len(self.posted)}",
+                kind="comment_added",
+                created_at=NOW,
+                text=text,
+            )
+        )
 
 
 def test_a_task_that_passes_moves_to_complete_then_is_marked_complete() -> None:
@@ -127,6 +139,63 @@ def test_a_task_that_passes_moves_to_complete_then_is_marked_complete() -> None:
     assert result.missing_handoff == []
     assert result.unverified == []
     assert board.posted == []
+
+
+def _agent_handoff(done_when_answers: list[str]) -> str:
+    """The Handed off: comment results.py writes for a succeeded agent run."""
+    run = AgentRun.model_validate(
+        {
+            "id": "0b6f7f5e-3c1a-4c8e-9a51-6f0c2f3d4e5a",
+            "task_gid": "1",
+            "repository": "task-manager-cog",
+            "model": "claude-sonnet-5-5",
+            "status": "succeeded",
+            "cost_usd": 0.84,
+            "pr_url": "https://github.com/mini-app-polis/task-manager-cog/pull/4",
+            "done_when_answers": done_when_answers,
+            "dispatched_at": _hours_ago(11),
+        }
+    )
+    return result_comment(run)
+
+
+def test_an_agent_handoff_with_its_done_when_answers_passes_once_landed() -> None:
+    handoff = _agent_handoff(
+        [
+            "Renders on dev: src/widget.py, test_widget_renders.",
+            "test_widget passes in tests/unit/test_widget.py; CI green.",
+        ]
+    )
+    board = FakeAsanaBoard(
+        [_task()],
+        {
+            "1": [
+                _entered(10),
+                _comment(handoff, 10),
+                _comment("Landed: task-manager-cog, dev, abc123, CI green", 1),
+            ]
+        },
+    )
+    result = review(board, now=NOW)
+    assert [t.gid for t in result.closed] == ["1"]
+    assert result.rejected == []
+    assert board.writes == ["move 1 s-complete", "complete 1"]
+
+
+def test_an_agent_handoff_with_no_done_when_answers_is_rejected() -> None:
+    board = FakeAsanaBoard(
+        [_task()],
+        {
+            "1": [
+                _entered(10),
+                _comment(_agent_handoff([]), 10),
+                _comment("Landed: task-manager-cog, dev, abc123, CI green", 1),
+            ]
+        },
+    )
+    result = review(board, now=NOW)
+    assert [t.gid for t in result.rejected] == ["1"]
+    assert result.closed == []
 
 
 def test_a_handoff_short_of_the_done_when_is_rejected_once() -> None:
@@ -316,6 +385,74 @@ def test_a_task_with_no_comment_is_missing_a_handoff_at_once() -> None:
     assert [t.gid for t in result.missing_handoff] == ["1"]
     assert result.unverified == []
     assert board.completed == []
+
+
+def test_a_missing_handoff_is_flagged_once_then_only_counted() -> None:
+    board = FakeAsanaBoard([_task()], {"1": [_entered(2)]})
+
+    first = review(board, now=NOW)
+    assert [t.gid for t in first.missing_handoff] == ["1"]
+    assert first.awaiting_handoff == []
+    assert [gid for gid, _ in board.posted] == ["1"]
+    assert board.posted[0][1].startswith("No handoff:")
+
+    second = review(board, now=NOW + dt.timedelta(minutes=30))
+    assert second.missing_handoff == []
+    assert [t.gid for t in second.awaiting_handoff] == ["1"]
+    assert len(board.posted) == 1
+
+
+def test_a_missing_handoff_still_counted_once_unverified_too() -> None:
+    board = FakeAsanaBoard([_task()], {"1": [_entered(30)]})
+    first = review(board, now=NOW)
+    assert [t.gid for t in first.missing_handoff] == ["1"]
+    assert [t.gid for t in first.unverified] == ["1"]
+    second = review(board, now=NOW + dt.timedelta(minutes=30))
+    assert second.missing_handoff == [] and second.unverified == []
+    assert [t.gid for t in second.awaiting_handoff] == ["1"]
+    assert [t.gid for t in second.awaiting_landed] == ["1"]
+    assert len(board.posted) == 2
+
+
+def test_a_new_move_into_review_flags_a_missing_handoff_again() -> None:
+    board = FakeAsanaBoard([_task()], {"1": [_entered(2)]})
+    review(board, now=NOW)
+    board.history["1"].append(
+        AsanaStory(
+            gid="m-again",
+            kind="section_changed",
+            created_at=NOW + dt.timedelta(minutes=10),
+            section_gid="s-review",
+            section_name="Review",
+        )
+    )
+    again = review(board, now=NOW + dt.timedelta(minutes=30))
+    assert [t.gid for t in again.missing_handoff] == ["1"]
+    assert len(board.posted) == 2
+
+
+def test_a_comment_after_the_flag_ends_the_missing_handoff() -> None:
+    board = FakeAsanaBoard([_task()], {"1": [_entered(2)]})
+    review(board, now=NOW)
+    board.history["1"].append(_comment("Handed off: PR 4", -0.1))
+    later = review(board, now=NOW + dt.timedelta(minutes=30))
+    assert later.missing_handoff == [] and later.awaiting_handoff == []
+
+
+def test_a_task_with_no_name_is_listed_as_unnamed_not_missing_a_handoff() -> None:
+    blank = dataclasses.replace(_task(), name="", notes="")
+    board = FakeAsanaBoard([blank], {"1": [_entered(2)]})
+    result = review(board, now=NOW)
+    assert result.missing_handoff == []
+    assert [t.gid for t in result.unnamed] == ["1"]
+    again = review(board, now=NOW + dt.timedelta(minutes=30))
+    assert again.unnamed == [] and [t.gid for t in again.awaiting_handoff] == ["1"]
+
+
+def test_the_label_of_a_task_with_no_name_names_it_so() -> None:
+    blank = dataclasses.replace(_task("7"), name=" ")
+    assert review_mod.task_label(blank) == "7 · task with no name"
+    assert review_mod.task_title(blank) == "task with no name"
 
 
 def test_a_comment_from_before_review_is_not_a_handoff() -> None:

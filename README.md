@@ -334,8 +334,13 @@ from their body, comments and column changes only (`review.py`):
     from unfinished work: a person moves it to Refining when the task itself
     is the problem.
 - Any comment after the `Landed:` comment: left open.
-- No comment at all since it entered Review: listed in the run report as
-  missing a handoff, on the first sweep that sees it.
+- No comment at all since it entered Review (and no `Handed off:` as the last
+  comment before the move): missing a handoff. The first sweep to find it so
+  posts a `No handoff:` comment and reports it once; while the sweep's own
+  `No handoff:` and `Unverified:` comments are the only ones since it entered
+  Review, later sweeps only count it ("still awaiting one"). A comment of any
+  other kind, or a new move into Review, starts it over. A task whose name is
+  blank is reported as a task with no name, with a link to it, instead.
 - No `Landed:` comment more than `REVIEW_UNVERIFIED_HOURS` (default 24) after
   it entered Review: unverified. The first sweep to find it so posts an
   `Unverified:` comment and reports it once; while that comment is still the
@@ -343,9 +348,10 @@ from their body, comments and column changes only (`review.py`):
   comment of any kind starts it over.
 
 A task entered Review at its latest move into the column, or at its creation
-when it has none. Both lists give the task id and title, and make the run
-WARN. No model is called. A board missing the Review, Complete or In progress
-column skips the check, with a warning.
+when it has none. The lists give the task id and title, and make the run
+WARN; no report line prints a blank title. No model is called. A board
+missing the Review, Complete or In progress column skips the check, with a
+warning.
 
 ## Who does a task
 
@@ -570,8 +576,12 @@ and nothing dispatches from In progress.
 
 The run's result comes back through the API, and `results.py` applies it. A
 run that succeeded puts its pull request on the task's PR line, moves the
-task to Review, and posts its `Handed off:` comment; one that needs
-refining goes back to Refining (below). **Applying a result never marks a
+task to Review, and posts its `Handed off:` comment: the pull request,
+the cost, then the agent's answer to each Done when item, numbered, one list
+item per item in the task's order, each with its evidence, which is what the
+Review check reads. A run that gave no answers gets the comment without the
+list, and the Review check rejects it until a new `Handed off:` answers
+each item. One that needs refining goes back to Refining (below). **Applying a result never marks a
 task done:** a person reviews and merges the draft, and the task closes
 when a `Landed:` comment, which the sweep posts once the pull request is
 merged and CI is green on the branch it merged into (`dev`, or `main` for

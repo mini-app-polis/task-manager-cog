@@ -1505,6 +1505,31 @@ def test_the_sweep_keeps_executors_in_step_before_it_judges_the_board(
     assert "Executor: person written, assigned to the owner" in kwargs["text"]
 
 
+def test_a_blank_task_in_review_is_reported_as_having_no_name(
+    production, monkeypatch: pytest.MonkeyPatch, _no_outbound_reports
+) -> None:
+    monkeypatch.setenv("REFINE_AUTO_READY", "true")
+    blank = _task("12", "", notes="", section="Review", assignee=None)
+    board = FakeBoard(
+        [blank],
+        sections_=[
+            *SECTIONS,
+            AsanaSection("s-review", "Review"),
+            AsanaSection("s-complete", "Complete"),
+        ],
+    )
+
+    _sweep_sending(FakeRecords(), board, monkeypatch, "5")
+
+    (args, kwargs), *_ = _no_outbound_reports
+    text = kwargs["text"]
+    assert "review task with no name\n  [task with no name](https://board/12)" in text
+    assert "missing a handoff" not in text
+    assert "task with no name: assigned to the owner" in text
+    assert "\n  : " not in text and " · \n" not in text
+    assert board.comments("12")[0].startswith("No handoff:")
+
+
 # ── the run report's layout ──────────────────────────────────────────────
 
 

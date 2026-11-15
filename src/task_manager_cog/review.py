@@ -28,9 +28,14 @@ it has none. For each task in Review:
   tell an unclear task from unfinished work; a person moves the task to
   Refining when the task is the problem.
 - a comment after its ``Landed:`` comment: left open;
-- no comment since it entered Review: listed as missing a handoff, on the
-  first sweep that sees it, unless its last comment before the move starts
-  with ``Handed off:`` (a handoff is often posted just before the move);
+- no comment since it entered Review: missing a handoff, unless its last
+  comment before the move starts with ``Handed off:`` (a handoff is often
+  posted just before the move). The first sweep to find it so posts a
+  ``No handoff:`` comment and lists it, once; while the sweep's own comments
+  (``No handoff:``, ``Unverified:``) are the only ones since it entered
+  Review, later sweeps only count it. A comment of any other kind, or a new
+  move into Review, starts it over. A task with no name is listed as one,
+  not as missing a handoff;
 - no ``Landed:`` comment more than ``REVIEW_UNVERIFIED_HOURS`` (default 24)
   after it entered Review: unverified. The first sweep to find it so posts
   an ``Unverified:`` comment and lists it, once; while that comment is still
@@ -79,8 +84,12 @@ LANDED_PREFIX = "Landed:"
 HANDED_OFF_PREFIX = "Handed off:"
 #: Starts the comment the sweep posts on a task it finds unverified.
 UNVERIFIED_PREFIX = "Unverified:"
+#: Starts the comment the sweep posts on a task missing a handoff.
+NO_HANDOFF_PREFIX = "No handoff:"
 #: Starts the comment the sweep posts on a task that fails the Review check.
 REJECTED_PREFIX = "Rejected:"
+#: The comments the sweep itself posts on a task waiting in Review.
+_OWN_PREFIXES = (NO_HANDOFF_PREFIX, UNVERIFIED_PREFIX)
 
 COMMENT = "comment_added"
 SECTION_CHANGED = "section_changed"
@@ -136,8 +145,15 @@ class ReviewResult:
     rejected: list[AsanaTaskRecord] = field(default_factory=list)
     #: Tasks already complete before the check shipped, moved to Complete.
     moved_complete: list[AsanaTaskRecord] = field(default_factory=list)
-    #: Tasks with no comment since they entered Review.
+    #: Tasks found missing a handoff this pass: no comment since they
+    #: entered Review, now given a ``No handoff:`` comment.
     missing_handoff: list[AsanaTaskRecord] = field(default_factory=list)
+    #: Tasks found missing a handoff this pass that have no name, listed
+    #: here instead of in ``missing_handoff``.
+    unnamed: list[AsanaTaskRecord] = field(default_factory=list)
+    #: Tasks still missing a handoff, whose only comments since they entered
+    #: Review are the sweep's own: already flagged, so only counted.
+    awaiting_handoff: list[AsanaTaskRecord] = field(default_factory=list)
     #: Tasks found unverified this pass: no ``Landed:`` comment past the
     #: threshold, now given an ``Unverified:`` comment.
     unverified: list[AsanaTaskRecord] = field(default_factory=list)
@@ -177,9 +193,20 @@ def unverified_after() -> dt.timedelta:
     return dt.timedelta(hours=float(raw) if raw else DEFAULT_UNVERIFIED_HOURS)
 
 
+#: What a report line says for a task whose name is blank.
+NO_NAME = "task with no name"
+
+
+def task_title(task: AsanaTaskRecord) -> str:
+    """The task's name, or :data:`NO_NAME` when it is blank."""
+    return task.name if task.name.strip() else NO_NAME
+
+
 def task_label(task: AsanaTaskRecord) -> str:
     """The task's id and title, as its name carries them."""
-    return task.name if task_id_of(task.name) else f"{task.gid} · {task.name}"
+    if task_id_of(task.name):
+        return task.name
+    return f"{task.gid} · {task_title(task)}"
 
 
 def entered_review(
@@ -368,8 +395,18 @@ def review(
                 result.rejected.append(task)
                 log.info("review: %s rejected; moved to In progress", task.name)
             continue
-        if not comments and not _handed_off_before(stories, entered):
-            result.missing_handoff.append(task)
+        if not _handed_off_before(stories, entered):
+            if not comments:
+                board.comment(task.gid, _no_handoff_comment())
+                if task.name.strip():
+                    result.missing_handoff.append(task)
+                else:
+                    result.unnamed.append(task)
+                log.info("review: %s missing a handoff; flagged", task_label(task))
+            elif all(
+                (s.text or "").lstrip().startswith(_OWN_PREFIXES) for s in comments
+            ):
+                result.awaiting_handoff.append(task)
         if landed:
             continue
         if entered is not None and now - entered > threshold:
@@ -381,6 +418,14 @@ def review(
             result.unverified.append(task)
             log.info("review: %s unverified; flagged", task.name)
     return result
+
+
+def _no_handoff_comment() -> str:
+    return (
+        f"{NO_HANDOFF_PREFIX} no comment since this task entered Review. "
+        f"Post a {HANDED_OFF_PREFIX} comment answering each Done when item, "
+        "or move the task out of Review."
+    )
 
 
 def _unverified_comment(threshold: dt.timedelta) -> str:
